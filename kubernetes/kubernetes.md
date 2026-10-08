@@ -11,9 +11,9 @@ Before Kubernetes, managing multiple Docker containers meant:
 Kubernetes acts as the **"Operating System of the Cloud."** It manages a cluster of Virtual Machines (called **Worker Nodes**) and coordinates them via a **Control Plane**.
 
 ### Key Concepts:
-- **Declarative State:** Instead of manual commands, you use **YAML files** to define the "desired state" (e.g., "I want 3 replicas of this app"). Kubernetes automatically works to make the actual state match this desired state.
+- **Declarative State:** Instead of manual commands, you use **YAML files** to define the "desired state" (e.g., "I want 3 replicas of this app"). Kubernetes automatically works to make the actual state match this desired state. You apply these files with `kubectl` — see [kubectl](kubectl.md).
 - **Automated Scheduling:** The Control Plane decides which Worker Node should run a container based on available resources.
-- **Intelligent Scaling:** 
+- **Intelligent Scaling:**
     - **Scheduled Scaling:** Scale based on known time patterns.
     - **Metric-based Scaling:** Scale automatically based on CPU, memory, or request volume.
 - **Scalability:** Effortlessly run container workloads at massive scale.
@@ -31,7 +31,9 @@ graph LR
     E --> H[Pod/Container]
 ```
 
---- new
+## Pods
 
-# Pods:
-The smallest unit created on a Cluster, but its more then a container, its a groupe of containers while it can consist of only one container.
+The smallest unit created on a cluster — but it's more than a container: a Pod is a **group** of containers that share networking and storage, though it can also consist of a single container.
+
+- Create and manage Pods with `kubectl` — see [kubectl](kubectl.md).
+- Pods are usually managed through a **Deployment** so they stay running and can be scaled — see [Deployments](deployments.md).
