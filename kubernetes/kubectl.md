@@ -4,7 +4,7 @@ Reference: <https://kubernetes.io/docs/reference/kubectl/>
 
 ## Context
 
-Shows which cluster is currently in use.
+Shows which cluster is currently in use — Rancher Desktop provides the local one, see [Rancher Desktop](rancher.md).
 
 ```bash
 kubectl config current-context          # e.g. rancher-desktop
@@ -13,7 +13,7 @@ kubectl config use-context <cluster-name>   # switch cluster
 
 ## Basics
 
-`kubectl get` lists resources on the cluster.
+`kubectl get` lists resources on the cluster (cluster concepts in [Kubernetes Essentials](kubernetes.md)).
 
 ```bash
 kubectl get pods          # list pods
@@ -69,7 +69,7 @@ kubectl create -f nginx.yaml   # only creates; errors if the pod already exists
 kubectl apply  -f nginx.yaml   # creates or updates — compares with existing pods
 ```
 
-> Use `apply` for ongoing management; `create` is for one-off creation.
+> Use `apply` for ongoing management; `create` is for one-off creation. The same `apply -f` flow works for other resource types too, like [Deployments](deployments.md).
 
 ## Lifecycle
 

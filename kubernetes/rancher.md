@@ -5,7 +5,7 @@
 - Desktop app (macOS / Windows / Linux) that gives you containers **and** Kubernetes on your machine — very similar to Docker Desktop.
 - Not to be confused with **Rancher** (cluster management for production). Rancher Desktop is just a local dev tool; the two complement each other.
 - On macOS/Linux it runs everything inside a **VM**; on Windows it uses **WSL2**. The VM also contains the Kubernetes cluster.
-- Kubernetes is provided by **k3s**, a lightweight certified Kubernetes distribution.
+- Kubernetes is provided by **k3s**, a lightweight certified Kubernetes distribution — for the big picture, see [Kubernetes Essentials](kubernetes.md).
 
 ## Container engines (chosen on first boot)
 
@@ -22,7 +22,7 @@
 
 - **VM resources** (memory, CPUs): Preferences → Virtual Machine → Hardware
 - **Kubernetes version**: Preferences → Kubernetes (first run of a new version downloads images, takes a while)
-- Also included out of the box: `kubectl`, `helm`, `docker compose`
+- Also included out of the box: `kubectl`, `helm`, `docker compose` — see the [kubectl notes](kubectl.md).
 
 ## Troubleshooting
 
