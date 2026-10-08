@@ -36,4 +36,4 @@ graph LR
 The smallest unit created on a cluster — but it's more than a container: a Pod is a **group** of containers that share networking and storage, though it can also consist of a single container.
 
 - Create and manage Pods with `kubectl` — see [kubectl](kubectl.md).
-- Pods are usually managed through a **Deployment** so they stay running and can be scaled — see [Deployments](/kubernetes/deployments/deployments.md).
+- Pods are usually managed through a **Deployment** so they stay running and can be scaled — see [Deployments](deployments/deployments.md).

@@ -2,7 +2,7 @@
 
 A Deployment defines the **desired state** for a set of pods — e.g. "10 replicas of this image, running at all times" — and Kubernetes works to make the cluster match it. You don't run single pods in practice; deployments manage them for you.
 
-Examples run on the local [Rancher Desktop](rancher.md) cluster, in their own [namespace](namespaces.md).
+Examples run on the local [Rancher Desktop](../rancher.md) cluster, in their own [namespace](../namespaces/namespaces.md).
 
 ## Create
 
@@ -49,7 +49,7 @@ kubectl delete deployment test   # the pods it manages are deleted too
 
 One-off `create` commands are fine for trying things out — real work happens in YAML files.
 
-Generate a template without touching the cluster (same `--dry-run` trick as with pods, see [kubectl](kubectl.md)), then apply it:
+Generate a template without touching the cluster (same `--dry-run` trick as with pods, see [kubectl](../kubectl.md)), then apply it:
 
 ```bash
 kubectl create deploy test --image=httpd --replicas=10 \
@@ -108,10 +108,11 @@ kubectl describe replicaset test     # desired vs current replicas
 1. Change the image tag in `deploy.yaml` (e.g. `httpd` → `httpd:alpine3.18`).
 2. Watch the rollout live:
 
-```bash
-watch -n 1 kubectl get pods
-```
-> Note: `watch` needs to be installed first on macOS using `brew install watch`
+   ```bash
+   watch -n 1 kubectl get pods
+   ```
+
+   > Note: `watch` needs to be installed first on macOS using `brew install watch`
 
 3. `kubectl apply -f deploy.yaml` and see the pods replaced batch by batch.
 
