@@ -71,7 +71,7 @@ kubectl create -f nginx.yaml   # only creates; errors if the pod already exists
 kubectl apply  -f nginx.yaml   # creates or updates — compares with existing pods
 ```
 
-> Use `apply` for ongoing management; `create` is for one-off creation. The same `apply -f` flow works for other resource types too, like [Deployments](deployments.md).
+> Use `apply` for ongoing management; `create` is for one-off creation. The same `apply -f` flow works for other resource types too, like [Deployments](/kubernetes/deployments/deployments.md).
 
 ## Lifecycle
 
