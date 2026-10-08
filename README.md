@@ -7,7 +7,8 @@ Welcome to my **Tryout Lab**! This repository is a personal playground and sandb
 Every project, tool, or language trial is isolated into its own dedicated directory to keep things organized:
 
 *   📂 `golang/` — Learning Go syntax, concurrent programming, and microservices.
-*   📂 `kubernetes/` — Kubernetes manifests, local cluster configurations, and notes
+*   📂 `kubernetes/` — Kubernetes manifests, local cluster configurations, and notes ([Essentials](kubernetes/kubernetes.md), [kubectl](kubernetes/kubectl.md), [Namespaces](kubernetes/namespaces.md), [Deployments](kubernetes/deployments.md), [Rancher Desktop](kubernetes/rancher.md))
+*   📂 `terminal/` — Shell and terminal setup ([zsh](terminal/zsh.md))
 
 ## 🛠️ Purpose & Goals
 

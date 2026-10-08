@@ -23,6 +23,8 @@ kubectl get pods -o wide  # more info (node, IP)
 
 > Tip: `<TAB><TAB>` gives full autocomplete for commands and options.
 
+> Without a namespace, everything lands in `default` — how to group resources and switch namespaces is in [Namespaces](namespaces.md).
+
 ## Run a pod
 
 ```bash
