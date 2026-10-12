@@ -13,19 +13,31 @@ func main() {
 	fmt.Println("Welcome to the Earnings calcualtor")
 	fmt.Println("I calcualte earnings before tax (EBT), earnings after tax, profit and ratio")
 
-	fmt.Print("How much revenue do you have: ")
-	fmt.Scan(&revenue)
-	fmt.Print("How much expenses do you have: ")
-	fmt.Scan(&expense)
-	fmt.Print("How high is your tax rate: ")
-	fmt.Scan(&taxRate)
+	revenue = userInput("How much revenue do you have: ")
+	expense = userInput("How much expenses do you have: ")
+	taxRate = userInput("How high is your tax rate: ")
 
-	ebt := revenue - expense
-	profit := ebt * (1 - taxRate/100)
-	ratio := profit / ebt * 100
+	ebt, profit, ratio := calculateOutputs(revenue, expense, taxRate)
 
 	fmt.Println("\n --------------------------")
 	fmt.Printf("EBT: %.2f\n", ebt)
 	fmt.Printf("Profit: %.2f\n", profit)
 	fmt.Printf("Ratio: %.2f\n", ratio)
+}
+
+func userInput(infoText string) float64 {
+	var userInput float64
+
+	fmt.Print(infoText)
+	fmt.Scan(&userInput)
+
+	return userInput
+}
+
+func calculateOutputs(revenue, expense, taxRate float64) (float64, float64, float64) {
+	ebt := revenue - expense
+	profit := ebt * (1 - taxRate/100)
+	ratio := profit / ebt * 100
+
+	return ebt, profit, ratio
 }
