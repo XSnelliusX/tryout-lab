@@ -13,4 +13,5 @@ Each exercise lives in one file and evolves with the course. Git history is the 
 | 36 | [Profit Calculator](Profit%20Calculator/profit_calculator.go) | Split logic into reusable functions (`userInput`, `calculateOutputs`) | `f11fa3e` |
 | 37–50 | [Bank](Bank/bank.go) | Control structures, loops, error handling and file storage (balance persisted to `balance.txt`) | `aa4e279` |
 | 51 | [Profit Calculator](Profit%20Calculator/profit_calculator.go) | Validate input and append results to `profits.txt` (created if missing) | `31da183` |
+| 54–60 | [Bank](Bank/bank.go) | Split code into packages: exported functions in `fileops/`, menu helpers in `communication.go` | `25db1d0` |
 
