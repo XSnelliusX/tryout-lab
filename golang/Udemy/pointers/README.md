@@ -2,7 +2,7 @@
 
 A pointer holds the **memory address** of a value instead of the value itself. Pointers let a function work on the original value rather than a copy of it.
 
-Lessons 63–71, code in [pointers.go](pointers.go).
+Lessons 63–71, code in [pointers.go](pointers.go). For pointers to structs and methods, see the [structs README](../Structs/README.md).
 
 ## Basics
 
@@ -91,13 +91,27 @@ func editAgeToAdultYears(age *int) {
 - `*age -= 18` changes the value stored at that address.
 - `main` passes `agePointer`, so `age` in `main` is updated and no return value is needed.
 
+## Pointers to structs
+
+Structs are the most common place to use pointers in Go. The constructor in the [structs README](../Structs/README.md) returns a pointer so the struct is created once and not copied:
+
+```go
+func New(firstName, lastName, birthdate string) (*User, error) {
+	return &User{...}, nil
+}
+```
+
+Go also lets you read fields through a struct pointer without writing `(*u).firstName`. `u.firstName` works on both `User` and `*User`.
+
+Pointer receivers on methods use the same idea. `func (u *User) ClearUserName()` receives the address of the struct, so it can change the original. A value receiver `func (u User) ...` gets a copy. See [Value receiver vs pointer receiver](../Structs/README.md#value-receiver-vs-pointer-receiver).
+
 ## Things to watch out for
 
 - **Hidden changes.** When a function takes a pointer, the caller's variable may change. Name functions and parameters so this is clear, e.g. `editAge` rather than `process`.
-- **`nil` pointers.** A pointer that was never set is `nil`. Dereferencing it panics.
+- **`nil` pointers.** A pointer that was never set is `nil`. Dereferencing it panics. Constructors that return `nil` on error (like `user.New`) need the error checked before use.
 - **Copies still happen with plain values.** Only the pointer is copied, not the value it points to. That is why pointers help with large values.
+- **Value methods on a struct do not edit it.** If a method must change fields, give it a pointer receiver. See the [structs README](../Structs/README.md).
 
 ## Next
 
-- Pointers to structs, which are common in Go code (`&Person{...}`).
-- Pointer receivers on methods, which let a method modify its struct.
+- Structs with embedded types and interfaces, see the [structs README](../Structs/README.md).
