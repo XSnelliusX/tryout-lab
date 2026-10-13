@@ -15,4 +15,5 @@ Each exercise lives in one file and evolves with the course. Git history is the 
 | 51 | [Profit Calculator](Profit%20Calculator/profit_calculator.go) | Validate input and append results to `profits.txt` (created if missing) | `31da183` |
 | 54–60 | [Bank](Bank/bank.go) | Split code into packages: exported functions in `fileops/`, menu helpers in `communication.go` | `25db1d0` |
 | 63–71 | [Pointers](pointers/pointers.go) | Pointers: address-of and dereference, passing pointers to functions to change the caller's value (see [pointers README](pointers/README.md)) | `2e972b6` |
+| 73–89 | [Structs](Structs/structs.go) | Structs, constructor functions with validation, packages and exported names, methods with value and pointer receivers, embedding, type aliases (see [structs README](Structs/README.md)) | `ff30ede` |
 
