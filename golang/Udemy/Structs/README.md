@@ -2,7 +2,7 @@
 
 A struct is a custom type that groups related fields (data) and methods (functions attached to the type) into one value. It is Go's way of modelling things like a user, an admin or an order.
 
-Lessons 73–89, code in [structs.go](structs.go) and [user/user.go](user/user.go).
+Lessons 73–89, code in [structs.go](structs.go) and [user/user.go](user/user.go). A practice app built on structs (lessons 90–97) is in [Notes Practice](Notes%20Practice/README.md).
 
 Structs and pointers work together closely. Whether a struct should be passed as a value or a pointer is covered in the [pointers README](../pointers/README.md).
 
@@ -130,6 +130,18 @@ func NewAdmin(email, password string) Admin {
 ```
 
 Returning a value copies the struct. For small structs this is fine and can be as fast as passing pointers. For large or complex structs, return a pointer (`*Admin`) to avoid copies.
+
+## Struct tags
+
+A field can have a tag in backticks. Packages like `encoding/json` read it:
+
+```go
+type Note struct {
+	Title string `json:"title"`
+}
+```
+
+`json.Marshal` uses the tag as the key name (`{"title": ...}`) instead of the field name. Tags only give metadata. They do not change how the struct works in Go code. Only exported fields are encoded to JSON. See [Notes Practice](Notes%20Practice/README.md) for a full example.
 
 ## Type aliases and methods on custom types
 
