@@ -2,7 +2,7 @@
 
 A struct is a custom type that groups related fields (data) and methods (functions attached to the type) into one value. It is Go's way of modelling things like a user, an admin or an order.
 
-Lessons 73–89, code in [structs.go](structs.go) and [user/user.go](user/user.go). A practice app built on structs (lessons 90–97) is in [Notes Practice](Notes%20Practice/README.md).
+Lessons 73–89, code in [structs.go](structs.go) and [user/user.go](user/user.go). A practice app built on structs and interfaces (lessons 90–103) is in [Notes Practice](../Notes%20Practice/README.md).
 
 Structs and pointers work together closely. Whether a struct should be passed as a value or a pointer is covered in the [pointers README](../pointers/README.md).
 
@@ -141,7 +141,7 @@ type Note struct {
 }
 ```
 
-`json.Marshal` uses the tag as the key name (`{"title": ...}`) instead of the field name. Tags only give metadata. They do not change how the struct works in Go code. Only exported fields are encoded to JSON. See [Notes Practice](Notes%20Practice/README.md) for a full example.
+`json.Marshal` uses the tag as the key name (`{"title": ...}`) instead of the field name. Tags only give metadata. They do not change how the struct works in Go code. Only exported fields are encoded to JSON. See [Notes Practice](../Notes%20Practice/README.md) for a full example.
 
 ## Type aliases and methods on custom types
 
@@ -178,4 +178,4 @@ The same works for other built-in types such as `int` or `float64`. Aliases beco
 ## Next
 
 - Using structs with slices and maps.
-- Interfaces, which describe what methods a type must have.
+- Interfaces, which describe what methods a type must have. See the [Notes Practice README](../Notes%20Practice/README.md).
