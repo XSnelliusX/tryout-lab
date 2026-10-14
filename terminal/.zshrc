@@ -1,3 +1,10 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 #############################################################################################
 ######################   ZSH Setup - using oh my zsh + fuzzy search    ######################
 #############################################################################################
@@ -46,6 +53,9 @@ if [[ -n $realpath && -e $realpath ]]; then
   else
     bat --color=always --style=numbers --line-range=:200 "$realpath"
   fi
+elif [[ -d ${word/#\~/$HOME} ]]; then
+  # directories without a realpath (no longer needed for vim/python3, kept as fallback)
+  eza -1 --color=always --icons=always --group-directories-first "${word/#\~/$HOME}"
 elif (( $#words == 1 )); then
   # first word: the command itself -> man page
   man -w "$word" >/dev/null 2>&1 && MANWIDTH=$FZF_PREVIEW_COLUMNS man "$word" | col -bx | bat -l man -p --color=always || echo "$desc"
@@ -61,6 +71,9 @@ fi'
 
 zstyle ':fzf-tab:*' fzf-flags --preview-window=right:50%:wrap
 zstyle ':fzf-tab:*' fzf-bindings 'ctrl-/:toggle-preview'
+# Tab enters the highlighted folder (continue completing inside it) instead of cycling
+zstyle ':fzf-tab:*' continuous-trigger 'tab'
+zstyle ':fzf-tab:*' fzf-bindings-default 'btab:up,change:top,ctrl-space:toggle,bspace:backward-delete-char/eof,ctrl-h:backward-delete-char/eof'
 
 # Binds Ctrl+F to cd instead of Alt+C since Alt+C on mac returns ç
 bindkey '^F' fzf-cd-widget    # Ctrl-F opens the folder jump
@@ -68,9 +81,28 @@ bindkey '^F' fzf-cd-widget    # Ctrl-F opens the folder jump
 ############################################################################################
 ######################                 END ZSH SETUP                  ######################
 ############################################################################################
+############################################################################################
+#######                                  ALIASSES                                     ######
+############################################################################################
+
+### Vim Aliasses
+alias vim="nvim"
+alias vi="nvim"
+
+### kubectl
+alias k="kubectl"
+alias kgp="kubectl get pods"
+alias kgpw="kubectl get pods -o wide"
+
+############################################################################################
+#######                                 END ALIASSES                                  ######
+############################################################################################
 
 # Added by Teamwork Graph CLI installer
 export PATH="$HOME/.local/bin:$PATH"
+
+# opencode
+export PATH="$HOME/.opencode/bin:$PATH"
 
 export NVM_DIR="$HOME/.nvm"
   [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
@@ -83,19 +115,13 @@ export PATH="$HOME/.rd/bin:$PATH"
 ### ASDF Shims dir
 export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
 
-### Add carapace for tool completion
-export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
-source <(carapace _carapace)
+# kubectl completion loaded straight from the binary; k alias gets the same completion
+if (( $+commands[kubectl] )); then
+  source <(kubectl completion zsh)
+  compdef k=kubectl
+fi
 
-###########################################################################################
-######                                  ALIASSES                                      #####
-###########################################################################################
+source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
 
-### Vim Aliasses
-alias vim="nvim"
-alias vi="nvim"
-
-### kubectl
-alias k="kubectl"
-alias kgp="kubectl get pods"
-alias kgpw="kubectl get pods -o wide"
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
