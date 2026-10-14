@@ -11,7 +11,7 @@ Terminal setup: [Supacode](https://supacode.sh) as the terminal emulator, oh-my-
 
 ```bash
 # Homebrew packages
-brew install fzf eza bat carapace asdf nvm neovim
+brew install fzf eza bat asdf nvm neovim
 
 # oh-my-zsh itself
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
