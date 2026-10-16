@@ -8,7 +8,7 @@ Every project, tool, or language trial is isolated into its own dedicated direct
 
 *   📂 `golang/` — Learning Go syntax, concurrent programming, and microservices.
 *   📂 `kubernetes/` — Kubernetes manifests, local cluster configurations, and notes ([Essentials](kubernetes/kubernetes.md), [kubectl](kubernetes/kubectl.md), [Namespaces](kubernetes/namespaces/namespaces.md), [Deployments](kubernetes/deployments/deployments.md), [Rancher Desktop](kubernetes/rancher.md))
-*   📂 `terminal/` — Shell and terminal setup ([zsh](terminal/zsh.md))
+*   📂 `terminal/` — Shell and terminal setup ([zsh](terminal/zsh.md), [cmux](terminal/cmux/README.md))
 *   📂 `vim/` — Neovim setup ([Neovim](vim/neovim.md), config: [init.lua](vim/init.lua))
 
 ## 🛠️ Purpose & Goals

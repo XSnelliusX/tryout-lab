@@ -10,8 +10,6 @@ fi
 #############################################################################################
 
 export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="agnoster"
-DEFAULT_USER=$USER
 
 # Extra completion definitions (must be in fpath BEFORE oh-my-zsh runs compinit)
 fpath+=${ZSH_CUSTOM:-$ZSH/custom}/plugins/zsh-completions/src
