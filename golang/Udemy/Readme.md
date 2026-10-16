@@ -19,4 +19,5 @@ Each exercise lives in one file and evolves with the course. Git history is the 
 | 90–97 | [Notes Practice](Notes%20Practice/main.go) | Practice app: `Note` struct in its own package, JSON struct tags and saving to file, value-receiver methods (see [Notes Practice README](Notes%20Practice/README.md)) | `5afa13a` |
 | 98–103 | [Notes Practice](Notes%20Practice/main.go) | Interfaces: `saver` and `outputable`, embedded interfaces, `todo` package, shared helpers accepting interfaces (see [Notes Practice README](Notes%20Practice/README.md)) | `ac0c50b` |
 | 104–108 | [Generics](Generics/dynamic_types.go) | Dynamic types with `any` and type assertions vs. generics with type parameters and constraints (see [Generics README](Generics/README.md)) | `0c6e3bd` |
+| 109–118 | [Arrays](Arrays/lists.go) | Arrays, slices (windows into arrays, `len`/`cap`, reslicing), dynamic arrays with `append` and `...`, plus [practice exercises](Arrays/practice/array_practice.go) (see [Arrays README](Arrays/README.md)) | `624f685` |
 
