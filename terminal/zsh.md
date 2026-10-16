@@ -1,11 +1,10 @@
 # zsh Setup [https://ohmyz.sh/](https://ohmyz.sh/)
 
-Terminal setup: [Supacode](https://supacode.sh) as the terminal emulator, oh-my-zsh with fuzzy-search plugins inside it. The full config lives in [.zshrc](.zshrc) — it is the source of truth, this note just explains how to rebuild the same setup from scratch.
+Terminal setup: [cmux](https://cmux.com) as the terminal emulator, oh-my-zsh with fuzzy-search plugins inside it. The full config lives in [.zshrc](.zshrc) — it is the source of truth, this note just explains how to rebuild the same setup from scratch.
 
-## Terminal: Supacode + herdr
+## Terminal: cmux
 
-- [Supacode](https://supacode.sh) — native macOS terminal built on **libghostty** (same core as Ghostty, so it looks/feels like Ghostty). Its real job is being a command center for coding agents: one git worktree per agent task, sidebar with repos/branches/worktrees, GitHub PR & CI status, sessions keep running in the background. Requires macOS 26+.
-- Inside Supacode I run [herdr](https://herdr.dev) — an agent multiplexer (single Rust binary): tmux-style spaces/tabs/panes with an agent status sidebar (working / blocked / done), recommended by colleagues. It does overlap a bit with what Supacode already does — but herdr adds tmux-like multiplexing *inside* one terminal surface, which Supacode doesn't do.
+[cmux](https://cmux.com) — native macOS terminal built on **libghostty** (same core as Ghostty), made for running coding agents: workspaces grouped into Spaces, tabs and splits, and a sidebar with agent status. It replaced Supacode + herdr. Setup and configs: [cmux/README.md](cmux/README.md).
 
 ## 1. Install the tools
 
@@ -47,11 +46,11 @@ cp terminal/.zshrc ~/.zshrc   # from the repo root
 exec zsh                      # or open a new terminal
 ```
 
-> Tip: the `agnoster` theme needs a **Powerline-patched font**, otherwise the prompt shows broken glyphs.
+> Tip: the prompt needs a **Nerd/Powerline font**, otherwise it shows broken glyphs. cmux uses **MesloLGS NF** (set in the [Ghostty config](cmux/config/ghostty/config.ghostty)); `.zshrc` also loads Powerlevel10k at the end.
 
 ## What's in the config
 
-- **Theme:** `agnoster`, with `DEFAULT_USER` set so the username is hidden on the own machine.
+- **Theme:** The prompt comes from Powerlevel10k, sourced at the end of the file.
 - **Tab completion:** case-insensitive, colored lists, fzf-powered via fzf-tab with a live preview pane — folders preview with `eza`, files with `bat`, commands with their man page, subcommands (`kubectl`, `docker`, `helm`, …) with their `--help`.
 - **fzf integration:** `source <(fzf --zsh)` wires up the keybindings below.
 - **Autosuggestions:** gray inline suggestions from history + completion (`fg=6` highlight).
