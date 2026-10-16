@@ -11,7 +11,7 @@ kubectl get pods -A          # all namespaces
 kubectl get pods -A -o wide  # adds the IP column
 ```
 
-- Every pod gets its own IP, no matter which node it runs on — that's how pods reach each other (e.g. pinging the [mealie](../mealie_test_deployment/deployment.yaml) pod from another pod).
+- Every pod gets its own IP, no matter which node it runs on — that's how pods reach each other (e.g. pinging the [mealie](deployment.yaml) pod from another pod).
 - Pods without an IP are **Jobs**: one-off tasks that run in a pod, and once completed the pod no longer needs its IP — it goes back to the pool so another pod can use it later.
 
 > Tip: a missing IP in `get pods -A -o wide` means a finished Job, not a broken pod.
@@ -31,7 +31,7 @@ kubectl get pods -A -o wide  # adds the IP column
 - A pod is like a small, lightweight VM: its containers share the network and reach each other on **localhost** + port — same as running multiple containers on your own machine.
 - Containers in a pod **cannot share a port** — each one needs its own.
 
-The [mealie deployment](../mealie_test_deployment/deployment.yaml) listens on port 9000; `port-forward` tunnels a local port to the pod, see [kubectl](../kubectl.md) and [Namespaces](../namespaces/namespaces.md) for the flags:
+The [mealie deployment](deployment.yaml) listens on port 9000; `port-forward` tunnels a local port to the pod, see [kubectl](../kubectl.md) and [Namespaces](../namespaces/namespaces.md) for the flags:
 
 ```bash
 kubectl port-forward -n mealie deploy/mealie 9000
@@ -68,6 +68,6 @@ cat /etc/cni/net.d/10-flannel.conflist   # "type": "flannel"
 
 > Tip: this is where Linux basics pay off (and why they're on the CKA exam) — getting into nodes and reading the cluster manifests, which are just text files on the file system.
 
-## Services (next up)
+## Next
 
-So how do pods actually get made available on the network? With **Services** — a stable endpoint in front of the ever-changing pod IPs, covered in [Services](services.md).
+So how do pods actually get made available on the network? With **Services** — a stable endpoint in front of the ever-changing pod IPs, covered in [Services](services.md). Routing by domain name on top of that is [Ingress](ingress.md).
