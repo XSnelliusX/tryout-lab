@@ -1,14 +1,19 @@
 // herdr-style: a custom cmux sidebar.
 //   Spaces     = workspace groups. Pick one to filter the list to it.
-//   Workspaces = collapsible, one line each. Under a workspace sit its terminal
-//                tabs (with branch and folder) and the agents running in them.
+//   Workspaces = collapsible, one line each. Under a workspace sit its tabs, two lines each:
+//                terminals (repo, branch or path, PR, ports), browser views (site name) and the
+//                agents running in them (repo, branch, PR, and how long they have been in
+//                their current state). The icon is centered between the two lines.
 //   Edit       = double-click a space or workspace, or right-click > Edit…, to
 //                open the edit bar: name, color and icon. A workspace's icon is
 //                stored in its description as "icon:<symbol>".
+// Sizes, indents and colors are the constants at the top: change one, save, and the
+// sidebar hot-reloads.
 // Install: save as ~/.config/cmux/sidebars/herdr-style.js, then
 //   cmux sidebar select herdr-style
 
-// ---- Edit bar sizing: change these to taste, then save (the sidebar hot-reloads). ----
+// ---- Settings ----
+// Edit bar sizing.
 const EDIT = {
   perRow: 5,        // swatches / icons per row (15 of each = 3 full rows of 5)
   swatchSize: 15,   // color dot diameter
@@ -20,6 +25,35 @@ const EDIT = {
   barPadY: 6,       // edit bar top/bottom padding
   barSpacing: 6,    // gap between name, colors, icons and Done
 };
+// A "working" agent with no activity for this many seconds is shown as idle: hook
+// records can keep a stale "working" status after a session stops reporting.
+const STALE_WORKING_SECS = 300;
+// Row sizing: how far tab and agent rows are indented under their workspace, and icon sizes.
+// tabSlot is the fixed width of the tab icon column, so every title starts at the same x.
+const TAB_INDENT = 28;
+const ICON = { tab: 12, tabSlot: 20, ws: 12, wsDot: 9, space: 14 };
+// Text sizes (points). Change these, save, and the sidebar hot-reloads.
+const FONT = {
+  ws: 13,       // workspace title
+  tab: 12,      // tab and agent title
+  line2: 11,    // second line: repo, branch, path, PR, ports, time, site
+  space: 13,    // space names
+  section: 12,  // "Workspaces" header
+  count: 11,    // counts, unread, fold arrow, sub badge
+};
+const COLOR = {
+  branch: "#2DD4BF",   // branch in a clean tree
+  dirty: "#FF9F0A",    // branch with changes; also unread
+  path: "#8E9BB0",     // repo name and path: soft blue-grey, quieter than the branch
+  site: "#0A84FF",     // browser site name, ports, focused tab icon
+  prOpen: "#34C759",
+  prMerged: "#BF5AF2",
+};
+// Some agents never report that they quit, so their record stays "idle" after exit.
+// For those, the agent only counts while its host tab's title still looks like the
+// agent's own terminal title (OpenCode sets "OpenCode" / "OC | <session title>");
+// once it exits the shell title replaces it and the agent disappears.
+const AGENT_TITLE = { opencode: /^(oc\b|opencode)/i };
 // -----------------------------------------------------------------------------------
 
 const [space, setSpace] = signal("all"); // "all" | group id | "none" (ungrouped)
@@ -40,8 +74,8 @@ const NO_COLOR = "#7f7f7f55";
 
 // Agent logos: cmux's own template uses sparkle for Claude and curlybraces for OpenCode.
 const AGENT_ICON = {
-  claude: { symbol: "sparkle", color: "#D97757" },
-  opencode: { symbol: "curlybraces", color: "#8FD16B" },
+  claude: { symbol: "burst.fill", color: "#D97757" },     
+  opencode: { symbol: "chevron.left.forwardslash.chevron.right", color: "#8FD16B" },
   codex: { symbol: "sparkles", color: "#8FDBFF" },
 };
 const agentIcon = (kind) => AGENT_ICON[kind] ?? { symbol: "cpu", color: "#9a9a9a" };
@@ -78,9 +112,6 @@ function toggleCollapsed(id) {
 }
 
 // Focus a tab (surface). surface.focus with the workspace id also switches workspace,
-// so it runs alone; selecting the workspace first can leave the terminal unfocused.
-// The workspace is only selected when the tab has no usable id.
-// Focus a tab (surface). surface.focus with the workspace id also switches workspace,
 // so it runs alone. An agent's own surfaceId can differ from its host tab's, so agent
 // rows pass the host tab's ids first. The workspace is selected only when no id is usable.
 function focusTab(wsId, ...ids) {
@@ -88,6 +119,13 @@ function focusTab(wsId, ...ids) {
   if (surfaceId) cmux("surface.focus", { surface_id: surfaceId, workspace_id: wsId });
   else cmux("workspace.select", { workspace_id: wsId });
 }
+
+// Status to show for an agent: stale "working" becomes idle.
+const shownStatus = (a) => {
+  if (a.status !== "working" || !a.lastActivityAt) return a.status;
+  const now = (data.clock() ?? {}).epoch;
+  return now && now - a.lastActivityAt > STALE_WORKING_SECS ? "idle" : a.status;
+};
 
 const byRank = (x, y) =>
   (statusOf(x.status).rank - statusOf(y.status).rank)
@@ -159,7 +197,21 @@ const wsRows = computed(() => {
   for (const w of data.workspaces() ?? []) {
     if (!inSpace(w)) continue;
     const tabs = w.tabs ?? [];
-    const agents = (w.agents ?? []).filter((a) => a.status !== "ended");
+    // cmux keeps old session records on the terminal that hosted them, so one tab can
+    // list several sessions of the same agent. Keep only the most recent per tab and kind.
+    const latest = new Map();
+    for (const a of w.agents ?? []) {
+      if (a.status === "ended") continue;
+      const titleRule = AGENT_TITLE[a.kind];
+      if (titleRule) {
+        const host = tabs.find((t) => (a.panelId && a.panelId === t.id) || (a.surfaceId && a.surfaceId === t.surfaceId));
+        if (!host || !titleRule.test(String(host.title ?? ""))) continue;
+      }
+      const k = a.kind + ":" + (a.panelId || a.surfaceId || a.id);
+      const cur = latest.get(k);
+      if (!cur || (a.lastActivityAt ?? 0) > (cur.lastActivityAt ?? 0)) latest.set(k, a);
+    }
+    const agents = [...latest.values()];
     const agentHit = (a) => hit(a.title, a.name, a.kind, w.title);
     const tabHit = (t) => hit(t.title, t.directory, t.branch, w.title);
     // An agent is hosted by the tab whose id is its panelId (or whose surfaceId matches).
@@ -183,11 +235,11 @@ const wsRows = computed(() => {
         out.push({ key: "t:" + w.id + ":" + t.id, kind: "tab", ws: w, tab: t });
       }
       for (const a of hosted) {
-        out.push({ key: "a:" + w.id + ":" + a.id, kind: "agent", depth: 36, ws: w, tab: t, agent: a });
+        out.push({ key: "a:" + w.id + ":" + a.id, kind: "agent", depth: TAB_INDENT, ws: w, tab: t, agent: a });
       }
     }
     for (const a of orphans.sort(byRank)) {
-      out.push({ key: "a:" + w.id + ":" + a.id, kind: "agent", depth: 36, ws: w, agent: a });
+      out.push({ key: "a:" + w.id + ":" + a.id, kind: "agent", depth: TAB_INDENT, ws: w, agent: a });
     }
   }
   return out;
@@ -230,13 +282,13 @@ function wsMenu(w) {
 function spaceRow(e) {
   const s = () => e();
   return HStack({ spacing: 8 }, [
-    Image(() => s().icon).font(11)
+    Image(() => s().icon).font(ICON.space)
       .color(() => s().color || "tertiary"),
     Text(() => s().name)
-      .font(12).lineLimit(1).truncation("tail")
+      .font(FONT.space).lineLimit(1).truncation("tail")
       .color(() => (space() === s().id ? "primary" : "secondary")),
     Spacer(),
-    Text(() => String(s().count)).font(10).monospaced().color("tertiary"),
+    Text(() => String(s().count)).font(FONT.count).monospaced().color("tertiary"),
   ])
     .paddingHorizontal(10).paddingVertical(4)
     .cornerRadius(7)
@@ -255,9 +307,9 @@ function sepRow() {
 
 function sectionHeader(label, open, toggle, countFn) {
   return HStack({ spacing: 6 }, [
-    Text(() => (open() ? "▾ " : "▸ ") + label).font(11).weight("semibold").color("tertiary"),
+    Text(() => (open() ? "▾ " : "▸ ") + label).font(FONT.section).weight("semibold").color("tertiary"),
     Spacer(),
-    Text(() => String(countFn())).font(10).monospaced().color("tertiary"),
+    Text(() => String(countFn())).font(FONT.count).monospaced().color("tertiary"),
   ])
     .paddingHorizontal(10).paddingVertical(4)
     .frame({ maxWidth: "infinity" })
@@ -268,24 +320,108 @@ const dirTail = (d) => {
   const parts = String(d ?? "").split("/").filter((p) => p.length > 0);
   return parts.length ? parts[parts.length - 1] : "";
 };
+const branchText = (x) => (x && x.branch ? "⎇ " + x.branch : "");
+const portsText = (t) => ((t && t.ports) || []).length ? ":" + t.ports.join(" :") : "";
+const runningSubs = (a) => (a.children ?? []).filter((c) => c.running).length;
+
+// The sidebar's tab data has no type field. Terminals always report a directory;
+// browser views (and other non-terminal panels) do not, so "no directory" means browser.
+const isBrowser = (t) => !!t && !t.directory;
+
+// "<1m", "7m", "1h 5m"
+const ago = (s) => {
+  if (s < 60) return "<1m";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  const m = Math.floor((s % 3600) / 60);
+  return Math.floor(s / 3600) + "h" + (m ? " " + m + "m" : "");
+};
+// How long the agent has been in the state shown for it. A stale "working" shown as idle
+// counts from its last activity, since sinceEpoch still points at when it started working.
+const stateTime = (a) => {
+  const now = (data.clock() ?? {}).epoch;
+  const since = shownStatus(a) === a.status ? (a.sinceEpoch ?? a.lastActivityAt) : a.lastActivityAt;
+  return now && since ? ago(now - since) : "";
+};
+
+// The workspace's pull request for this tab's branch, if any.
+const prFor = (w, t) =>
+  t && t.branch ? (w.prs ?? (w.pr ? [w.pr] : [])).find((x) => x.branch && x.branch === t.branch) : undefined;
+const prTextFor = (w, t) => { const p = prFor(w, t); return p ? "#" + p.number : ""; };
+const prColorFor = (w, t) => { const p = prFor(w, t); return p && p.status === "merged" ? COLOR.prMerged : COLOR.prOpen; };
+
+// ---- Path helpers ----
+// Home becomes ~. Desktop and Documents are OneDrive-synced and symlinked into the home folder,
+// so their real OneDrive location is shown as the home path you actually use.
+const homePath = (d) => String(d ?? "")
+  .replace(/^\/Users\/[^/]+\/Library\/CloudStorage\/OneDrive-[^/]+\/(Desktop|Documents)(?=\/|$)/, "~/$1")
+  .replace(/^\/Users\/[^/]+/, "~");
+// "~/Documents/lab" -> "~/Documents/" + "lab"; "~" -> "" + "~".
+// A deep parent keeps its first and last folder: "~/a/b/c/d" -> "~/…/c/" + "d".
+const pathParent = (d) => {
+  const p = homePath(d), i = p.lastIndexOf("/");
+  if (i <= 0) return "";
+  const dir = p.slice(0, i).split("/");
+  return (dir.length > 2 ? [dir[0], "…", dir[dir.length - 1]] : dir).join("/") + "/";
+};
+const pathLeaf = (d) => { const p = homePath(d), i = p.lastIndexOf("/"); return i > 0 ? p.slice(i + 1) : p; };
+
+// Browser views expose only a title. Page titles usually end in the site ("Inbox - Gmail",
+// "Fix auth · Pull Request #482 · org/repo"), so the last segment becomes the second line.
+const TITLE_SEPS = [" – ", " — ", " | ", " · ", " - "];
+const browserParts = (title) => {
+  const s = String(title ?? "");
+  let at = -1, len = 0;
+  for (const sep of TITLE_SEPS) {
+    const i = s.lastIndexOf(sep);
+    if (i > at) { at = i; len = sep.length; }
+  }
+  const main = at > 0 ? s.slice(0, at).trim() : s;
+  const site = at > 0 ? s.slice(at + len).trim() : "";
+  return main && site && site.length <= 32 ? { main, site } : { main: s, site: "" };
+};
+
+// ---- Tab line 2: repo, branch (or path outside git), PR on the left; state or ports on the right. ----
+// Repo name for a tab in git. The sidebar data has no repo field, so use the repo from this
+// branch's PR url (".../org/repo/pull/1") when there is one, else the tab's folder name
+// (which is the subfolder's name when the tab sits inside a repo).
+const repoName = (w, t, pathFn) => {
+  if (!t || !t.branch) return "";
+  const p = prFor(w, t);
+  const segs = p && p.url ? String(p.url).replace(/^https?:\/\/[^/]+\//, "").split("/") : [];
+  return segs.length > 2 && segs[1] ? segs[1] : pathLeaf(pathFn());
+};
+// The trailing/leading spaces stand in for gaps, so an empty piece takes no room.
+const repoView = (pathFn, w, t) =>
+  Text(() => { const n = repoName(w(), t(), pathFn); return n ? n + " " : ""; })
+    .font(FONT.line2).monospaced().weight("medium").color(COLOR.path).lineLimit(1).truncation("middle");
+const ctxView = (pathFn, t) =>
+  Text(() => (t() && t().branch ? branchText(t()) : pathParent(pathFn()) + pathLeaf(pathFn())))
+    .font(FONT.line2).monospaced().lineLimit(1).truncation("middle")
+    .color(() => (t() && t().branch ? (t().dirty ? COLOR.dirty : COLOR.branch) : COLOR.path));
+const prView = (w, t) =>
+  Text(() => { const n = prTextFor(w(), t()); return n ? " " + n : ""; })
+    .font(FONT.line2).monospaced().lineLimit(1).layoutPriority(2)
+    .color(() => prColorFor(w(), t()));
+const tabLine2 = (pathFn, w, t, right) =>
+  HStack({ spacing: 0 }, [repoView(pathFn, w, t), ctxView(pathFn, t), prView(w, t), Spacer(), ...right]);
 
 // Workspace: one line with fold arrow, color dot, title, unread and tab count.
 function wsRow(e) {
   const w = () => e().ws;
   return HStack({ spacing: 6 }, [
     Text(() => (isCollapsed(w().id) ? "▸" : "▾"))
-      .font(10).color("tertiary")
+      .font(FONT.count).color("tertiary")
       .onTap(() => toggleCollapsed(w().id)),
     Image(() => wsIcon(w()) || "circle.fill")
-      .font(() => (wsIcon(w()) ? 11 : 7))
+      .font(() => (wsIcon(w()) ? ICON.ws : ICON.wsDot))
       .color(() => w().color || (wsIcon(w()) ? "secondary" : NO_COLOR)),
     Text(() => w().title || "untitled")
-      .font(12).weight("semibold").lineLimit(1).truncation("tail")
+      .font(FONT.ws).weight("semibold").lineLimit(1).truncation("tail")
       .color(() => (w().selected ? "primary" : "secondary")),
     Spacer(),
     Text(() => (w().unread ? String(w().unread) : ""))
-      .font(10).weight("semibold").color("#FF9F0A"),
-    Text(() => String(e().tabCount)).font(10).monospaced().color("tertiary"),
+      .font(FONT.count).weight("semibold").color(COLOR.dirty),
+    Text(() => String(e().tabCount)).font(FONT.count).monospaced().color("tertiary"),
   ])
     .paddingHorizontal(10).paddingVertical(4)
     .cornerRadius(8)
@@ -297,57 +433,63 @@ function wsRow(e) {
     .onTap(() => cmux("workspace.select", { workspace_id: w().id }));
 }
 
-// Terminal tab: its title, branch with a dirty dot, and folder. Click focuses it.
+// Terminal or browser tab. The icon sits beside both lines, centered vertically between them.
+// Line 1: title and an unread dot. Terminal line 2: repo, branch (or path), PR, open ports.
+// Browser line 2: the site name from the end of the page title, when it has one. Click focuses the tab.
 function tabRow(e) {
   const t = () => e().tab;
   const w = () => e().ws;
-  return VStack({ spacing: 1 }, [
-    HStack({ spacing: 6 }, [
-      Image("terminal").font(10)
-        .color(() => (t().focused && w().selected ? "#0A84FF" : "tertiary")),
-      Text(() => t().title || dirTail(t().directory) || "terminal")
-        .font(11).lineLimit(1).truncation("tail")
-        .color(() => (t().focused && w().selected ? "primary" : "secondary")),
-      Spacer(),
-      Text(() => (t().hasUnread ? "●" : "")).font(10).color("#FF9F0A"),
-    ]),
-    HStack({ spacing: 6 }, [
-      Text(() => (t().branch ? "⎇ " + t().branch + (t().dirty ? " ●" : "") : ""))
-        .font(10).monospaced().lineLimit(1).truncation("middle")
-        .color(() => (t().dirty ? "#FF9F0A" : "tertiary")),
-      Spacer(),
-      Text(() => dirTail(t().directory)).font(10).color("tertiary").lineLimit(1),
-    ]).paddingLeading(16),
+  return HStack({ spacing: 6 }, [
+    Image(() => (isBrowser(t()) ? "globe" : "terminal")).font(ICON.tab).frame({ width: ICON.tabSlot })
+      .color(() => (t().focused && w().selected ? COLOR.site : "tertiary")),
+    VStack({ spacing: 1 }, [
+      HStack({ spacing: 6 }, [
+        Text(() => (isBrowser(t()) ? browserParts(t().title).main : (t().title || dirTail(t().directory) || "terminal")))
+          .font(FONT.tab).lineLimit(1).truncation("tail")
+          .color(() => (t().focused && w().selected ? "primary" : "secondary")),
+        Spacer(),
+        Text(() => (t().hasUnread ? "●" : "")).font(FONT.count).color(COLOR.dirty),
+      ]),
+      ForEach({ items: () => (isBrowser(t()) ? [] : [1]), key: () => "l2" }, () =>
+        tabLine2(() => t().directory || w().directory, w, t, [
+          Text(() => portsText(t())).font(FONT.line2).monospaced().color(COLOR.site).lineLimit(1).layoutPriority(2),
+        ])),
+      ForEach({ items: () => (isBrowser(t()) && browserParts(t().title).site ? [1] : []), key: () => "site" }, () =>
+        Text(() => browserParts(t().title).site).font(FONT.line2).color(COLOR.site).lineLimit(1).truncation("tail")),
+    ]).frame({ maxWidth: "infinity" }),
   ])
-    .paddingLeading(36).paddingTrailing(10).paddingVertical(3)
+    .paddingLeading(TAB_INDENT).paddingTrailing(10).paddingVertical(3)
     .cornerRadius(7)
     .hoverBackground("#7f7f7f1c")
     .frame({ maxWidth: "infinity" })
     .onTap(() => focusTab(e().ws.id, e().tab.surfaceId, e().tab.id));
 }
 
-// Agent: the session name (the tab title) is the headline, with the branch on
-// the right. The agent sits below it with its logo, name and status.
+// Agent: like a terminal tab, but the agent's logo is the icon.
+// Line 1: session name (the tab title) and the number of running subagents.
+// Line 2: repo, branch (or path), PR; on the right, how long the agent has been in its current
+// state, colored like its status dot (green idle, blue working, orange needs input).
 function agentRow(e) {
   const a = () => e().agent;
   const t = () => e().tab; // undefined for an agent with no matching tab
-  return VStack({ spacing: 1 }, [
-    HStack({ spacing: 6 }, [
-      Text(() => (t() ? (t().title || dirTail(t().directory)) : (e().ws.title || "")))
-        .font(11).weight("medium").lineLimit(1).truncation("tail"),
-      Spacer(),
-      Text(() => (t() && t().branch ? "⎇ " + t().branch + (t().dirty ? " ●" : "") : ""))
-        .font(10).monospaced().lineLimit(1)
-        .color(() => (t() && t().dirty ? "#FF9F0A" : "tertiary")),
-    ]),
-    HStack({ spacing: 6 }, [
-      Image(() => agentIcon(a().kind).symbol).font(10)
-        .color(() => agentIcon(a().kind).color),
-      Text(() => a().name || a().kind || "agent")
-        .font(10).lineLimit(1).truncation("tail").color("secondary"),
-      Spacer(),
-      Text(() => statusOf(a().status).label).font(10).color(() => statusOf(a().status).color),
-    ]).paddingLeading(2),
+  const status = () => shownStatus(a());
+  return HStack({ spacing: 6 }, [
+    Image(() => agentIcon(a().kind).symbol).font(ICON.tab).frame({ width: ICON.tabSlot })
+      .color(() => agentIcon(a().kind).color),
+    VStack({ spacing: 1 }, [
+      HStack({ spacing: 6 }, [
+        Text(() => (t() ? (t().title || dirTail(t().directory)) : (e().ws.title || "")))
+          .font(FONT.tab).weight("medium").lineLimit(1).truncation("tail"),
+        Spacer(),
+        Text(() => (runningSubs(a()) ? runningSubs(a()) + " sub" : "")).font(FONT.count).color("tertiary"),
+      ]),
+      tabLine2(() => a().directory || (t() && t().directory) || e().ws.directory, () => e().ws, t, [
+        Text(() => (stateTime(a()) ? stateTime(a()) + " " : ""))
+          .font(FONT.line2).monospaced().lineLimit(1).layoutPriority(2)
+          .color(() => statusOf(status()).color),
+        Circle({ size: 7 }).fill(() => statusOf(status()).color),
+      ]),
+    ]).frame({ maxWidth: "infinity" }),
   ])
     .paddingLeading(e().depth).paddingTrailing(10).paddingVertical(3)
     .cornerRadius(7)
