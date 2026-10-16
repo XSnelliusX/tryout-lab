@@ -47,11 +47,13 @@ Set with `spec.type` (or edited live with `kubectl edit svc frontend`):
 - **NodePort** — exposes a port on **every node**; reachable from outside via `<node-ip>:<port>`. Works for a home lab, but rare in the cloud — it means working with IP addresses, which you want to avoid.
 - **LoadBalancer** — the cloud controller provisions a real load balancer (e.g. an Azure LB for AKS) and gives the service an **external IP**. Also works on [Rancher Desktop](../rancher.md), where the external IP lands on the local machine.
 
+Rancher Desktop runs a single node: `kubectl get nodes -o wide` shows its IP, which is where a NodePort would be reachable. To try a LoadBalancer on the front-end example, `kubectl edit svc frontend` and change `type` to `LoadBalancer` — `kubectl get svc` then shows an EXTERNAL-IP.
+
 > Note: on a fresh `kubeadm` cluster with no load-balancer controller, a LoadBalancer service stays `<pending>` — nothing assigns it an external IP. Rancher Desktop ships one.
 
 ## mealie: from port-forward to LoadBalancer
 
-The [mealie deployment](../mealie_test_deployment/deployment.yaml) listens on port 9000 — exposed as a service instead of port-forwarding to the pod directly (kill that pod and the port-forward dies with it):
+The [mealie deployment](deployment.yaml) listens on port 9000 — exposed as a service instead of port-forwarding to the pod directly (kill that pod and the port-forward dies with it):
 
 ```bash
 kubectl config set-context --current --namespace=mealie   # switch to the mealie namespace
@@ -61,7 +63,7 @@ kubectl get svc                                           # mealie ... ClusterIP
 kubectl port-forward svc/mealie 9000                      # services can be port-forwarded too
 ```
 
-Then promote it to a LoadBalancer **in code**: dump the service YAML, strip the noise (timestamps, resourceVersion, UUID, clusterIPs, sessionAffinity, status), set the type, and apply:
+Then promote it to a LoadBalancer **in code** ([service.yaml](service.yaml)): dump the service YAML, strip the noise (timestamps, resourceVersion, UUID, clusterIPs, sessionAffinity, status), set the type, and apply:
 
 ```bash
 kubectl get svc mealie -o yaml > service.yaml
@@ -91,7 +93,7 @@ kubectl get svc                 # mealie ... LoadBalancer ... EXTERNAL-IP ... 90
 
 The external IP is the address of the local machine — mealie is now reachable at `localhost:9000` or `<external-ip>:9000` in the browser, **no port-forward needed**. Put the IP in your favorites and the app is always there.
 
-> Tip: on k3s / Rancher Desktop, LoadBalancers are the easy way to expose a few apps while experimenting. In practice most exposure goes through **ingress** — the next lesson.
+> Tip: on k3s / Rancher Desktop, LoadBalancers are the easy way to expose a few apps while experimenting. In practice most exposure goes through **ingress** — see [Ingress](ingress.md).
 
 ## Cleanup
 
