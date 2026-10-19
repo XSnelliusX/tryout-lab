@@ -19,6 +19,7 @@ Notes on git, from the everyday commands to the ones that rewrite history. Each 
 - [Rebase](rebase.md): move a branch onto a new base, and interactive rebase
 - [Squash](squash.md): combine several commits into one
 - [Fixup](fixup.md): fold a small fix into an older commit, and how it compares to amend
+- [Changing a commit message](reword.md): amend and reword for commits that are not pushed
 
 **Working with remotes and state**
 
