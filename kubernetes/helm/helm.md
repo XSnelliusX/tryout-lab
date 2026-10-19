@@ -188,6 +188,14 @@ spec:
 
 Use case: several similar apps that differ only in replicas or environment — parameterize once, deploy in different shapes instead of copying manifests.
 
+## Big charts
+
+`helm show values <chart> > default-values.yaml` saves the defaults to a file (thousands of lines for charts like [kube-prometheus-stack](../monitoring/monitoring.md)). Don't read it top to bottom:
+
+- start with the defaults, then change only what you need, the way you need it
+- search the file (`/grafana`, `/password`, `/ingress`); sub-charts have their own top-level block
+- put only your changes in your own `values.yaml`, keeping the same nesting
+
 ## Cheat sheet
 
 ```bash
