@@ -38,13 +38,23 @@ Removing a repo only deletes it from the local list (and its cached index). Rele
 
 [Homarr](https://github.com/homarr-labs/homarr) is a customizable dashboard with tiles for all my apps; its chart is a good first example.
 
+Current chart versions need a **secret with a DB encryption key** that must exist before the pod can start. Create the namespace and the secret first:
+
 ```bash
-helm install homarr homarr-labs/homarr --namespace homarr --create-namespace
-#            │     │             │                   └ create the namespace if missing
-#            │     │             └ target namespace (default: the active one)
+kubectl create namespace homarr
+kubectl create secret generic db-encryption \
+  --from-literal=db-encryption-key=$(openssl rand -hex 32) \
+  --namespace homarr
+```
+
+```bash
+helm install homarr homarr-labs/homarr --namespace homarr
+#            │     │                      └ target namespace (default: the active one)
 #            │     └ <repo>/<chart>
 #            └ release name
 ```
+
+(Without the secret the pod ends in `CreateContainerConfigError`, see below. `--create-namespace` creates a missing namespace during install, but then the secret can't be created beforehand.)
 
 ```bash
 kubectl get all -n homarr          # pod, service, deployment — more than just a pod
@@ -52,10 +62,22 @@ kubectl port-forward -n homarr svc/homarr 7575
 # http://localhost:7575
 ```
 
-- The current chart docs create a DB encryption secret before installing (`kubectl create secret generic db-encryption --from-literal=db-encryption-key=<key> -n homarr`); the install in the video worked with the defaults, so check the guide if a newer chart complains
 - A chart is a **complete package** of resources — a platform team can hand developers a chart so they only supply their image and don't think about the service etc.
 - In [k9s](../k9s.md): `:ns` → select `homarr`, `:svc`, `Shift+F` to port-forward
 - Add a tile for mealie in Homarr's edit mode: `http://localhost:9000` (mealie runs on 9000, Homarr itself on 7575; use `http`, not `https`, on localhost)
+
+### Troubleshooting: `CreateContainerConfigError`
+
+`kubectl get all -n homarr` shows the pod `0/1 CreateContainerConfigError`. The reason is in the events:
+
+```bash
+kubectl describe pod -n homarr <pod>
+# Warning  Failed  kubelet  Error: secret "db-encryption" not found
+```
+
+The container references a secret that doesn't exist. Create it as above — kubelet retries on its own, so the pod starts within a minute. If not: `kubectl rollout restart deployment/homarr -n homarr`.
+
+> `CreateContainerConfigError` means the pod's config points at something missing (a secret or ConfigMap); the image is fine (`Pulled` in the events).
 
 ## Releases
 
@@ -70,7 +92,7 @@ helm ls -A              # all namespaces (Rancher Desktop installs a few in kube
 helm uninstall homarr -n homarr
 ```
 
-Removes all resources the chart created, no leftovers to hunt down one by one. (The namespace was created by `--create-namespace` and stays.)
+Removes all resources the chart created, no leftovers to hunt down one by one. (The namespace and the `db-encryption` secret were created by hand, so they stay — a reinstall can reuse them.)
 
 ## Values
 
@@ -91,7 +113,7 @@ podLabels:
 ```
 
 ```bash
-helm install homarr homarr-labs/homarr -n homarr --create-namespace --values values.yaml
+helm install homarr homarr-labs/homarr -n homarr --values values.yaml
 kubectl get pods -n homarr             # two pods
 ```
 
