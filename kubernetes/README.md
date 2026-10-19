@@ -14,4 +14,5 @@ Everything in this folder is based on that course: the notes summarize what I le
 - [Storage](storage/storage.md) — volumes in the pod spec, [ephemeral](storage/ephemeral-storage.md) (`emptyDir`) and [persistent](storage/persistent-storage.md) (PV/PVC) storage, [storage classes & access modes](storage/storage-classes.md), with the [example manifests](storage/)
 - [k9s](k9s.md) — terminal UI for the cluster: navigation, sorting, logs, shell, port-forward
 - [Helm](helm/helm.md) — repos, charts and releases, install/upgrade/uninstall, values files, with the [values file](helm/values.yaml)
+- [Monitoring](monitoring/monitoring.md) — kube-prometheus-stack: Prometheus, Grafana and friends, custom values, LoadBalancer, with the [manifests](monitoring/)
 - [Rancher Desktop](rancher.md) — the local cluster all of this runs on

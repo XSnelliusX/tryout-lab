@@ -1,0 +1,2 @@
+grafana:                    # sub-chart: same nesting as in the chart's values.yaml
+  adminPassword: hello-world   # without this the chart uses the generated password from the secret; fine for a local lab, never commit real passwords
