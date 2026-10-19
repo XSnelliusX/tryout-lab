@@ -27,9 +27,12 @@ helm help
 helm repo add homarr-labs https://homarr-labs.github.io/charts/   # name on this machine + source URL
 helm repo update                                        # refresh all repos (like a git pull)
 helm repo list                                          # repos stored on this machine
+helm repo remove homarr-labs                            # forget a repo (by its local name)
 ```
 
 The repo name is a local alias — the URL is the source. The course typed `oben01` here (the chart's earlier home); the current Homarr docs use `homarr-labs` ([install guide](https://homarr.dev/docs/getting-started/installation/helm/)). `helm repo list` shows what is stored.
+
+Removing a repo only deletes it from the local list (and its cached index). Releases already installed from it keep running, but `helm upgrade` needs the repo again, so re-add it first (`helm repo add` with the same name and URL).
 
 ## Install: Homarr
 
@@ -151,6 +154,7 @@ Use case: several similar apps that differ only in replicas or environment — p
 helm repo add <name> <url>
 helm repo update
 helm repo list
+helm repo remove <name>
 helm show values <repo>/<chart>
 helm install <release> <repo>/<chart> -n <ns> --create-namespace -f values.yaml
 helm upgrade <release> <repo>/<chart> -n <ns> -f values.yaml
