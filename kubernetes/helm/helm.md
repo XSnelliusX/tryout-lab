@@ -54,6 +54,8 @@ helm install homarr homarr-labs/homarr --namespace homarr
 #            └ release name
 ```
 
+> Note: the install in the course video ran with the defaults and no secret — that was an older chart version. Chart versions change what they require, so a tutorial that worked once can fail today. Always read the chart's current install guide.
+
 (Without the secret the pod ends in `CreateContainerConfigError`, see below. `--create-namespace` creates a missing namespace during install, but then the secret can't be created beforehand.)
 
 ```bash
@@ -78,6 +80,22 @@ kubectl describe pod -n homarr <pod>
 The container references a secret that doesn't exist. Create it as above — kubelet retries on its own, so the pod starts within a minute. If not: `kubectl rollout restart deployment/homarr -n homarr`.
 
 > `CreateContainerConfigError` means the pod's config points at something missing (a secret or ConfigMap); the image is fine (`Pulled` in the events).
+
+### Prerequisites outside the chart
+
+This is a common failure with charts, not specific to Homarr. A chart often expects things to exist **before** the install, and helm doesn't check:
+
+- a **Secret** (admin password, DB credentials, encryption key) — typical values: `existingSecret`, `envSecrets`, `secretKeyRef`
+- a ConfigMap, a PVC, a TLS secret, an ingress class, CRDs (e.g. from an operator)
+
+Symptoms: `CreateContainerConfigError` (missing secret/ConfigMap), `Pending` (missing PVC or storage class), `ImagePullBackOff` (missing pull secret). Before installing:
+
+```bash
+helm show readme <repo>/<chart>        # install notes and prerequisites
+helm show values <repo>/<chart>        # look for existingSecret, secretName, persistence, ...
+```
+
+After installing: `kubectl get pods -n <ns>`, then `kubectl describe pod` and read the **Events** at the bottom.
 
 ## Releases
 
