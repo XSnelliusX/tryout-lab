@@ -1,0 +1,4 @@
+replicaCount: 2      # default is 1, see `helm show values homarr-labs/homarr`
+
+podLabels:           # default is an empty object, so key: value pairs
+  hello: world

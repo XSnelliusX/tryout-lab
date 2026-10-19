@@ -18,6 +18,7 @@ k9s            # uses the active context from kubeconfig, e.g. rancher-desktop
 | Key | Action |
 |---|---|
 | `:<resource>` + Enter | switch resource: `:pod`, `:deploy`, `:svc`, `:pvc`, `:pv`, `:ingress`, ... (same abbreviations as kubectl, Tab completes) |
+| `:ns` | pick a namespace from a list (`j`/`k`, Enter) |
 | `0` | all namespaces |
 | `1`, `2`, ... | the namespaces listed in the header (e.g. `kube-system`, `mealie`, `default`) |
 | `/<text>` + Enter | filter the view — matches any column, so also an IP, a status or `mealie` |
