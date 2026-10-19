@@ -12,4 +12,5 @@ Everything in this folder is based on that course: the notes summarize what I le
 - [Deployments](deployments/deployments.md) — desired state, rolling updates and strategies, with the [example manifests](deployments/)
 - [Networking](networking/networking.md) — pod IPs, CNI, [Services](networking/services.md) (ClusterIP/NodePort/LoadBalancer) and [Ingress](networking/ingress.md), with the [mealie manifests](networking/)
 - [Storage](storage/storage.md) — volumes in the pod spec, [ephemeral](storage/ephemeral-storage.md) (`emptyDir`) and [persistent](storage/persistent-storage.md) (PV/PVC) storage, [storage classes & access modes](storage/storage-classes.md), with the [example manifests](storage/)
+- [k9s](k9s.md) — terminal UI for the cluster: navigation, sorting, logs, shell, port-forward
 - [Rancher Desktop](rancher.md) — the local cluster all of this runs on

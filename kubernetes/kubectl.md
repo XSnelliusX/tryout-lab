@@ -1,5 +1,7 @@
 # kubectl — Kubernetes CLI
 
+The terminal UI [k9s](k9s.md) wraps most of this — learn kubectl first.
+
 Reference: <https://kubernetes.io/docs/reference/kubectl/>
 
 ## Context
