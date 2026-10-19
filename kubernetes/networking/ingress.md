@@ -78,4 +78,4 @@ spec:
 - nginx namespace + deployment, make it reachable from the browser
 - other image, expose with LoadBalancer service
 
-Next: **storage** (mealie recipes are gone after a reboot → persistence)
+Next: [Storage](../storage/storage.md) — the mealie recipes are gone when the pod is, so the app needs a persistent volume.

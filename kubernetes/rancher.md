@@ -18,6 +18,10 @@
 - Uses **Traefik** as the default ingress controller (can be disabled in settings — it's opt-out).
 - On Linux only: ports below 1024 need extra permissions for non-root users.
 
+## Storage
+
+- Ships a single `local-path` storage class (default) that provisions volumes from the local machine — see [Storage classes](storage/storage-classes.md).
+
 ## Settings / Preferences
 
 - **VM resources** (memory, CPUs): Preferences → Virtual Machine → Hardware

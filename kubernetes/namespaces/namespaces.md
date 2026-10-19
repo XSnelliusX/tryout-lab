@@ -2,7 +2,7 @@
 
 A namespace is a **logical grouping of resources** within a single cluster — the docs call it "a mechanism for isolating groups of resources within a single cluster". Think of it like a resource group in Azure: a wrapper that lets you isolate things from each other.
 
-- Only *namespaced* objects (pods, [deployments](../deployments/deployments.md), services, …) live inside a namespace — cluster-wide objects (nodes, storage classes, persistent volumes) don't.
+- Only *namespaced* objects (pods, [deployments](../deployments/deployments.md), services, …) live inside a namespace — cluster-wide objects (nodes, storage classes, persistent volumes) don't — but persistent volume *claims* are namespaced, see [Storage](../storage/persistent-storage.md).
 - Isolation is what namespaces enable: close off traffic between apps with **network policies**, scope **RBAC** roles to a namespace, keep teams/applications apart.
 - The docs say clusters with few users shouldn't need to think about namespaces — but also recommend *not* using `default` in production. A good rule: **every application/workload gets its own namespace** (that's how the home lab is set up, instead of one namespace per team).
 - Everything up to now ran in the `default` namespace without us noticing.

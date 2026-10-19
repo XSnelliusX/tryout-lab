@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mealie
+  name: mealie
+  namespace: mealie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mealie
+  template:
+    metadata:
+      labels:
+        app: mealie
+    spec:
+      volumes:                          # pod level
+        - name: mealie-data             # arbitrary name, referenced by volumeMounts
+          persistentVolumeClaim:
+            claimName: mealie-data      # name of the PVC (mealie-pvc.yaml)
+      containers:
+      - image: ghcr.io/mealie-recipes/mealie:v3.28.0
+        name: mealie
+        ports:
+          - containerPort: 9000
+        volumeMounts:                   # container level
+          - name: mealie-data           # refers to the volume above
+            mountPath: /app/data

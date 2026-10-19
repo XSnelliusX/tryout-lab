@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-emptydir
+spec:
+  volumes:                        # pod level: which volumes are attached to the pod
+    - name: scratch-volume
+      emptyDir:
+        sizeLimit: 500Mi
+  containers:
+    - name: nginx
+      image: nginx
+      volumeMounts:               # container level: which volume goes where
+        - name: scratch-volume    # must match the name in spec.volumes
+          mountPath: /scratch
+    - name: busybox
+      image: busybox
+      command: ["/bin/sh", "-c"]  # busybox has no long-running process, keep it alive
+      args: ["sleep 1000"]
+      volumeMounts:
+        - name: scratch-volume    # same volume as nginx -> shared
+          mountPath: /scratch

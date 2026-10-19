@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pvc
+  namespace: mealie           # a pod can only mount claims from its own namespace
+spec:
+  volumes:
+    - name: scratch-volume
+      persistentVolumeClaim:
+        claimName: mealie-data    # the existing claim from mealie-pvc.yaml, not an emptyDir
+  containers:
+    - name: nginx
+      image: nginx
+      volumeMounts:               # container level: which volume goes where
+        - name: scratch-volume    # must match the name in spec.volumes
+          mountPath: /scratch

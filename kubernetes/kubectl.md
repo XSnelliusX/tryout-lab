@@ -91,3 +91,11 @@ kubectl exec -it <pod-name> -- /bin/sh   # if bash isn't available
 
 exit        # leave the shell (or <ctrl+d>)
 ```
+
+A pod with several containers: pick one with `-c`, otherwise the default (or first) container is used.
+
+```bash
+kubectl exec -it <pod-name> -c <container-name> -- sh
+```
+
+> Note: minimal images like `busybox` only ship `sh`, not `bash`.

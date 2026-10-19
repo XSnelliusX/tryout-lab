@@ -37,3 +37,22 @@ The smallest unit created on a cluster — but it's more than a container: a Pod
 
 - Create and manage Pods with `kubectl` — see [kubectl](kubectl.md).
 - Pods are usually managed through a **Deployment** so they stay running and can be scaled — see [Deployments](deployments/deployments.md).
+- Storage is attached with volumes — see [Storage](storage/storage.md).
+
+### A container needs a running process
+
+A container lives as long as its main process. An image that starts nothing long-running (e.g. `busybox`) exits right away, shows `Completed` and then `CrashLoopBackOff` as Kubernetes keeps restarting it. Give it something to do with `command` (the executable) and `args` (its arguments):
+
+```yaml
+containers:
+  - name: busybox
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args: ["sleep 1000"]        # same as: /bin/sh -c "sleep 1000"
+```
+
+`sh -c "<string>"` runs the string as a command in a POSIX shell and exits.
+
+### Containers can't be added to a running pod
+
+Changing the container list of an existing pod is rejected — delete the pod and apply it again. (A Deployment doesn't have this problem: changing its template rolls out new pods, see [Deployments](deployments/deployments.md).)
