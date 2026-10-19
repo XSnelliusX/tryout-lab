@@ -54,7 +54,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: homer      # route to this service
+                name: homarr     # route to this service
                 port:
                   number: 7575
   tls:                           # cert, e.g. via cert-manager
