@@ -10,7 +10,7 @@ k9s            # uses the active context from kubeconfig, e.g. rancher-desktop
 - The header shows context, cluster, user, Kubernetes version and (with a working metrics server) CPU/memory. No metrics? The metrics server isn't set up — Rancher Desktop usually has it, otherwise it comes with a monitoring stack later.
 - **The cluster must be running**: with Rancher Desktop stopped, k9s can't connect to the context (error like `no connection to cached dial`). Start Rancher Desktop first and wait until Kubernetes is up, see [Rancher Desktop](rancher.md)
 - Works on any cluster; one k9s window per context (e.g. in separate tmux panes)
-- **Vim keybindings** everywhere (`j`/`k`, `/`, `n`, `gg`/`G`, `:`) — see [Vim usage](../mac-setup/vim/usage.md)
+- **Vim keybindings** everywhere (`j`/`k`, `/`, `n`, `gg`/`G`, `:`) — see [Vim usage](../mac-setup/nvim/usage.md)
 - `?` shows all keys for the current view
 
 ## Navigation
