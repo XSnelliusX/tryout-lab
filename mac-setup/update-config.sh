@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pull the configs currently live on this machine back into the repo, so the repo stays the source of truth.
-# Shows a diff for every changed file and asks before copying. Home paths are rewritten to $HOME.
+# Shows a diff for every changed file and asks before copying. Home paths are rewritten to $HOME,
+# and the gateway URL (from $GATEWAY_BASE_URL or ~/.config/ai-gateway/env) to $GATEWAY_BASE_URL.
 # Usage: ./update-config.sh [-n|--dry-run] [-y|--yes]
 set -euo pipefail
 
@@ -10,10 +11,21 @@ dry=0; yes=0
 for a in "$@"; do case "$a" in -n|--dry-run) dry=1 ;; -y|--yes) yes=1 ;; *) echo "unknown option $a"; exit 1 ;; esac; done
 
 changed=0
+gw_url="${GATEWAY_BASE_URL:-}"
+if [ -z "$gw_url" ] && [ -f "$HOME/.config/ai-gateway/env" ]; then
+  gw_url="$(set +eu; . "$HOME/.config/ai-gateway/env"; printf '%s' "${GATEWAY_BASE_URL:-}")"
+fi
 pull() { # pull <live file> <repo file>
-  local src="$1" dst="$2" tmp
+  local src="$1" dst="$2" tmp prog
   [ -e "$src" ] || { echo "skip   $dst (not on this machine)"; return 0; }
-  tmp="$(mktemp)"; sed "s#$HOME#\$HOME#g" "$src" > "$tmp"
+  tmp="$(mktemp)"; prog="s#$HOME#\$HOME#g"
+  if [ -n "$gw_url" ]; then   # the real URL must never reach the repo
+    prog="s|$(printf '%s' "$gw_url" | sed 's/[][\.*^$|]/\\&/g')|\$GATEWAY_BASE_URL|g;$prog"
+  fi
+  sed "$prog" "$src" > "$tmp"
+  if [ -n "$gw_url" ] && grep -qF -- "$gw_url" "$tmp"; then
+    rm -f "$tmp"; echo "refuse ${dst#"$repo"/}: the gateway URL is still in it"; return 0
+  fi
   if [ -e "$dst" ] && cmp -s "$tmp" "$dst"; then rm -f "$tmp"; echo "same   ${dst#"$repo"/}"; return 0; fi
   changed=$((changed + 1))
   echo "CHANGED ${dst#"$repo"/}"
@@ -34,6 +46,11 @@ for f in "$HOME"/.config/cmux/sidebars/*.js; do pull "$f" "$here/cmux/config/cmu
 while IFS= read -r f; do pull "$HOME/.config/nvim/$f" "$here/nvim/$f"; done < <(
   cd "$HOME/.config/nvim" 2>/dev/null &&
     find . -type f \( -name '*.lua' -o -name '*.json' -o -name '*.toml' -o -name '*.yaml' \) | sed 's#^\./##' | sort)
+# The AI gateway plugin for opencode (the folder setup.sh installs) and the global asdf versions.
+for f in index.ts tui.ts check_gateway.py claude_usage.py dashboard.html package.json; do
+  pull "$HOME/.config/opencode/plugins/ai-gateway/$f" "$here/ai-gateway/$f"
+done
+pull "$HOME/.tool-versions" "$here/asdf/tool-versions"
 
 # Vorssaint is a binary plist in defaults, so export it instead of copying a file.
 tmp="$(mktemp)"

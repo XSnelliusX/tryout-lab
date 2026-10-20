@@ -1,6 +1,6 @@
 # Mac Setup
 
-One interactive script takes a fresh Mac to the same state as this one. Order matters: Xcode Command Line Tools (they bring git) → Homebrew → everything else.
+One interactive script takes a fresh Mac to the same state as this one. Order matters: Xcode Command Line Tools (they bring git) → Homebrew (which installs gum for the menus) → everything else.
 
 ```bash
 # git comes with the Command Line Tools, so this works on a brand new Mac
@@ -9,15 +9,25 @@ git clone https://github.com/XSnelliusX/tryout-lab.git && cd tryout-lab/mac-setu
 ./setup.sh
 ```
 
-Every step asks first and skips what is already done, so it is safe to re-run. Run a single step with `./setup.sh --only ssh` (`./setup.sh --list` shows them).
+`xcode` and `brew` always run first. Then a menu lists the other steps, all preselected, each with a one-line description: space toggles a step, Enter runs the selection in the order of the table below. Every step asks first and skips what is already done, so it is safe to re-run.
+
+| Flag | What it does |
+|---|---|
+| (none) | xcode and brew, then the menu |
+| `--all` | every step in order, no menu (each step still asks its questions) |
+| `--only <step>` | one step, e.g. `./setup.sh --only gateway` |
+| `--list` | the step names, in order |
+
+The menus and questions use [gum](https://github.com/charmbracelet/gum), which the brew step installs. Before Homebrew exists, or when the script has no terminal, the same questions are plain prompts. In the plain menu you type the names to switch off (Enter keeps them all).
 
 ## What the script does
 
 | Step | What happens |
 |---|---|
 | `xcode` | Command Line Tools (compiler, make, git), waits until installed |
-| `brew` | Homebrew, and `brew shellenv` in `~/.zprofile` so it is on PATH |
-| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `rancher cmux vorssaint` |
+| `brew` | Homebrew, `brew shellenv` in `~/.zprofile`, and gum |
+| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `rancher cmux vorssaint` |
+| `apps` | optional GUI casks from a multi-select, Google Chrome, Postman and Claude preselected. Apps already in `/Applications` are left out. Rectangle and Maccy are offered but not preselected, Vorssaint does snapping and clipboard history |
 | `shell` | oh-my-zsh and the plugins from [zsh/README.md](zsh/README.md) |
 | `font` | MesloLGS NF into `~/Library/Fonts` (prompt icons) |
 | `zshrc` | [zsh/.zshrc](zsh/.zshrc) and [zsh/p10k.zsh](zsh/p10k.zsh) |
@@ -25,13 +35,34 @@ Every step asks first and skips what is already done, so it is safe to re-run. R
 | `github` | `gh auth login` in the browser, then `gh auth setup-git` as credential helper; optional Enterprise host |
 | `ssh` | lists existing keys to reuse, or creates an ed25519 key with passphrase; adds it to the Keychain and `~/.ssh/config`; optionally uploads the **public** key with `gh ssh-key add` |
 | `claude` | Claude Code via the native installer (updates itself), plus the [statusline](claude-code/README.md) and the usage hook that logs Claude Code to `~/.gateway-cost` |
+| `opencode` | OpenCode via the official installer (`~/.opencode/bin`), skipped when `opencode` is already found |
+| `gateway` | the AI gateway plugin for OpenCode, its env file and API key, see below |
 | `cmux` | [cmux config](cmux/README.md): settings, sidebars, Ghostty |
 | `vorssaint` | restores the Vorssaint settings (below) |
 | `neovim` | [LazyVim config](nvim/README.md) into `~/.config/nvim` (an older non-LazyVim config is moved aside), plugins at the locked versions |
-| `asdf` | runtimes from [.tool-versions](../.tool-versions) |
+| `asdf` | global `~/.tool-versions` from [asdf/tool-versions](asdf/tool-versions) (nodejs 26.11.1, golang 1.27.1, python 3.13.16), plugins added, `asdf install` in home and in the repo ([.tool-versions](../.tool-versions)) |
 | `macos` | optional defaults (file extensions, path bar, key repeat), and shows the FileVault status |
 
-Never stored in the repo: SSH private keys, `gh` tokens (`~/.config/gh/hosts.yml`), shell history. The script creates keys on the machine and only uploads `*.pub`.
+Never stored in the repo: SSH private keys, `gh` tokens (`~/.config/gh/hosts.yml`), shell history, the gateway URL and the gateway API key. The script creates keys on the machine and only uploads `*.pub`.
+
+## AI gateway (OpenCode plugin)
+
+The `gateway` step copies [ai-gateway/](ai-gateway/) to `~/.config/opencode/plugins/ai-gateway` (without its README). It asks for:
+
+- the gateway base URL. The default is the current value from the env file, there is no built-in URL
+- the API key file, default `~/.keys/ai-gateway.key`. If that file is missing, the key is asked for with hidden input and written with mode 600 into a 700 folder. It is never echoed or stored in the repo
+
+It then writes `~/.config/ai-gateway/env` with mode 600 (the old one is backed up as `env.bak-<stamp>`):
+
+```bash
+export GATEWAY_BASE_URL="https://gateway.example.com"
+export GATEWAY_API_KEY_FILE="$HOME/.keys/ai-gateway.key"
+export GATEWAY_COST_DIR="..."   # only when it was set before
+```
+
+Then `check_gateway.py` runs once (a failure there does not stop the script).
+
+Old installs are handled too. A `*-gateway` folder in the plugins dir that holds `claude_usage.py` is offered for moving into `~/.config/opencode/plugins-backup-<stamp>/`, so opencode does not load two copies. Key files `~/.keys/*opencode*.key` are offered for copying to the new key path (the old file stays until you delete it). If `opencode.json` still points at an old folder, the script prints the line and you change it by hand. At the end it offers to re-run [claude-code/install.sh](claude-code/install.sh), which registers the usage hook for the new collector path.
 
 ## Vorssaint, the central macOS tool
 
@@ -64,7 +95,7 @@ brew uninstall --cask vorssaint
 ./update-config.sh --yes        # take over everything
 ```
 
-It covers `.zshrc`, the p10k prompt, the Neovim config (every file in `~/.config/nvim`, including `lazy-lock.json`), the Claude Code statusline, the cmux and Ghostty configs and the Vorssaint settings. Your home path is rewritten to `$HOME`. Review with `git diff` and commit.
+It covers `.zshrc`, the p10k prompt, the Neovim config (every file in `~/.config/nvim`, including `lazy-lock.json`), the Claude Code statusline, the cmux and Ghostty configs, the Vorssaint settings, the gateway plugin files (`~/.config/opencode/plugins/ai-gateway`) and `~/.tool-versions`. Your home path is rewritten to `$HOME`, and the gateway URL to `$GATEWAY_BASE_URL` (read from the environment or `~/.config/ai-gateway/env`), so the real URL never reaches the repo. The API key file is never opened. Review with `git diff` and commit.
 
 ## Checklist for things the script cannot do
 
