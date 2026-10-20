@@ -25,7 +25,7 @@ cd mac-setup/claude-code      # from the repo root
 ./install.sh
 ```
 
-`install.sh` copies the script to `~/.claude/statusline.py` and merges this into `~/.claude/settings.json` (both backed up as `*.bak-<timestamp>` first):
+`install.sh` copies the script to `~/.claude/statusline.py` and merges this into `~/.claude/settings.json`. Each file that differs is shown as a diff and you confirm it; the old version goes to `~/.setup_backup/<stamp>/` when overwritten. The other keys in `settings.json` are kept:
 
 ```json
 "statusLine": {

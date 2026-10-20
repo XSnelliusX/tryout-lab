@@ -6,7 +6,7 @@ Why LazyVim: it works out of the box (work machine, no time to build a config), 
 
 ## Install
 
-`./setup.sh --only neovim` (from `mac-setup/`) copies this folder to `~/.config/nvim` (Markdown files excluded) and installs the plugins at the versions in `lazy-lock.json`. If `~/.config/nvim` holds a different (non-LazyVim) config, it and its data (`~/.local/share/nvim`, `~/.local/state/nvim`, `~/.cache/nvim`) are moved to `*.bak-<timestamp>` first.
+`./setup.sh --only neovim` (from `mac-setup/`) copies this folder to `~/.config/nvim` (Markdown files excluded) and installs the plugins at the versions in `lazy-lock.json`. If `~/.config/nvim` holds a different (non-LazyVim) config, it and its data (`~/.local/share/nvim`, `~/.local/state/nvim`, `~/.cache/nvim`) are moved to `~/.setup_backup/<stamp>/` first (after you confirm).
 
 Needs (all from `setup.sh`'s `packages` step): Neovim ≥ 0.11.2, `tree-sitter-cli`, a C compiler (Xcode CLT), `ripgrep`, `fd`, `lazygit`, `git`, Go/Python/Node through asdf. Optional for image previews in docs: `brew install imagemagick ghostscript` (`:checkhealth snacks` lists them as errors, everything else works without).
 

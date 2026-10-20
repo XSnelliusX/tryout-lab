@@ -31,7 +31,7 @@ cd mac-setup/cmux      # from the repo root
 ./install.sh
 ```
 
-`install.sh` copies the files below into place (an existing file is backed up as `*.bak-<timestamp>`), then runs `cmux config doctor`, `cmux reload-config` and `cmux sidebar select herdr-style`.
+`install.sh` copies the files below into place. A file that differs from the repo is shown as a diff first, and you choose whether to overwrite it; the old one goes to `~/.setup_backup/<stamp>/` ([how re-runs work](../README.md#running-it-again-on-a-configured-mac)). Then it runs `cmux config doctor`, `cmux reload-config` and `cmux sidebar select herdr-style`.
 
 | In this repo | Installed to |
 |---|---|

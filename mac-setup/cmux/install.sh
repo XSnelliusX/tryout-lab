@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
-# Install my cmux setup on this machine. Existing files are backed up as *.bak-<timestamp>.
+# Install my cmux setup on this machine. A changed file is shown as a diff and you confirm it;
+# the old file goes to ~/.setup_backup/<stamp>/ first (see lib.sh).
 # Usage: ./install.sh   (from this folder)
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-stamp="$(date +%Y%m%d-%H%M%S)"
+. "$here/../lib.sh"
 cmux_dir="$HOME/.config/cmux"
 ghostty_dir="$HOME/Library/Application Support/com.mitchellh.ghostty"
 
-put() { # put <source> <destination>
-  mkdir -p "$(dirname "$2")"
-  [ -e "$2" ] && cp "$2" "$2.bak-$stamp"
-  cp "$1" "$2"
-  echo "installed $2"
-}
-
-put "$here/config/cmux/cmux.json" "$cmux_dir/cmux.json"
+install_file "$here/config/cmux/cmux.json" "$cmux_dir/cmux.json"
 for f in "$here"/config/cmux/sidebars/*.js; do
-  put "$f" "$cmux_dir/sidebars/$(basename "$f")"
+  install_file "$f" "$cmux_dir/sidebars/$(basename "$f")"
 done
-put "$here/config/ghostty/config.ghostty" "$ghostty_dir/config.ghostty"
+install_file "$here/config/ghostty/config.ghostty" "$ghostty_dir/config.ghostty"
 
-if command -v cmux >/dev/null 2>&1; then
+if dry; then
+  info "would run: cmux config doctor, cmux reload-config, cmux sidebar select herdr-style"
+elif have cmux; then
   cmux config doctor || true
   cmux reload-config || true
   cmux sidebar select herdr-style || echo "Enable Settings > Custom Sidebars (beta), then run: cmux sidebar select herdr-style"
