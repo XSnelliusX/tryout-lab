@@ -35,6 +35,10 @@ cd mac-setup/claude-code      # from the repo root
 }
 ```
 
+## Keybindings
+
+`install.sh` also copies [keybindings.json](keybindings.json) to `~/.claude/keybindings.json`. It adds `Ctrl+]` as undo for the prompt input, next to the default `Ctrl+_`. Inside Neovim `Ctrl+_` never reaches Claude Code (LazyVim hides the agent split on it), `Ctrl+]` does. `Ctrl+Z` was the first choice, but Claude Code always uses it to suspend itself, and `Ctrl+Y` already pastes deleted text. `Ctrl+]` is the one Ctrl key Claude Code, LazyVim and the Neovim terminal all leave free.
+
 ## Usage and cost tracking
 
 `install.sh` also registers a hook (`Stop`, `SubagentStop`, `SessionEnd`) that runs `claude_usage.py` from the ai-gateway opencode plugin (`~/.config/opencode/plugins/ai-gateway/`). The plugin is set up with `mac-setup/setup.sh --only gateway`. It reads the new API calls from Claude Code's transcripts and appends them to `~/.gateway-cost/usage.jsonl`, the log OpenCode and Neovim write too, so `~/.gateway-cost/dashboard.html` shows all AI usage together:

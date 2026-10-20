@@ -113,7 +113,8 @@ return {
 
   -- Ctrl+q hides the agent split (any snacks terminal) from insert mode; the cursor goes back to
   -- the code window. LazyVim's Ctrl+/ and Ctrl+_ hide too, but both are byte 0x1f, which Claude Code
-  -- uses for undo. Claude Code, OpenCode and LazyVim leave Ctrl+q alone inside terminals.
+  -- uses for undo (Claude Code also undoes on Ctrl+], see mac-setup/claude-code/keybindings.json).
+  -- Claude Code, OpenCode and LazyVim leave Ctrl+q alone inside terminals.
   {
     "folke/snacks.nvim",
     opts = {

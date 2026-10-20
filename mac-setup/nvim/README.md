@@ -129,6 +129,7 @@ The agent opens in a split on the right and takes the keyboard: you land in its 
 |---|---|---|
 | Leave terminal mode (scroll, copy, `q`) | `Ctrl+\` `Ctrl+n` | always works. `Esc Esc` (two quick taps, under about 200 ms) works too |
 | Send one `Esc` to the agent | `Esc` | it goes to the TUI, where it stops a running reply |
+| Undo in Claude Code's input | `Ctrl+]` | `Ctrl+_` hides the split here, see below |
 | Jump to the code window | `Ctrl+h` | works in insert mode too |
 | Back to the agent | `Ctrl+l` (normal mode, in the code window) | the agent is the right-hand window |
 | Hide the agent (it keeps running) | `Ctrl+q` in insert mode, or `q` in normal mode | the cursor goes back to the code window. `Ctrl+/` hides it too (same byte as `Ctrl+_`) |
@@ -136,7 +137,7 @@ The agent opens in a split on the right and takes the keyboard: you land in its 
 | Focus Claude without hiding it | `<leader>af` | visible: focuses it; focused: hides it. OpenCode has no focus-only key, use `Ctrl+l` |
 | Close the agent | quit it in its own TUI | the split closes with the process |
 
-Some keys do not reach the agent: while it has focus, `Ctrl+h/j/k/l` are window moves. So `Ctrl+j` (newline in Claude Code and OpenCode), `Ctrl+k` (OpenCode: delete to end of line) and `Ctrl+l` (Claude Code: clear input) are lost. Claude Code takes a newline with `\` then `Enter`. `Ctrl+_` (Claude Code's undo) hides the window, because LazyVim maps that byte to hide.
+Some keys do not reach the agent: while it has focus, `Ctrl+h/j/k/l` are window moves. So `Ctrl+j` (newline in Claude Code and OpenCode), `Ctrl+k` (OpenCode: delete to end of line) and `Ctrl+l` (Claude Code: clear input) are lost. Claude Code takes a newline with `\` then `Enter`. `Ctrl+_` (Claude Code's undo) hides the window, because LazyVim maps that byte to hide, so undo in Claude Code is `Ctrl+]` here (set in `~/.claude/keybindings.json` by [claude-code/install.sh](../claude-code/README.md#keybindings)).
 
 ### Usage and cost tracking
 
