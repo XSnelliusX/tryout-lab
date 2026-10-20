@@ -55,7 +55,10 @@ exec zsh                      # or open a new terminal
 - **Tab completion:** case-insensitive, colored lists, fzf-powered via fzf-tab with a live preview pane — folders preview with `eza`, files with `bat`, commands with their man page, subcommands (`kubectl`, `docker`, `helm`, …) with their `--help`.
 - **fzf integration:** `source <(fzf --zsh)` wires up the keybindings below.
 - **Autosuggestions:** gray inline suggestions from history + completion (`fg=6` highlight).
-- **PATH additions:** `~/.local/bin` (Teamwork Graph CLI), Homebrew `nvm`, asdf shims, and the Rancher Desktop block (auto-managed — **do not edit** — see [Rancher Desktop](../../kubernetes/rancher.md)).
+- **PATH additions:** `~/.local/bin` (Teamwork Graph CLI, Claude Code), `~/.opencode/bin`, Homebrew `nvm`, asdf shims, and the Rancher Desktop block (auto-managed — **do not edit** — see [Rancher Desktop](../../kubernetes/rancher.md)).
+- **Completions from the binaries:** `kubectl` (also for the `k` alias) and `helm`, loaded only when installed.
+- **AI gateway settings:** `~/.config/ai-gateway/env` is sourced if it exists (written by `../setup.sh --only gateway`, never part of the repo).
+- **Portable paths:** everything uses `$HOME`, so the file works for any username. Rancher Desktop and the OpenCode installer sometimes write absolute `/Users/<name>` lines into `~/.zshrc`; `../update-config.sh` turns them back into `$HOME` when pulling.
 
 ## Keybindings
 

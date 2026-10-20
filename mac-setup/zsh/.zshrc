@@ -10,6 +10,7 @@ fi
 #############################################################################################
 
 export ZSH="$HOME/.oh-my-zsh"
+DEFAULT_USER=$USER
 
 # Extra completion definitions (must be in fpath BEFORE oh-my-zsh runs compinit)
 fpath+=${ZSH_CUSTOM:-$ZSH/custom}/plugins/zsh-completions/src
@@ -122,6 +123,14 @@ if (( $+commands[kubectl] )); then
   source <(kubectl completion zsh)
   compdef k=kubectl
 fi
+
+# helm completion loaded straight from the binary (same pattern as kubectl)
+if (( $+commands[helm] )); then
+  source <(helm completion zsh)
+fi
+
+# AI gateway settings (GATEWAY_BASE_URL, key file), written by mac-setup/setup.sh --only gateway
+[[ -r "$HOME/.config/ai-gateway/env" ]] && source "$HOME/.config/ai-gateway/env"
 
 source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
 
