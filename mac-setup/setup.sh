@@ -100,6 +100,19 @@ step_brew() {
   if have brew; then brew --version | head -1; fi
 }
 
+install_cask() { # install_cask <cask>: skips casks brew installed and apps that came from elsewhere (a download,
+  # the App Store); a failed install is reported and the setup goes on
+  local c="$1" app found=""
+  if brew list --cask "$c" >/dev/null 2>&1; then info "already installed: $c"; return 0; fi
+  while IFS= read -r app; do
+    for d in /Applications "$HOME/Applications"; do
+      if [ -z "$found" ] && [ -e "$d/$app" ]; then found="$d/$app"; fi
+    done
+  done < <(brew info --cask "$c" 2>/dev/null | sed -n 's/^\(.*\.app\) (App)$/\1/p')
+  if [ -n "$found" ]; then info "already installed outside Homebrew: $found (brew leaves it alone)"; return 0; fi
+  run brew install --cask "$c" || info "could not install $c, skipped (brew install --cask $c to retry)"
+}
+
 step_packages() {
   bold "Packages: ${FORMULAE[*]} + casks ${CASKS[*]}"
   ask "Install the missing ones?" || return 0
@@ -109,9 +122,7 @@ step_packages() {
     if ! grep -qx "$f" <<< "$installed"; then missing+=("$f"); fi
   done
   if [ "${#missing[@]}" -gt 0 ]; then run brew install "${missing[@]}"; else info "all formulae are installed"; fi
-  for c in "${CASKS[@]}"; do
-    if brew list --cask "$c" >/dev/null 2>&1; then info "already installed: $c"; else run brew install --cask "$c"; fi
-  done
+  for c in "${CASKS[@]}"; do install_cask "$c"; done
 }
 
 step_apps() {
@@ -129,9 +140,7 @@ step_apps() {
   while IFS= read -r line; do
     if [ -n "$line" ]; then picked="$picked ${line%% *}"; fi
   done <<< "$names"
-  for c in $picked; do
-    if brew list --cask "$c" >/dev/null 2>&1; then info "already installed: $c"; else run brew install --cask "$c"; fi
-  done
+  for c in $picked; do install_cask "$c"; done
 }
 
 step_shell() {
