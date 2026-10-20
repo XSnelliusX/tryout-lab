@@ -18,7 +18,7 @@ The sidebar calls groups **Spaces**. The CLI says *workspace*, *workspace-group*
 
 ## 1. Set up the shell first
 
-Follow [zsh.md](../zsh.md). The Ghostty config uses the **MesloLGS NF** font, so install it before launching cmux, otherwise prompt icons show as broken glyphs.
+Follow [zsh/README.md](../zsh/README.md). The Ghostty config uses the **MesloLGS NF** font, so install it before launching cmux, otherwise prompt icons show as broken glyphs.
 
 ## 2. Install cmux
 
@@ -27,7 +27,7 @@ Download it from [cmux.com](https://cmux.com) (or the [releases](https://github.
 ## 3. Install the config
 
 ```bash
-cd terminal/cmux      # from the repo root
+cd mac-setup/cmux      # from the repo root
 ./install.sh
 ```
 
@@ -122,7 +122,7 @@ cmux defaults. Verify in **Settings → Keyboard Shortcuts** if one does not mat
 |---|---|
 | `~/.config/cmux/cmux.json` | cmux settings (JSONC). Only `accentColor` and the mascot are set; the rest is the commented template. |
 | `~/.config/cmux/sidebars/*.js` | Custom sidebars. |
-| `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` | Terminal font (`MesloLGS NF`), theme, colors. |
+| `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` | Terminal font (`MesloLGS NF`), theme, colors; left Option as Alt (`macos-option-as-alt = left`, needed for the Neovim Alt-keys, right Option keeps typing `@ [ ] { }`). |
 
 After a config change: `cmux reload-config` (no restart).
 

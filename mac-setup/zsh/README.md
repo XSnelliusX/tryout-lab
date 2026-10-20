@@ -4,7 +4,9 @@ Terminal setup: [cmux](https://cmux.com) as the terminal emulator, oh-my-zsh wit
 
 ## Terminal: cmux
 
-[cmux](https://cmux.com) — native macOS terminal built on **libghostty** (same core as Ghostty), made for running coding agents: workspaces grouped into Spaces, tabs and splits, and a sidebar with agent status. It replaced Supacode + herdr. Setup and configs: [cmux/README.md](cmux/README.md).
+[cmux](https://cmux.com) — native macOS terminal built on **libghostty** (same core as Ghostty), made for running coding agents: workspaces grouped into Spaces, tabs and splits, and a sidebar with agent status. It replaced Supacode + herdr. Setup and configs: [cmux/README.md](../cmux/README.md).
+
+> New machine? Start with [mac-setup README](../README.md): `setup.sh` does all of this for you.
 
 ## 1. Install the tools
 
@@ -18,7 +20,6 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/too
 
 - `fzf` — fuzzy finder (powering completion + keybindings)
 - `eza` / `bat` — used in the tab-completion preview pane (folders / files)
-- `carapace` — extra completions for many CLIs
 - `asdf`, `nvm` — runtime version managers
 - `neovim` — what the `vim` alias points to
 
@@ -42,11 +43,11 @@ git clone https://github.com/zsh-users/zsh-history-substring-search $ZSH_CUSTOM/
 ## 3. Use the config
 
 ```bash
-cp terminal/.zshrc ~/.zshrc   # from the repo root
+cp mac-setup/zsh/.zshrc ~/.zshrc   # from the repo root
 exec zsh                      # or open a new terminal
 ```
 
-> Tip: the prompt needs a **Nerd/Powerline font**, otherwise it shows broken glyphs. cmux uses **MesloLGS NF** (set in the [Ghostty config](cmux/config/ghostty/config.ghostty)); `.zshrc` also loads Powerlevel10k at the end.
+> Tip: the prompt needs a **Nerd/Powerline font**, otherwise it shows broken glyphs. cmux uses **MesloLGS NF** (set in the [Ghostty config](../cmux/config/ghostty/config.ghostty)); `.zshrc` also loads Powerlevel10k at the end.
 
 ## What's in the config
 
@@ -54,8 +55,7 @@ exec zsh                      # or open a new terminal
 - **Tab completion:** case-insensitive, colored lists, fzf-powered via fzf-tab with a live preview pane — folders preview with `eza`, files with `bat`, commands with their man page, subcommands (`kubectl`, `docker`, `helm`, …) with their `--help`.
 - **fzf integration:** `source <(fzf --zsh)` wires up the keybindings below.
 - **Autosuggestions:** gray inline suggestions from history + completion (`fg=6` highlight).
-- **carapace:** `CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'` — completions for many tools by bridging other shells' completion definitions.
-- **PATH additions:** `~/.local/bin` (Teamwork Graph CLI), Homebrew `nvm`, asdf shims, and the Rancher Desktop block (auto-managed — **do not edit** — see [Rancher Desktop](../kubernetes/rancher.md)).
+- **PATH additions:** `~/.local/bin` (Teamwork Graph CLI), Homebrew `nvm`, asdf shims, and the Rancher Desktop block (auto-managed — **do not edit** — see [Rancher Desktop](../../kubernetes/rancher.md)).
 
 ## Keybindings
 
@@ -68,11 +68,15 @@ exec zsh                      # or open a new terminal
 
 ## Aliases
 
-`k*` shortcuts for the commands in [kubectl](../kubernetes/kubectl.md):
+`k*` shortcuts for the commands in [kubectl](../../kubernetes/kubectl.md):
 
 ```bash
 alias vim="nvim"                   # neovim
 alias vi="nvim"
+
+# aliases only work in the interactive shell; git, kubectl, k9s, crontab read these
+export EDITOR="nvim"
+export VISUAL="nvim"
 
 alias k="kubectl"
 alias kgp="kubectl get pods"

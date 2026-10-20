@@ -87,6 +87,10 @@ bindkey '^F' fzf-cd-widget    # Ctrl-F opens the folder jump
 alias vim="nvim"
 alias vi="nvim"
 
+### Default editor (git, kubectl, k9s, crontab; aliases are not seen by subprocesses)
+export EDITOR="nvim"
+export VISUAL="nvim"
+
 ### kubectl
 alias k="kubectl"
 alias kgp="kubectl get pods"

@@ -1,0 +1,3 @@
+font-family = "MesloLGS NF"
+# Left Option sends Alt (Neovim/LazyVim Alt-keys, zsh Alt-b/Alt-f); right Option still types @ [ ] { } | ~ on the German layout.
+macos-option-as-alt = left
