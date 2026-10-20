@@ -39,6 +39,18 @@ cd mac-setup/claude-code      # from the repo root
 
 `install.sh` also copies [keybindings.json](keybindings.json) to `~/.claude/keybindings.json`. It adds `Ctrl+]` as undo for the prompt input, next to the default `Ctrl+_`. Inside Neovim `Ctrl+_` never reaches Claude Code (LazyVim hides the agent split on it), `Ctrl+]` does. `Ctrl+Z` was the first choice, but Claude Code always uses it to suspend itself, and `Ctrl+Y` already pastes deleted text. `Ctrl+]` is the one Ctrl key Claude Code, LazyVim and the Neovim terminal all leave free.
 
+## Gateway commands
+
+`install.sh` also copies three skills to `~/.claude/skills/`, so Claude Code has the same commands as OpenCode:
+
+| Command | Does |
+|---|---|
+| `/usage-dashboard` | logs the latest Claude Code calls (`claude_usage.py --flush`), updates the usage data and opens `~/.gateway-cost/dashboard.html` |
+| `/gateway-refresh` | re-reads the API key, reloads the model list and prices, rewrites `~/.gateway-cost/models.json` and `models.csv` |
+| `/gateway-status` | gateway URL, key file, a quick check that the gateway answers, the time of the last model refresh |
+
+They run the ai-gateway plugin's own code (`node ~/.config/opencode/plugins/ai-gateway/index.ts refresh|dashboard|status`), so they need the plugin (`setup.sh --only gateway`) and Node 23.6+ (`setup.sh --only asdf`). Each command runs its shell part first and Claude only shows the output, a short reply. Claude never runs them on its own (`disable-model-invocation`).
+
 ## Usage and cost tracking
 
 `install.sh` also registers a hook (`Stop`, `SubagentStop`, `SessionEnd`) that runs `claude_usage.py` from the ai-gateway opencode plugin (`~/.config/opencode/plugins/ai-gateway/`). The plugin is set up with `mac-setup/setup.sh --only gateway`. It reads the new API calls from Claude Code's transcripts and appends them to `~/.gateway-cost/usage.jsonl`, the log OpenCode and Neovim write too, so `~/.gateway-cost/dashboard.html` shows all AI usage together:

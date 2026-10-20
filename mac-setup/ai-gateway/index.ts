@@ -32,12 +32,15 @@
 //     unreachable, ...) is written to status.json and gateway-models.log;
 //     tui.ts turns it into OpenCode toasts and /gateway-status. While anything
 //     is broken, refresh retries within a minute instead of every 12h.
+//   * Command line    - `node index.ts refresh|dashboard|status` runs the same
+//     refresh and dashboard code outside OpenCode (Claude Code's /gateway-*
+//     skills use it). See section 16.
 // =============================================================================
 
 import type { Model, Plugin, Provider } from "@opencode/plugin"
 import type { Registration } from "@opencode/plugin/promise/registration"
 import { spawn } from "node:child_process"
-import { type FSWatcher, readFileSync, watch } from "node:fs"
+import { type FSWatcher, readFileSync, realpathSync, watch } from "node:fs"
 import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { basename, dirname, join } from "node:path"
@@ -197,8 +200,10 @@ function localDate(ms: number): string {
 }
 
 // Write to a temp file and rename, so a dashboard never reads a half-written file.
+let writeSeq = 0
 async function writeAtomic(path: string, content: string): Promise<void> {
-  const tmp = `${path}.${process.pid}.tmp`
+  // pid + a counter: two plugin copies in one process (or two writes at once) never share a temp file
+  const tmp = `${path}.${process.pid}.${++writeSeq}.tmp`
   await writeFile(tmp, content)
   // Windows refuses to replace a file another process holds open (Excel, antivirus): retry briefly.
   for (let attempt = 0; ; attempt++) {
@@ -709,7 +714,7 @@ function toProviders(catalog: CatalogEntry[], apiKey?: string): { info: Provider
 // =============================================================================
 
 async function ensureConnection(ctx: any, apiKey: string | undefined): Promise<void> {
-  if (!CONNECT_INTEGRATION || !apiKey) return
+  if (CLI || !CONNECT_INTEGRATION || !apiKey) return // the connection lives in OpenCode
   try {
     const active = await ctx.integration.connection.active(INTEGRATION_ID)
     if (active) {
@@ -783,7 +788,7 @@ async function writeCatalogReport(catalog: CatalogEntry[], fingerprint: string):
     for (const r of catalog) lines.push(CATALOG_COLUMNS.map((h) => csvEscape(r[h])).join(","))
     await writeAtomic(join(COST_DIR, "models.csv"), lines.join("\n") + "\n")
 
-    console.log(`[gateway-models] wrote catalog -> ${COST_DIR} (${catalog.length} models)`)
+    if (!CLI) console.log(`[gateway-models] wrote catalog -> ${COST_DIR} (${catalog.length} models)`)
     clearIssue("report")
   } catch (err) {
     setIssue("report", "warning", "Catalog report not written", `${displayPath(COST_DIR)}: ${errText(err)}`)
@@ -1326,9 +1331,12 @@ const createHealth = () => ({
 // and gateway, so they share one set of issues and one status.json writer.
 const HEALTH_STATE = Symbol.for(`gateway-models.health.v1:${STATUS_FILE}`)
 const health: ReturnType<typeof createHealth> = ((globalThis as any)[HEALTH_STATE] ??= createHealth())
+// Set by the command line (section 16): problems are printed, not written to status.json, which
+// belongs to the running OpenCode plugin (tui.ts would take a finished CLI run's file as its own).
+let CLI = false
 
 function log(level: "info" | "warn" | "error", msg: string): void {
-  ;(level === "info" ? console.log : console.error)(`[gateway-models] ${msg}`)
+  if (!CLI) (level === "info" ? console.log : console.error)(`[gateway-models] ${msg}`)
   const line = `${new Date().toISOString()} ${level.toUpperCase()} ${msg}\n`
   health.logChain = health.logChain
     .then(async () => {
@@ -1372,7 +1380,7 @@ function statusDoc() {
 }
 
 function scheduleStatusWrite(): void {
-  if (health.writeTimer) return
+  if (CLI || health.writeTimer) return
   health.writeTimer = setTimeout(() => {
     health.writeTimer = undefined
     void writeStatus()
@@ -1702,3 +1710,74 @@ export default {
     }
   },
 } satisfies Plugin.Plugin
+
+// =============================================================================
+// 16) COMMAND LINE — the same commands outside OpenCode
+// -----------------------------------------------------------------------------
+//   node index.ts refresh    re-read the key, reload models and prices, rewrite models.json/models.csv
+//   node index.ts dashboard  update the usage data and open dashboard.html
+//   node index.ts status     settings, key, a quick gateway check and the last refresh
+// Needs Node 23.6+ (runs TypeScript as is). Claude Code's /gateway-refresh, /usage-dashboard and
+// /gateway-status skills (mac-setup/claude-code/skills) call it. Exit code 1 when something failed.
+// =============================================================================
+
+async function cli(cmd: string): Promise<number> {
+  CLI = true
+  // Just enough of OpenCode's ctx for refresh(): no cache (always a full /model/info load), no providers.
+  const ctx = { storage: { get: async () => undefined, set: async () => {} }, provider: { reload: async () => {} } }
+  const out = (line = "") => console.log(line)
+  let ok = true
+  if (cmd === "dashboard") {
+    await loadUsage()
+    await flushSummary()
+    const target = await copyDashboard()
+    openInBrowser(target)
+    await new Promise((r) => setTimeout(r, 300)) // let open(1) start before the process exits
+    out(`Opened ${displayPath(target)}`)
+  } else if (cmd === "refresh" || cmd === "status") {
+    out(`Gateway: ${BASE_URL || "not configured"}`)
+    out(`API key: ${KEY_SOURCE}`)
+    if (!BASE_URL) {
+      out(NOT_CONFIGURED)
+      return 1
+    }
+    if (cmd === "refresh") {
+      const r = await refresh(ctx)
+      ok = r === "ok"
+      out(ok ? `Models: ${source.catalog.length}, prices for ${source.catalog.filter((x) => x.enriched).length}. Wrote ${displayPath(join(COST_DIR, "models.json"))} and models.csv` : `Refresh: ${r}`)
+    } else {
+      const key = applyKeyResult(await resolveApiKey(), undefined)
+      if (key || !KEY_PATH) {
+        try {
+          out(`Gateway answers: ${(await loadFast(key)).length} models on /models`)
+          clearIssue("gateway")
+        } catch (err) {
+          reportGatewayError(err, "/models")
+        }
+      }
+      const doc = await readFile(join(COST_DIR, "models.json"), "utf8").then(JSON.parse, () => undefined)
+      out(`Last model refresh: ${doc?.generated_at ?? "never (run /gateway-refresh)"}`)
+      const running = await readFile(STATUS_FILE, "utf8").then(JSON.parse, () => undefined)
+      if (running?.issues?.length) out(`OpenCode plugin reports ${running.issues.length} problem(s), see /gateway-status in OpenCode`)
+    }
+  } else {
+    out("usage: node index.ts refresh|dashboard|status")
+    return 2
+  }
+  for (const i of health.issues.values()) {
+    ok = false
+    out(`${i.level === "error" ? "ERROR" : "WARNING"} ${i.title}: ${i.message}`)
+  }
+  await health.logChain // gateway-models.log gets the same lines as from OpenCode
+  return ok ? 0 : 1
+}
+
+// Only when run as `node index.ts ...`; OpenCode imports this file and never matches.
+const RUN_AS_CLI = (() => {
+  try {
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+})()
+if (RUN_AS_CLI) void cli(process.argv[2] ?? "").then((code) => process.exit(code))

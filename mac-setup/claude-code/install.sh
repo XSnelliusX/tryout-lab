@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install my Claude Code statusline and keybindings, and register the usage hook that logs Claude Code's
+# Install my Claude Code statusline, keybindings and gateway skills, and register the usage hook that logs Claude Code's
 # tokens to ~/.gateway-cost (needs the ai-gateway opencode plugin, which ships claude_usage.py;
 # set it up with mac-setup/setup.sh --only gateway). Changed files are shown as a diff and you
 # confirm them; the old ones go to ~/.setup_backup/<stamp>/ first (see lib.sh).
@@ -15,6 +15,9 @@ collector="$HOME/.config/opencode/plugins/ai-gateway/claude_usage.py"
 install_file "$here/statusline.py" "$claude_dir/statusline.py"
 # Ctrl+] undoes input: Ctrl+_ (the default) never reaches Claude Code inside Neovim, LazyVim hides the split on it
 install_file "$here/keybindings.json" "$claude_dir/keybindings.json"
+# /gateway-refresh, /gateway-status, /usage-dashboard: the OpenCode plugin's commands, run through its index.ts.
+# Only these three skill folders are written; other skills in ~/.claude/skills are left alone.
+install_tree "$here/skills" "$claude_dir/skills"
 
 # settings.json: the statusLine key, and the usage hook when the plugin is there (or was registered before).
 # Everything else in the file is kept. The merged result goes through install_file, so you see the diff first.
