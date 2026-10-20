@@ -1,0 +1,9 @@
+{
+  "name": "ai-gateway-opencode",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./tui": "./tui.ts"
+  }
+}

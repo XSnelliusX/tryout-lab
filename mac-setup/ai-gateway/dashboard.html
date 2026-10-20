@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Usage</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f0efec;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --other: #b5b3ac;
+  --h1: #cde2fb; --h2: #9ec5f4; --h3: #6da7ec; --h4: #3987e5; --h5: #256abf; --h6: #184f95; --h7: #0d366b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #5f5e5a;
+    --h1: #104281; --h2: #184f95; --h3: #256abf; --h4: #2a78d6; --h5: #5598e7; --h6: #86b6ef; --h7: #cde2fb;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #5f5e5a;
+  --h1: #104281; --h2: #184f95; --h3: #256abf; --h4: #2a78d6; --h5: #5598e7; --h6: #86b6ef; --h7: #cde2fb;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 14px; margin: 0 0 2px; }
+.sub, .note { color: var(--ink-2); font-size: 12px; }
+.note { margin: 0 0 12px; }
+button, select, input { font: inherit; color: inherit; }
+.btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.spacer { flex: 1; }
+
+/* filter row: scopes everything below */
+.filters { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  background: var(--page); padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+@media (max-width: 700px) { .filters { position: static; } } /* sticky would cover half a phone screen */
+.group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.group > span { color: var(--muted); font-size: 12px; margin-right: 2px; }
+.filters select, .filters input[type=date] { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; max-width: 220px; }
+.filters select.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.kpi .label { color: var(--ink-2); font-size: 12px; }
+.kpi .value { font-size: 26px; font-weight: 600; margin: 2px 0; }
+.kpi .sub { color: var(--muted); }
+.kpi .meter { height: 6px; border-radius: 3px; background: var(--surface-2); margin: 6px 0 4px; overflow: hidden; }
+.kpi .meter b { display: block; height: 100%; background: var(--accent); }
+.kpi .meter b.warn { background: var(--s4); }
+.kpi .meter b.over { background: var(--s8); }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.hit { fill: transparent; cursor: default; outline: none; }
+.hit:hover, .hit:focus { fill: var(--ink); fill-opacity: .05; }
+
+/* horizontal bar lists */
+.bars { display: grid; gap: 2px; }
+.bar-row { display: grid; grid-template-columns: minmax(90px, 34%) 1fr 92px; align-items: center; gap: 10px;
+  background: none; border: 0; padding: 4px 6px; border-radius: 6px; text-align: left; cursor: pointer; width: 100%; }
+.bar-row:hover, .bar-row:focus-visible { background: var(--surface-2); outline: none; }
+.bar-row.selected { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.bar-name small { color: var(--muted); margin-left: 4px; }
+.track { height: 14px; display: flex; gap: 2px; }
+.track b { display: block; height: 100%; min-width: 2px; }
+.track b:first-child { border-radius: 4px 0 0 4px; }
+.track b:last-child { border-radius: 0 4px 4px 0; }
+.track b:only-child { border-radius: 4px; }
+.bar-val { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.bar-val small { color: var(--muted); display: block; font-size: 11px; }
+.mix { display: flex; gap: 2px; height: 26px; margin: 4px 0 14px; }
+.mix b { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; white-space: nowrap; min-width: 2px; }
+.mix b:first-child { border-radius: 4px 0 0 4px; }
+.mix b:last-child { border-radius: 0 4px 4px 0; }
+
+/* heatmap */
+/* columns shrink to any width; rows stretch to fill the card next to the sessions table */
+.heat-card { display: flex; flex-direction: column; }
+.heat { flex: 1; min-height: 230px; display: grid; gap: 2px; font-size: 11px; color: var(--muted);
+  grid-template-columns: 30px repeat(24, minmax(0, 1fr)) minmax(44px, auto);
+  grid-template-rows: auto repeat(7, minmax(16px, 1fr)) 30px; }
+.heat .cell { border-radius: 3px; background: var(--surface-2); outline: none; }
+.heat .cell:hover, .heat .cell:focus { box-shadow: 0 0 0 2px var(--ink); }
+.heat .hl { text-align: left; white-space: nowrap; overflow: visible; }
+.heat .wl { align-self: center; }
+.heat .on { color: var(--ink); font-weight: 600; }
+.heat .tot { align-self: center; text-align: right; font-variant-numeric: tabular-nums; padding-left: 4px; outline: none; }
+.heat .hbar { display: flex; align-items: flex-end; outline: none; padding-top: 4px; }
+.heat .hbar b { width: 100%; background: var(--h4); border-radius: 2px 2px 0 0; min-height: 0; }
+.heat .hbar:hover b, .heat .hbar:focus b { background: var(--h6); }
+.heat .corner { align-self: end; font-size: 10px; }
+@container (max-width: 420px) { .heat .hl.minor { visibility: hidden; } }
+.heat-card { container-type: inline-size; }
+.scale { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.scale i { width: 16px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* tables */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; text-align: left; }
+td { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+th { color: var(--ink-2); font-weight: 500; font-size: 12px; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th[aria-sort="descending"]::after { content: " ↓"; }
+th[aria-sort="ascending"]::after { content: " ↑"; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--surface-2); }
+td .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+details summary { cursor: pointer; color: var(--ink-2); font-size: 12px; margin-top: 10px; }
+
+.empty { text-align: center; padding: 60px 16px; border: 2px dashed var(--axis); border-radius: 12px; color: var(--ink-2); }
+.empty code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+.nodata { color: var(--muted); padding: 24px 0; text-align: center; }
+body.dragging main { opacity: .5; }
+
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0,0,0,.15); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-width: 320px; }
+#tip .tt-title { color: var(--ink-2); margin-bottom: 4px; }
+#tip .tt-row { display: flex; align-items: center; gap: 6px; }
+#tip .tt-row b { font-variant-numeric: tabular-nums; }
+#tip .tt-row span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tip .key { width: 10px; height: 2px; flex: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AI Usage</h1>
+    <span class="sub" id="source">No data loaded</span>
+    <span class="spacer"></span>
+    <button class="btn" id="export" hidden>Export CSV</button>
+    <label class="btn">Open usage.jsonl…<input type="file" id="file" accept=".jsonl,.json,.js,.txt" hidden></label>
+  </header>
+
+  <div id="empty" class="empty">
+    <p><b>No usage data found.</b></p>
+    <p>OpenCode (gateway plugin), Neovim and the Claude Code hook write to <code>~/.gateway-cost/</code>
+      (Windows: <code>%USERPROFILE%\.gateway-cost\</code>, or <code>GATEWAY_COST_DIR</code>).<br>
+      Type <code>/usage-dashboard</code> in OpenCode to open this page with the data,<br>
+      or drop <code>usage.jsonl</code> anywhere on this page.</p>
+  </div>
+
+  <div id="app" hidden>
+    <div class="filters" role="toolbar" aria-label="Filters">
+      <div class="group" id="presets"><span>Range</span></div>
+      <div class="group"><input type="date" id="from" aria-label="From date"><span>–</span><input type="date" id="to" aria-label="To date"></div>
+      <div class="group"><span>Tool</span><select id="f-tool"></select></div>
+      <div class="group"><span>Billing</span><select id="f-billing"></select></div>
+      <div class="group"><span>Provider</span><select id="f-provider"></select></div>
+      <div class="group"><span>Model</span><select id="f-model"></select></div>
+      <div class="group"><span>Agent</span><select id="f-agent"></select></div>
+      <div class="group"><span>Session</span><select id="f-session"></select></div>
+      <div class="group" id="metrics"><span>Measure</span></div>
+      <button class="btn" id="reset">Reset</button>
+    </div>
+
+    <section class="kpis" id="kpis"></section>
+
+    <div class="grid">
+      <section class="card wide">
+        <div class="card-head"><div><h2 id="time-title">Spend over time</h2><span class="sub" id="time-sub"></span></div></div>
+        <div class="legend" id="time-legend"></div>
+        <div id="time"></div>
+        <details><summary>Show as table</summary><div class="table-wrap" id="period-table"></div></details>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>By model</h2><span class="sub">Click a row to filter</span></div></div>
+        <div class="bars" id="by-model"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>By provider</h2><span class="sub">Click a row to filter</span></div></div>
+        <div class="bars" id="by-provider"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>By tool</h2><span class="sub">Who made the calls · click to filter</span></div></div>
+        <div class="bars" id="by-tool"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>By agent</h2><span class="sub">Agents and subagents per tool · click to filter</span></div></div>
+        <div class="bars" id="by-agent"></div>
+      </section>
+
+      <section class="card wide">
+        <div class="card-head"><div><h2 id="mix-title">What the money pays for</h2><span class="sub" id="mix-sub"></span></div></div>
+        <div class="legend" id="mix-legend"></div>
+        <div class="mix" id="mix-all"></div>
+        <div class="bars" id="mix-models"></div>
+      </section>
+
+      <section class="card heat-card">
+        <div class="card-head"><div><h2>When</h2><span class="sub">Local time, by weekday and hour</span></div><div class="scale" id="heat-scale"></div></div>
+        <div class="heat" id="heat"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Top sessions</h2><span class="sub">Click a row to filter to one session</span></div></div>
+        <div class="table-wrap" id="sessions"></div>
+      </section>
+
+      <section class="card wide">
+        <div class="card-head"><div><h2>Models</h2><span class="sub">Click a header to sort</span></div></div>
+        <div class="table-wrap" id="models"></div>
+      </section>
+      <section class="card wide">
+        <div class="card-head"><div><h2>Steps</h2><span class="sub" id="steps-sub"></span></div></div>
+        <div class="table-wrap" id="steps" style="max-height: 480px"></div>
+      </section>
+    </div>
+  </div>
+</main>
+<div id="tip" hidden></div>
+
+<script>
+"use strict"
+const $ = (s) => document.querySelector(s)
+const SVGNS = "http://www.w3.org/2000/svg"
+
+// DOM helper: all labels go in as text nodes (model and session names are data).
+function h(tag, attrs = {}, ...kids) {
+  const e = tag.startsWith("svg:") ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v)
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v)
+    else e.setAttribute(k, v === true ? "" : v)
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c instanceof Node ? c : String(c))
+  return e
+}
+
+// ---------- formatting ----------
+function fmtUSD(v) {
+  const a = Math.abs(v)
+  if (a === 0) return "$0"
+  if (a < 0.0001) return "<$0.0001"
+  return "$" + (a >= 100 ? v.toFixed(0) : a >= 1 ? v.toFixed(2) : a >= 0.01 ? v.toFixed(3) : v.toFixed(4))
+}
+function fmtNum(v) {
+  const a = Math.abs(v)
+  if (a >= 1e9) return (v / 1e9).toFixed(2) + "B"
+  if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e8 ? 0 : 1) + "M"
+  if (a >= 1e4) return (v / 1e3).toFixed(a >= 1e5 ? 0 : 1) + "k"
+  return Math.round(v).toLocaleString()
+}
+const fmtPct = (v) => (v >= 0.995 || v === 0 ? (v * 100).toFixed(0) : v >= 0.1 ? (v * 100).toFixed(0) : (v * 100).toFixed(1)) + "%"
+const pad = (n) => String(n).padStart(2, "0")
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const parseDay = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d) }
+const fmtTime = (t) => { const d = new Date(t); return `${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}` }
+function fmtDur(ms) {
+  const m = Math.round(ms / 60000)
+  return m < 1 ? "<1m" : m < 60 ? m + "m" : Math.floor(m / 60) + "h " + pad(m % 60) + "m"
+}
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+// ---------- data ----------
+const TOKEN_TYPES = [
+  // reasoning is billed at the output price (same rule as the plugin)
+  { key: "input", label: "Input", color: "var(--s1)" },
+  { key: "output", label: "Output", color: "var(--s2)" },
+  { key: "reasoning", label: "Reasoning", color: "var(--s5)" },
+  { key: "cache_read", label: "Cache read", color: "var(--s3)" },
+  { key: "cache_write", label: "Cache write", color: "var(--s4)" },
+]
+const UNPRICED = { key: "unpriced", label: "Priced by OpenCode", color: "var(--other)" }
+// Fixed colors per tool, so a tool keeps its color under every filter.
+const TOOL_COLORS = { opencode: "var(--s1)", "claude-code": "var(--s2)", nvim: "var(--s3)", "claude-desktop": "var(--s4)" }
+const toolColor = (t) => TOOL_COLORS[t] ?? "var(--other)"
+const BILLING_LABELS = { gateway: "Gateway (billed per token)", subscription: "Claude seat (API equivalent)", other: "Other provider" }
+// Lines from before `tool`/`billing` existed: Neovim logged agent "nvim", the rest is OpenCode.
+const toolOf = (r) => r.tool || (r.agent === "nvim" ? "nvim" : "opencode")
+const billingOf = (r) => r.billing || (r.gateway ? "gateway" : "other")
+const CONFIG = () => window.GATEWAY_CONFIG || {}
+
+let ROWS = []
+const colorOf = new Map() // model key -> color; follows the model, never its filtered rank
+const providerOf = new Map() // model key -> provider id
+
+function enrich(r) {
+  const n = (k) => Number(r[k]) || 0
+  const d = new Date(r.ts)
+  const tok = {
+    input: n("input_tokens"), output: n("output_tokens"), reasoning: n("reasoning_tokens"),
+    cache_read: n("cache_read_tokens"), cache_write: n("cache_write_tokens"),
+  }
+  const parts = {
+    input: (tok.input * n("input_per_1M")) / 1e6,
+    output: (tok.output * n("output_per_1M")) / 1e6,
+    reasoning: (tok.reasoning * n("output_per_1M")) / 1e6,
+    cache_read: (tok.cache_read * n("cache_read_per_1M")) / 1e6,
+    cache_write: (tok.cache_write * n("cache_write_per_1M")) / 1e6,
+  }
+  const cost = n("cost")
+  const priced = Object.values(parts).reduce((a, b) => a + b, 0)
+  parts.unpriced = cost - priced > 1e-9 ? cost - priced : 0 // non-gateway models: OpenCode's own figure
+  return {
+    raw: r, t: d.getTime(), day: ymd(d), hour: d.getHours(), wd: (d.getDay() + 6) % 7,
+    key: `${r.provider_id}/${r.model_id}`, label: r.model_name || r.model_id, provider: r.provider_id || "unknown",
+    tool: toolOf(r), billing: billingOf(r),
+    agent: `${toolOf(r)} · ${r.agent === "nvim" ? "prediction" : r.agent || "(none)"}`, agentName: r.agent || "(none)",
+    session: r.session_id || "(none)", finish: r.finish || "",
+    tok, tokens: tok.input + tok.output + tok.reasoning + tok.cache_read + tok.cache_write,
+    cost, reported: n("reported_cost"), parts,
+  }
+}
+
+function parseLog(text) {
+  const t = text.trimStart()
+  if (t.startsWith("window.")) text = JSON.parse(t.slice(t.indexOf("=") + 1).trim().replace(/;\s*$/, "")) // a usage-log.js file
+  const seen = new Set()
+  const rows = []
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue
+    try {
+      const r = JSON.parse(line)
+      if (!r.ts || Number.isNaN(Date.parse(r.ts))) continue
+      if (r.event_id) { if (seen.has(r.event_id)) continue; seen.add(r.event_id) }
+      rows.push(enrich(r))
+    } catch { /* torn line */ }
+  }
+  return rows.sort((a, b) => a.t - b.t)
+}
+
+function load(text, sourceLabel) {
+  ROWS = parseLog(text)
+  colorOf.clear()
+  const byModel = group(ROWS, (r) => r.key).sort((a, b) => b.cost - a.cost || b.tokens - a.tokens)
+  byModel.forEach((g, i) => { colorOf.set(g.key, i < 8 ? `var(--s${i + 1})` : "var(--other)"); providerOf.set(g.key, g.rows[0].provider) })
+  const span = ROWS.length ? `${fmtTime(ROWS[0].t)} → ${fmtTime(ROWS.at(-1).t)}` : ""
+  $("#source").textContent = `${ROWS.length.toLocaleString()} steps from ${sourceLabel}${span ? " · " + span : ""} · reload the page for new data`
+  $("#empty").hidden = ROWS.length > 0
+  $("#app").hidden = ROWS.length === 0
+  $("#export").hidden = ROWS.length === 0
+  if (!ROWS.length) $("#empty").querySelector("b").textContent = `No usage steps in ${sourceLabel}.`
+  render()
+}
+
+// ---------- aggregation ----------
+function group(rows, keyFn) {
+  const m = new Map()
+  for (const r of rows) {
+    const k = keyFn(r)
+    let g = m.get(k)
+    if (!g) {
+      g = { key: k, rows: [], steps: 0, cost: 0, reported: 0, tokens: 0, first: r.t, last: r.t, sessions: new Set(), models: new Set(),
+        tok: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 },
+        parts: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, unpriced: 0 } }
+      m.set(k, g)
+    }
+    g.rows.push(r)
+    g.steps++; g.cost += r.cost; g.reported += r.reported; g.tokens += r.tokens
+    if (r.t < g.first) g.first = r.t
+    if (r.t > g.last) g.last = r.t
+    g.sessions.add(r.session); g.models.add(r.key)
+    for (const k in r.tok) g.tok[k] += r.tok[k]
+    for (const k in r.parts) g.parts[k] += r.parts[k]
+  }
+  return [...m.values()]
+}
+
+// ---------- filters ----------
+const F = { from: "", to: "", tool: "", billing: "", provider: "", model: "", agent: "", session: "", metric: "cost" }
+const DIMS = {
+  tool: (r) => r.tool,
+  billing: (r) => r.billing,
+  provider: (r) => r.provider,
+  model: (r) => r.key,
+  agent: (r) => r.agent,
+  session: (r) => r.session,
+}
+const METRICS = {
+  cost: { label: "Cost", of: (g) => g.cost, fmt: fmtUSD },
+  tokens: { label: "Tokens", of: (g) => g.tokens, fmt: fmtNum },
+  steps: { label: "Steps", of: (g) => g.steps, fmt: fmtNum },
+}
+const metric = () => METRICS[F.metric]
+const rowValue = (r) => (F.metric === "cost" ? r.cost : F.metric === "tokens" ? r.tokens : 1)
+
+// `except` lets each dropdown list the values still reachable under the other filters.
+function filtered(except, { dates = true } = {}) {
+  return ROWS.filter((r) =>
+    (!dates || ((!F.from || r.day >= F.from) && (!F.to || r.day <= F.to))) &&
+    Object.entries(DIMS).every(([d, fn]) => d === except || !F[d] || fn(r) === F[d]))
+}
+
+function setFilter(patch) { Object.assign(F, patch); render() }
+const toggle = (dim, value) => setFilter({ [dim]: F[dim] === value ? "" : value })
+
+const PRESETS = [
+  { label: "All", days: null },
+  { label: "Today", days: 0 },
+  { label: "7d", days: 6 },
+  { label: "30d", days: 29 },
+  { label: "90d", days: 89 },
+]
+function presetRange(p) {
+  if (p.days == null) return { from: "", to: "" }
+  const from = new Date(); from.setDate(from.getDate() - p.days)
+  return { from: ymd(from), to: ymd(new Date()) }
+}
+
+function buildControls() {
+  const presets = $("#presets")
+  for (const p of PRESETS) presets.append(h("button", { class: "btn", "data-preset": p.label, onclick: () => setFilter(presetRange(p)) }, p.label))
+  const metrics = $("#metrics")
+  for (const [k, m] of Object.entries(METRICS)) metrics.append(h("button", { class: "btn", "data-metric": k, onclick: () => setFilter({ metric: k }) }, m.label))
+  $("#from").addEventListener("change", (e) => setFilter({ from: e.target.value }))
+  $("#to").addEventListener("change", (e) => setFilter({ to: e.target.value }))
+  for (const d of Object.keys(DIMS)) $(`#f-${d}`).addEventListener("change", (e) => setFilter({ [d]: e.target.value }))
+  $("#reset").addEventListener("click", () => setFilter({ from: "", to: "", ...Object.fromEntries(Object.keys(DIMS).map((d) => [d, ""])) }))
+  $("#export").addEventListener("click", exportCSV)
+}
+
+function optionLabel(dim, g) {
+  const r = g.rows[0]
+  if (dim === "model") return `${r.label} · ${r.provider}`
+  if (dim === "session") return `${fmtTime(g.first)} · ${r.tool} · ${g.steps} steps · ${fmtUSD(g.cost)}`
+  if (dim === "billing") return BILLING_LABELS[g.key] ?? g.key
+  return g.key
+}
+
+function syncControls() {
+  for (const b of document.querySelectorAll("[data-preset]")) {
+    const r = presetRange(PRESETS.find((p) => p.label === b.dataset.preset))
+    b.setAttribute("aria-pressed", String(r.from === F.from && r.to === F.to))
+  }
+  for (const b of document.querySelectorAll("[data-metric]")) b.setAttribute("aria-pressed", String(b.dataset.metric === F.metric))
+  $("#from").value = F.from
+  $("#to").value = F.to
+  for (const [d, fn] of Object.entries(DIMS)) {
+    const sel = $(`#f-${d}`)
+    const groups = group(filtered(d), fn).sort(d === "session" ? (a, b) => b.first - a.first : (a, b) => b.cost - a.cost || b.steps - a.steps)
+    const opts = [h("option", { value: "" }, `All (${groups.length})`)]
+    if (F[d] && !groups.some((g) => g.key === F[d])) opts.push(h("option", { value: F[d] }, `${F[d]} (no data in range)`))
+    for (const g of groups) opts.push(h("option", { value: g.key }, optionLabel(d, g)))
+    sel.replaceChildren(...opts)
+    sel.value = F[d]
+    sel.classList.toggle("active", !!F[d])
+    sel.closest(".group").hidden = d !== "session" && !F[d] && groups.length < 2 // nothing to choose
+  }
+}
+
+// ---------- tooltip ----------
+const tip = $("#tip")
+function showTip(x, y, title, lines) {
+  tip.replaceChildren(
+    h("div", { class: "tt-title" }, title),
+    ...lines.map(([color, value, label]) =>
+      h("div", { class: "tt-row" }, color ? h("i", { class: "key", style: { background: color } }) : null, h("b", {}, value), h("span", {}, label))),
+  )
+  tip.hidden = false
+  const w = tip.offsetWidth, ht = tip.offsetHeight
+  tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px"
+  tip.style.top = (y + ht + 20 > innerHeight ? y - ht - 10 : y + 14) + "px"
+}
+// Same tooltip on pointer hover and keyboard focus.
+function hover(el, content) {
+  el.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, ...content()))
+  el.addEventListener("pointerleave", () => (tip.hidden = true))
+  el.addEventListener("focus", () => { const b = el.getBoundingClientRect(); showTip(b.left + b.width / 2, b.bottom, ...content()) })
+  el.addEventListener("blur", () => (tip.hidden = true))
+}
+
+// ---------- KPIs ----------
+// Spend of the current calendar month under the tool/billing/... filters (not the date range).
+function monthTile() {
+  const now = new Date()
+  const first = ymd(new Date(now.getFullYear(), now.getMonth(), 1))
+  const spent = filtered(undefined, { dates: false }).filter((r) => r.day >= first).reduce((a, r) => a + r.cost, 0)
+  const daysIn = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const projected = (spent / now.getDate()) * daysIn
+  const limit = Number(CONFIG().monthlyLimitUSD) || 0
+  if (!limit) return ["This month", fmtUSD(spent), `projected ${fmtUSD(projected)} · set monthlyLimitUSD in config.js`]
+  const share = spent / limit
+  return ["This month", fmtUSD(spent),
+    h("div", { class: "meter", title: `${fmtPct(share)} of the monthly limit` }, h("b", { class: share >= 1 ? "over" : share >= 0.8 ? "warn" : null, style: { width: `${Math.min(share, 1) * 100}%` } })),
+    `${fmtPct(share)} of ${fmtUSD(limit)} · projected ${fmtUSD(projected)}`]
+}
+
+function renderKPIs(rows) {
+  const g = group(rows, () => "all")[0]
+  const days = new Set(rows.map((r) => r.day)).size
+  const promptTok = g ? g.tok.input + g.tok.cache_read + g.tok.cache_write : 0
+  // OpenCode's own cost figure only exists for OpenCode steps.
+  const oc = group(rows.filter((r) => r.tool === "opencode"), () => "oc")[0]
+  const bills = group(rows, (r) => r.billing).sort((a, b) => b.cost - a.cost)
+  const costSub = bills.length > 1 ? bills.map((b) => `${b.key} ${fmtUSD(b.cost)}`).join(" · ")
+    : oc && Math.abs(oc.reported - oc.cost) > 1e-6 ? `OpenCode reports ${fmtUSD(oc.reported)} for its steps`
+    : `${days} active day${days === 1 ? "" : "s"} · ${fmtUSD(g?.cost / days || 0)}/day`
+  const tiles = g ? [
+    ["Total cost", fmtUSD(g.cost), costSub],
+    monthTile(),
+    ["Steps", fmtNum(g.steps), `${fmtUSD(g.cost / g.steps)} per step`],
+    ["Sessions", fmtNum(g.sessions.size), `${fmtUSD(g.cost / g.sessions.size)} per session`],
+    ["Tokens", fmtNum(g.tokens), `${fmtNum(promptTok)} prompt · ${fmtNum(g.tok.output + g.tok.reasoning)} completion`],
+    ["Cache hit rate", promptTok ? fmtPct(g.tok.cache_read / promptTok) : "–", "prompt tokens served from cache"],
+    ["Effective price", g.tokens ? fmtUSD((g.cost / g.tokens) * 1e6) : "–", "per 1M tokens, all types"],
+  ] : [["Total cost", "$0", "no steps match the filters"], monthTile()]
+  $("#kpis").replaceChildren(...tiles.map(([l, v, ...extra]) => h("div", { class: "kpi" }, h("div", { class: "label" }, l), h("div", { class: "value" }, v),
+    ...extra.map((x) => (x instanceof Node ? x : h("div", { class: "sub" }, x))))))
+}
+
+// ---------- time chart (stacked columns per model) ----------
+function bucketing(rows) {
+  const lo = F.from ? parseDay(F.from).getTime() : rows[0].t
+  const hi = F.to ? parseDay(F.to).getTime() + 864e5 - 1 : rows.at(-1).t
+  const span = hi - lo
+  const unit = span <= 2 * 864e5 ? "hour" : span > 150 * 864e5 ? "week" : "day"
+  const start = new Date(lo)
+  start.setMinutes(0, 0, 0)
+  if (unit !== "hour") start.setHours(0)
+  if (unit === "week") start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  const keyOf = (t) => {
+    const d = new Date(t)
+    if (unit === "hour") return `${ymd(d)} ${pad(d.getHours())}:00`
+    if (unit === "week") d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+    return ymd(d)
+  }
+  const keys = []
+  for (const d = start; d.getTime() <= hi && keys.length < 5000; ) {
+    keys.push(keyOf(d.getTime()))
+    if (unit === "hour") d.setHours(d.getHours() + 1)
+    else d.setDate(d.getDate() + (unit === "week" ? 7 : 1))
+  }
+  return { unit, keys, keyOf }
+}
+
+function niceTicks(max, n = 4) {
+  if (!(max > 0)) return [0, 1]
+  const raw = max / n
+  const p = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= raw)
+  const ticks = []
+  for (let v = 0; v < max + step * 0.999; v += step) ticks.push(+v.toPrecision(12))
+  return ticks
+}
+
+// Column path with rounded top (4px) and square base.
+function colPath(x, y, w, hgt, r) {
+  r = Math.min(r, w / 2, hgt)
+  return `M${x},${y + hgt}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + hgt}Z`
+}
+
+function renderTime(rows) {
+  const box = $("#time")
+  const m = metric()
+  $("#time-title").textContent = { cost: "Spend over time", tokens: "Tokens over time", steps: "Steps over time" }[F.metric]
+  if (!rows.length) { box.replaceChildren(h("div", { class: "nodata" }, "No steps match the filters")); $("#time-legend").replaceChildren(); $("#period-table").replaceChildren(); return }
+  const { unit, keys, keyOf } = bucketing(rows)
+  $("#time-sub").textContent = `per ${unit}, stacked by model`
+
+  // Series: models with a color slot; the long tail folds into "Other".
+  const series = new Map()
+  for (const r of rows) {
+    const c = colorOf.get(r.key)
+    const sk = c === "var(--other)" ? "__other" : r.key
+    let s = series.get(sk)
+    if (!s) series.set(sk, (s = { key: sk, label: sk === "__other" ? "Other models" : r.label, color: c, total: 0, by: new Map() }))
+    const k = keyOf(r.t), v = rowValue(r)
+    s.total += v
+    s.by.set(k, (s.by.get(k) ?? 0) + v)
+  }
+  const list = [...series.values()].sort((a, b) => (a.key === "__other") - (b.key === "__other") || b.total - a.total)
+  $("#time-legend").replaceChildren(...(list.length > 1 ? list.map((s) => h("span", {}, h("i", { style: { background: s.color } }), s.label)) : []))
+
+  const totals = keys.map((k) => list.reduce((a, s) => a + (s.by.get(k) ?? 0), 0))
+  const ticks = niceTicks(Math.max(...totals))
+  const yMax = ticks.at(-1)
+  const W = Math.max(320, box.clientWidth), H = 260, ml = 58, mr = 8, mt = 8, mb = 26
+  const pw = W - ml - mr, ph = H - mt - mb
+  const step = pw / keys.length
+  const bw = Math.max(1, Math.min(48, step * 0.72))
+  const y = (v) => mt + ph - (v / yMax) * ph
+  const svg = h("svg:svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": `${m.label} per ${unit}` })
+
+  for (const t of ticks) {
+    svg.append(h("svg:line", { x1: ml, x2: W - mr, y1: y(t), y2: y(t), stroke: t === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }))
+    svg.append(h("svg:text", { x: ml - 6, y: y(t) + 4, "text-anchor": "end" }, m.fmt(t)))
+  }
+  const every = Math.ceil(keys.length / Math.max(2, Math.floor(pw / 72)))
+  keys.forEach((k, i) => {
+    const cx = ml + step * i + step / 2
+    if (i % every === 0) svg.append(h("svg:text", { x: cx, y: H - 8, "text-anchor": "middle" }, unit === "hour" ? k.slice(11) : k.slice(5)))
+    let acc = 0
+    const segs = list.map((s) => ({ s, v: s.by.get(k) ?? 0 })).filter((x) => x.v > 0)
+    segs.forEach(({ s, v }, j) => {
+      const y0 = y(acc), y1 = y(acc + v)
+      acc += v
+      const top = j === segs.length - 1
+      const hgt = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0)) // 2px surface gap between stacked segments
+      if (hgt <= 0) return
+      svg.append(top ? h("svg:path", { d: colPath(cx - bw / 2, y1, bw, hgt, 4), fill: s.color })
+        : h("svg:rect", { x: cx - bw / 2, y: y1, width: bw, height: hgt, fill: s.color }))
+    })
+    const hit = h("svg:rect", { class: "hit", x: ml + step * i, y: mt, width: step, height: ph, tabindex: totals[i] ? 0 : -1 })
+    hover(hit, () => [
+      `${unit === "week" ? "Week of " : ""}${k} · total ${m.fmt(totals[i])}`,
+      segs.length ? segs.slice().reverse().map(({ s, v }) => [s.color, m.fmt(v), s.label]) : [[null, "–", "no usage"]],
+    ])
+    svg.append(hit)
+  })
+  box.replaceChildren(svg)
+
+  const periods = group(rows, (r) => keyOf(r.t)).sort((a, b) => b.key.localeCompare(a.key))
+  table($("#period-table"), "periods", [
+    { label: unit[0].toUpperCase() + unit.slice(1), get: (g) => g.key },
+    { label: "Steps", get: (g) => g.steps, fmt: fmtNum, num: true },
+    { label: "Sessions", get: (g) => g.sessions.size, num: true },
+    { label: "Tokens", get: (g) => g.tokens, fmt: fmtNum, num: true },
+    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
+  ], periods, { sort: 0, dir: -1 })
+}
+
+// ---------- horizontal bar lists ----------
+function renderBars(box, groups, { label, sub, color, dim, limit = 12 }) {
+  const m = metric()
+  const total = groups.reduce((a, g) => a + m.of(g), 0)
+  groups = groups.sort((a, b) => m.of(b) - m.of(a) || b.steps - a.steps)
+  const max = Math.max(...groups.map(m.of), 0) || 1
+  const shown = groups.slice(0, limit)
+  box.replaceChildren(...(shown.length ? shown.map((g) => {
+    const v = m.of(g)
+    const row = h("button", { class: "bar-row" + (F[dim] === g.key ? " selected" : ""), onclick: () => toggle(dim, g.key), "aria-pressed": String(F[dim] === g.key) },
+      h("span", { class: "bar-name" }, label(g), sub ? h("small", {}, sub(g)) : null),
+      h("span", { class: "track" }, h("b", { style: { width: `${(v / max) * 100}%`, background: color(g) } })),
+      h("span", { class: "bar-val" }, m.fmt(v), h("small", {}, total ? fmtPct(v / total) : "")))
+    hover(row, () => [label(g), [
+      [null, fmtUSD(g.cost), "cost"], [null, fmtNum(g.tokens), "tokens"], [null, fmtNum(g.steps), "steps"],
+      [null, fmtNum(g.sessions.size), "sessions"], [null, g.steps ? fmtUSD(g.cost / g.steps) : "–", "per step"],
+    ]])
+    return row
+  }) : [h("div", { class: "nodata" }, "No data")]),
+  ...(groups.length > limit ? [h("div", { class: "sub" }, `+ ${groups.length - limit} more in the Models table`)] : []))
+}
+
+// ---------- cost composition by token type ----------
+function renderMix(rows) {
+  const byCost = F.metric === "cost"
+  const types = byCost ? [...TOKEN_TYPES, UNPRICED] : TOKEN_TYPES
+  const val = (g, k) => (byCost ? g.parts[k] : g.tok[k] ?? 0)
+  const fmt = byCost ? fmtUSD : fmtNum
+  $("#mix-title").textContent = byCost ? "What the money pays for" : "Token mix"
+  $("#mix-sub").textContent = byCost ? "Cost split by token type (reasoning is billed at the output price)" : "Tokens by type"
+  const all = group(rows, () => "all")[0]
+  const present = all ? types.filter((t) => val(all, t.key) > 0) : []
+  $("#mix-legend").replaceChildren(...present.map((t) => h("span", {}, h("i", { style: { background: t.color } }), t.label)))
+  const sum = (g) => present.reduce((a, t) => a + val(g, t.key), 0)
+  if (!all || !sum(all)) {
+    $("#mix-all").replaceChildren(); $("#mix-models").replaceChildren(h("div", { class: "nodata" }, byCost ? "No cost in this selection (only free models?) — switch Measure to Tokens" : "No data"))
+    return
+  }
+  const total = sum(all)
+  const tipFor = (g, name) => () => [`${name} · ${fmt(sum(g))}`, present.filter((t) => val(g, t.key) > 0).map((t) => [t.color, fmt(val(g, t.key)), `${t.label} · ${fmtPct(val(g, t.key) / sum(g))}`])]
+  $("#mix-all").replaceChildren(...present.map((t) => {
+    const share = val(all, t.key) / total
+    const seg = h("b", { style: { flex: `${share} 1 0`, background: t.color }, tabindex: 0 }, share > 0.08 ? `${t.label} ${fmtPct(share)}` : "")
+    hover(seg, tipFor(all, "All models"))
+    return seg
+  }))
+  const models = group(rows, (r) => r.key).filter((g) => sum(g) > 0).sort((a, b) => sum(b) - sum(a))
+  const max = sum(models[0])
+  $("#mix-models").replaceChildren(...models.slice(0, 10).map((g) => {
+    const s = sum(g)
+    const row = h("button", { class: "bar-row" + (F.model === g.key ? " selected" : ""), onclick: () => toggle("model", g.key) },
+      h("span", { class: "bar-name" }, g.rows[0].label),
+      h("span", { class: "track" }, h("span", { style: { display: "flex", gap: "2px", width: `${(s / max) * 100}%` } },
+        ...present.filter((t) => val(g, t.key) > 0).map((t) => h("b", { style: { flex: `${val(g, t.key)} 1 0`, background: t.color } })))),
+      h("span", { class: "bar-val" }, fmt(s), h("small", {}, fmtPct(s / total))))
+    hover(row, tipFor(g, g.rows[0].label))
+    return row
+  }))
+}
+
+// ---------- weekday x hour heatmap ----------
+function renderHeat(rows) {
+  const m = metric()
+  const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ v: 0, steps: 0, cost: 0 })))
+  for (const r of rows) { const c = cells[r.wd][r.hour]; c.v += rowValue(r); c.steps++; c.cost += r.cost }
+  const max = Math.max(...cells.flat().map((c) => c.v))
+  const level = (v) => (v > 0 && max > 0 ? Math.max(1, Math.ceil((v / max) * 7)) : 0)
+  const sumOf = (list) => list.reduce((a, c) => ({ v: a.v + c.v, steps: a.steps + c.steps, cost: a.cost + c.cost }), { v: 0, steps: 0, cost: 0 })
+  const dayTot = cells.map(sumOf)
+  const hourTot = Array.from({ length: 24 }, (_, hr) => sumOf(cells.map((row) => row[hr])))
+  const all = sumOf(dayTot)
+  const hourMax = Math.max(...hourTot.map((c) => c.v)) || 1
+  const lines = (c) => [
+    [null, m.fmt(c.v), `${m.label.toLowerCase()}${all.v ? " · " + fmtPct(c.v / all.v) + " of selection" : ""}`],
+    [null, fmtNum(c.steps), "steps"],
+    ...(F.metric === "cost" ? [] : [[null, fmtUSD(c.cost), "cost"]]),
+  ]
+
+  const hourLabels = Array.from({ length: 24 }, (_, hr) => h("span", { class: "hl" + (hr % 6 ? " minor" : "") }, hr % 3 === 0 ? pad(hr) : ""))
+  const dayLabels = WEEKDAYS.map((d) => h("span", { class: "wl" }, d))
+  // Crosshair: the hovered cell lights up its weekday and hour labels.
+  const mark = (wd, hr, on) => { if (wd != null) dayLabels[wd].classList.toggle("on", on); if (hr != null) hourLabels[hr - (hr % 3)].classList.toggle("on", on) }
+  const cross = (el, wd, hr) => {
+    el.addEventListener("pointerenter", () => mark(wd, hr, true)); el.addEventListener("pointerleave", () => mark(wd, hr, false))
+    el.addEventListener("focus", () => mark(wd, hr, true)); el.addEventListener("blur", () => mark(wd, hr, false))
+  }
+
+  const kids = [h("span"), ...hourLabels, h("span", { class: "hl tot" }, "total")]
+  cells.forEach((row, wd) => {
+    kids.push(dayLabels[wd])
+    row.forEach((c, hr) => {
+      const lv = level(c.v)
+      const cell = h("span", { class: "cell", tabindex: c.steps ? 0 : -1, style: lv ? { background: `var(--h${lv})` } : {} })
+      hover(cell, () => [`${WEEKDAYS[wd]} ${pad(hr)}:00–${pad(hr)}:59`, lines(c)])
+      cross(cell, wd, hr)
+      kids.push(cell)
+    })
+    const tot = h("span", { class: "tot", tabindex: dayTot[wd].steps ? 0 : -1 }, dayTot[wd].v ? m.fmt(dayTot[wd].v) : "–")
+    hover(tot, () => [`All ${WEEKDAYS[wd]}s`, lines(dayTot[wd])])
+    cross(tot, wd, null)
+    kids.push(tot)
+  })
+  kids.push(h("span", { class: "corner" }, "hour"))
+  hourTot.forEach((c, hr) => {
+    const bar = h("span", { class: "hbar", tabindex: c.steps ? 0 : -1 }, h("b", { style: { height: `${(c.v / hourMax) * 100}%` } }))
+    hover(bar, () => [`${pad(hr)}:00–${pad(hr)}:59, all days`, lines(c)])
+    cross(bar, null, hr)
+    kids.push(bar)
+  })
+  kids.push(h("span"))
+  $("#heat").replaceChildren(...kids)
+  $("#heat-scale").replaceChildren("less", ...[1, 2, 3, 4, 5, 6, 7].map((i) => h("i", { style: { background: `var(--h${i})` } })), "more")
+}
+
+// ---------- sortable tables ----------
+const sortState = {}
+function table(box, id, cols, data, { sort = 0, dir = -1, limit, onRow, rowTitle } = {}) {
+  const st = (sortState[id] ??= { col: sort, dir })
+  const c = cols[st.col]
+  const sorted = data.slice().sort((a, b) => {
+    const x = c.get(a), y = c.get(b)
+    return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * st.dir
+  })
+  const head = h("tr", {}, ...cols.map((col, i) => h("th", {
+    class: col.num ? "num" : null, scope: "col", tabindex: 0,
+    "aria-sort": i === st.col ? (st.dir < 0 ? "descending" : "ascending") : null,
+    onclick: () => { st.dir = st.col === i ? -st.dir : col.num ? -1 : 1; st.col = i; render() },
+    onkeydown: (e) => { if (e.key === "Enter") e.target.click() },
+  }, col.label)))
+  const body = (limit ? sorted.slice(0, limit) : sorted).map((d) => h("tr", {
+    class: onRow ? "click" : null, onclick: onRow ? () => onRow(d) : null, title: rowTitle?.(d),
+  }, ...cols.map((col) => h("td", { class: col.num ? "num" : null }, col.cell ? col.cell(d) : col.fmt ? col.fmt(col.get(d)) : col.get(d)))))
+  box.replaceChildren(h("table", {}, h("thead", {}, head), h("tbody", {}, ...body)))
+}
+
+const modelCell = (key, label) => [h("span", { class: "dot", style: { background: colorOf.get(key) } }), label]
+
+function renderTables(rows) {
+  const sessions = group(rows, (r) => r.session)
+  table($("#sessions"), "sessions", [
+    { label: "Started", get: (g) => g.first, fmt: fmtTime },
+    { label: "Tool", get: (g) => g.rows[0].tool },
+    { label: "Duration", get: (g) => g.last - g.first, fmt: fmtDur, num: true },
+    { label: "Steps", get: (g) => g.steps, num: true },
+    { label: "Models", get: (g) => [...g.models].map((k) => ROWS.find((r) => r.key === k)?.label ?? k).join(", ") },
+    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
+  ], sessions, { sort: 5, limit: 12, onRow: (g) => toggle("session", g.key), rowTitle: (g) => g.key })
+
+  const models = group(rows, (r) => r.key)
+  const total = models.reduce((a, g) => a + g.cost, 0)
+  const pct = (v) => (v ? fmtPct(v) : "–")
+  table($("#models"), "models", [
+    { label: "Model", get: (g) => g.rows[0].label, cell: (g) => modelCell(g.key, g.rows[0].label) },
+    { label: "Provider", get: (g) => g.rows[0].provider },
+    { label: "Steps", get: (g) => g.steps, fmt: fmtNum, num: true },
+    { label: "Sessions", get: (g) => g.sessions.size, num: true },
+    { label: "Input", get: (g) => g.tok.input, fmt: fmtNum, num: true },
+    { label: "Output", get: (g) => g.tok.output, fmt: fmtNum, num: true },
+    { label: "Reasoning", get: (g) => g.tok.reasoning, fmt: fmtNum, num: true },
+    { label: "Cache read", get: (g) => g.tok.cache_read, fmt: fmtNum, num: true },
+    { label: "Cache write", get: (g) => g.tok.cache_write, fmt: fmtNum, num: true },
+    { label: "Cache hit", get: (g) => g.tok.cache_read / (g.tok.input + g.tok.cache_read + g.tok.cache_write || 1), fmt: pct, num: true },
+    { label: "$ / step", get: (g) => g.cost / g.steps, fmt: fmtUSD, num: true },
+    { label: "$ / 1M tok", get: (g) => (g.tokens ? (g.cost / g.tokens) * 1e6 : 0), fmt: fmtUSD, num: true },
+    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
+    { label: "Share", get: (g) => (total ? g.cost / total : 0), fmt: pct, num: true },
+  ], models, { sort: 12, onRow: (g) => toggle("model", g.key) })
+
+  const LIMIT = 300
+  $("#steps-sub").textContent = rows.length > LIMIT ? `Showing ${LIMIT} of ${rows.length.toLocaleString()} — Export CSV for all` : `${rows.length.toLocaleString()} steps`
+  table($("#steps"), "steps", [
+    { label: "Time", get: (r) => r.t, fmt: fmtTime },
+    { label: "Model", get: (r) => r.label, cell: (r) => modelCell(r.key, r.label) },
+    { label: "Tool", get: (r) => r.tool },
+    { label: "Agent", get: (r) => r.agentName },
+    { label: "Finish", get: (r) => r.finish },
+    { label: "Input", get: (r) => r.tok.input, fmt: fmtNum, num: true },
+    { label: "Output", get: (r) => r.tok.output, fmt: fmtNum, num: true },
+    { label: "Reasoning", get: (r) => r.tok.reasoning, fmt: fmtNum, num: true },
+    { label: "Cache read", get: (r) => r.tok.cache_read, fmt: fmtNum, num: true },
+    { label: "Cache write", get: (r) => r.tok.cache_write, fmt: fmtNum, num: true },
+    { label: "Cost", get: (r) => r.cost, fmt: fmtUSD, num: true },
+  ], rows, { sort: 0, limit: LIMIT, onRow: (r) => toggle("session", r.session), rowTitle: (r) => `session ${r.session} — click to filter` })
+}
+
+// ---------- export ----------
+function exportCSV() {
+  const rows = filtered().map((r) => r.raw)
+  const cols = [...new Set(rows.flatMap(Object.keys))]
+  const esc = (v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n") + "\n"
+  const a = h("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `gateway-usage-${F.from || "all"}-${F.to || "now"}.csv` })
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
+// ---------- render ----------
+function render() {
+  if (!ROWS.length) return
+  tip.hidden = true
+  syncControls()
+  const rows = filtered()
+  renderKPIs(rows)
+  renderTime(rows)
+  renderBars($("#by-model"), group(rows, (r) => r.key), {
+    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => colorOf.get(g.key), dim: "model",
+  })
+  renderBars($("#by-provider"), group(rows, (r) => r.provider), {
+    label: (g) => g.key, sub: (g) => `${g.models.size} model${g.models.size === 1 ? "" : "s"}`, color: () => "var(--s1)", dim: "provider",
+  })
+  renderBars($("#by-tool"), group(rows, (r) => r.tool), {
+    label: (g) => g.key, sub: (g) => [...new Set(g.rows.map((r) => r.billing))].map((b) => BILLING_LABELS[b] ?? b).join(", "), color: (g) => toolColor(g.key), dim: "tool",
+  })
+  renderBars($("#by-agent"), group(rows, (r) => r.agent), {
+    label: (g) => g.key, sub: (g) => `${g.models.size} model${g.models.size === 1 ? "" : "s"} · ${g.sessions.size} session${g.sessions.size === 1 ? "" : "s"}`, color: (g) => toolColor(g.rows[0].tool), dim: "agent",
+  })
+  renderMix(rows)
+  renderHeat(rows)
+  renderTables(rows)
+}
+
+// ---------- boot ----------
+buildControls()
+let resizeTimer
+new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => ROWS.length && renderTime(filtered()), 100) }).observe($("main"))
+
+async function loadFile(file) {
+  if (file) load(await file.text(), file.name)
+}
+$("#file").addEventListener("change", (e) => loadFile(e.target.files[0]))
+addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging") })
+addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.body.classList.remove("dragging") })
+addEventListener("drop", (e) => { e.preventDefault(); document.body.classList.remove("dragging"); loadFile(e.dataTransfer.files[0]) })
+
+// The writers keep window.GATEWAY_USAGE_LOG = "<usage.jsonl text>" in ~/.gateway-cost/usage-log.js,
+// and config.js there holds window.GATEWAY_CONFIG. <script> tags may read local files (fetch
+// may not). Try next to this page (the copy in ~/.gateway-cost), then the default folder seen
+// from ~/.config/opencode/plugins/ai-gateway/.
+const DATA_DIRS = ["", "../../../../.gateway-cost/"]
+function loadData(i = 0) {
+  if (i >= DATA_DIRS.length) return
+  const dir = DATA_DIRS[i]
+  document.body.append(h("script", {
+    src: dir + "usage-log.js",
+    onload: () => {
+      if (typeof window.GATEWAY_USAGE_LOG !== "string") return loadData(i + 1)
+      // Optional settings; the page works without them.
+      const show = () => load(window.GATEWAY_USAGE_LOG, dir + "usage-log.js")
+      document.body.append(h("script", { src: dir + "config.js", onload: show, onerror: show }))
+    },
+    onerror: () => loadData(i + 1),
+  }))
+}
+loadData()
+</script>
+</body>
+</html>
