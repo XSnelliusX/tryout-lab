@@ -385,12 +385,14 @@ step_cmux() {
 }
 
 set_default() { # set_default <domain> <key> <-bool|-int> <value>: writes only when the value differs
-  local cur
+  # defaults read prints a bool as 1/0, but defaults write -bool only takes true/false
+  local cur val="$4"
   cur="$(defaults read "$1" "$2" 2>/dev/null || true)"
-  if [ "$cur" = "$4" ]; then return 0; fi
+  if [ "$cur" = "$4" ]; then info "unchanged $1 $2 ($4)"; return 0; fi
+  if [ "$3" = -bool ]; then if [ "$4" = 1 ]; then val=true; else val=false; fi; fi
   DEFAULTS_CHANGED=1
-  if dry; then info "would set $1 $2 to $4"; return 0; fi
-  defaults write "$1" "$2" "$3" "$4"; info "set $1 $2 to $4"
+  if dry; then info "would set $1 $2 to $val (now: ${cur:-not set})"; return 0; fi
+  defaults write "$1" "$2" "$3" "$val"; info "set $1 $2 to $val (was: ${cur:-not set})"
 }
 
 step_vorssaint() {
@@ -473,12 +475,15 @@ step_asdf() {
     while read -r tool _; do [ -n "$tool" ] && asdf plugin add "$tool" 2>/dev/null || true; done < "$f"
   done
   (cd "$HOME" && asdf install)
-  if [ -f "$repo/.tool-versions" ]; then (cd "$repo" && asdf install); fi
+  # the repo's versions are usually the global ones too: only run asdf again for the ones that are not
+  if [ -f "$repo/.tool-versions" ] && grep -vxqFf "$HOME/.tool-versions" "$repo/.tool-versions"; then (cd "$repo" && asdf install); fi
 }
 
 step_macos() {
   bold "macOS preferences (optional)"
-  ask "Show file extensions, path bar, and use a faster key repeat?" n || { fdesetup status || true; return 0; }
+  info "Finder: show all file extensions, and the path bar at the bottom of each window"
+  info "Keyboard: key repeat every 30 ms (the fastest the Settings slider goes), after a 300 ms hold"
+  ask "Set these?" n || { fdesetup status || true; return 0; }
   DEFAULTS_CHANGED=0
   set_default NSGlobalDomain AppleShowAllExtensions -bool 1
   set_default com.apple.finder ShowPathbar -bool 1
@@ -486,6 +491,7 @@ step_macos() {
   set_default NSGlobalDomain InitialKeyRepeat -int 20
   if [ "$DEFAULTS_CHANGED" = 1 ]; then
     if dry; then info "would restart Finder"; else killall Finder || true; fi
+    info "the key repeat applies after you log out and back in"
   fi
   fdesetup status || info "turn FileVault on in System Settings"
 }
