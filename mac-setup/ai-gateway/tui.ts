@@ -26,7 +26,7 @@ function setting(name: string, fallback: string): string {
     for (const line of readFileSync(expandHome(process.env.GATEWAY_ENV_FILE ?? "~/.config/ai-gateway/env"), "utf8").split(/\r?\n/)) {
       const m = line.match(/^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$/)
       if (!m || m[1] !== name) continue
-      const quoted = m[2].match(/^(["'])(.*)\1$/)
+      const quoted = m[2].match(/^(["'])(.*?)\1(?:\s+#.*)?$/) // "v" or "v" # note
       value = quoted ? quoted[2] : m[2].replace(/\s+#.*$/, "")
     }
   } catch {} // no env file: the default applies
@@ -53,6 +53,7 @@ type Status = {
 }
 
 function expandHome(p: string): string {
+  p = p.replace(/^\$(?:HOME\b|\{HOME\})/, "~") // the env file is shell syntax: setup.sh writes "$HOME/.keys/..."
   if (p === "~") return homedir()
   if (p.startsWith("~/") || p.startsWith("~\\")) return join(homedir(), p.slice(2))
   return p

@@ -10,12 +10,12 @@ Usage:
   python3 check_gateway.py            # fast list + slow info (slow: ~1 min)
   python3 check_gateway.py --fast     # only the fast /models endpoint
   python3 check_gateway.py --info     # only the slow /model/info endpoint
-  python3 check_gateway.py --out DIR  # write models.json/models.csv to DIR
+  python3 check_gateway.py --out DIR  # also write models.json/models.csv to DIR (not the plugin's
+                                      # ~/.gateway-cost: the plugin writes a fuller models.json there)
 
 Settings (each one: process environment, then the env file, then the default):
   GATEWAY_BASE_URL       gateway base URL, no default (required)
   GATEWAY_API_KEY_FILE   key file, default ~/.keys/ai-gateway.key
-  GATEWAY_COST_DIR       out dir, default ~/.gateway-cost
   The env file is ~/.config/ai-gateway/env, or $GATEWAY_ENV_FILE if set.
 """
 
@@ -32,14 +32,19 @@ import urllib.request
 
 # Same lookup as setting() in index.ts. The env file is read because a GUI-started
 # OpenCode never sources ~/.zshrc. Format: `export NAME=value` or `NAME=value`, # comments, quotes.
+def expand_home(path):
+    """~ and a leading $HOME or ${HOME}: the env file is shell syntax, setup.sh writes "$HOME/.keys/..."."""
+    return os.path.expanduser(re.sub(r"^\$(?:HOME\b|\{HOME\})", "~", path))
+
+
 def env_file_values():
     values = {}
     try:
-        with open(os.path.expanduser(os.environ.get("GATEWAY_ENV_FILE", "~/.config/ai-gateway/env")), encoding="utf-8") as f:
+        with open(expand_home(os.environ.get("GATEWAY_ENV_FILE", "~/.config/ai-gateway/env")), encoding="utf-8") as f:
             for line in f:
                 m = re.match(r"\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$", line)
                 if m:
-                    quoted = re.fullmatch(r"([\"'])(.*)\1", m.group(2))
+                    quoted = re.fullmatch(r"([\"'])(.*?)\1(?:\s+#.*)?", m.group(2))  # "v" or "v" # note
                     values[m.group(1)] = quoted.group(2) if quoted else re.sub(r"\s+#.*$", "", m.group(2))
     except (OSError, ValueError):  # no env file, or not readable text: the defaults apply
         pass
@@ -55,8 +60,7 @@ def setting(name, fallback):
 
 BASE_URL = setting("GATEWAY_BASE_URL", "").strip().rstrip("/")
 # Same spec as the plugin: "{file:path}" or a plain path, "~" works on every OS.
-KEY_FILE = os.path.expanduser(setting("GATEWAY_API_KEY_FILE", "~/.keys/ai-gateway.key").removeprefix("{file:").removesuffix("}").strip())
-DEFAULT_OUT = os.path.expanduser(setting("GATEWAY_COST_DIR", "~/.gateway-cost"))
+KEY_FILE = expand_home(setting("GATEWAY_API_KEY_FILE", "~/.keys/ai-gateway.key").removeprefix("{file:").removesuffix("}").strip())
 
 FAST_URL = f"{BASE_URL}/aiendpoint/v1/models"
 INFO_URL = f"{BASE_URL}/aiendpoint/v1/model/info"
@@ -64,6 +68,8 @@ SKIP_MODES = {"evaluation", "embedding"}
 
 
 def read_key():
+    if not KEY_FILE:
+        return None  # GATEWAY_API_KEY_FILE="": no auth, like the plugin
     try:
         with open(KEY_FILE, encoding="utf-8") as f:
             return f.read().strip()
@@ -73,7 +79,7 @@ def read_key():
 
 
 def auth_headers(key):
-    return {"Authorization": f"Bearer {key}"}
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 def fetch(url, key, timeout=150):
@@ -277,8 +283,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fast", action="store_true", help="only the fast /models endpoint")
     ap.add_argument("--info", action="store_true", help="only the slow /model/info endpoint")
-    ap.add_argument("--out", default=DEFAULT_OUT)
-    ap.add_argument("--no-write", action="store_true", help="print only, do not write files")
+    ap.add_argument("--out", help="write models.json/models.csv to this folder (default: print only)")
     args = ap.parse_args()
     if not BASE_URL:
         sys.exit("[!] GATEWAY_BASE_URL is not set. Run mac-setup/setup.sh --only gateway, or add it to ~/.config/ai-gateway/env (or the file in GATEWAY_ENV_FILE).")
@@ -299,8 +304,8 @@ def main():
         if args.fast:
             rows = build_rows(fast, [])
             print(f"[i] computed {len(rows)} rows (fast-only, enriched=False)")
-            if not args.no_write:
-                write_reports(rows, fp, args.out)
+            if args.out:
+                write_reports(rows, fp, expand_home(args.out))
             return
 
     print("[i] fetching slow /model/info ... (this may take a minute)")
@@ -324,8 +329,8 @@ def main():
     for prov, ids in sorted(by_provider.items()):
         print(f"   {prov:28s} {len(ids):3d} models  e.g. {', '.join(ids[:3])}")
 
-    if not args.no_write:
-        write_reports(rows, fp, args.out)
+    if args.out:
+        write_reports(rows, fp, expand_home(args.out))
 
 
 if __name__ == "__main__":

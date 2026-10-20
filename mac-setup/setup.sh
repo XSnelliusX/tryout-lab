@@ -355,7 +355,11 @@ step_gateway() {
   if [ -z "$url" ]; then info "no URL, the env file is not written"; return 0; fi
   cur="$(gw_value GATEWAY_API_KEY_FILE)"
   keyfile="$(input "API key file" "${cur:-$HOME/.keys/ai-gateway.key}")"
-  keyfile="${keyfile/#\~/$HOME}"
+  case "$keyfile" in   # ~, $HOME and ${HOME} typed at the prompt
+    "~"|"~/"*) keyfile="$HOME${keyfile#\~}" ;;
+    '$HOME'|'$HOME/'*) keyfile="$HOME${keyfile#\$HOME}" ;;
+    '${HOME}'|'${HOME}/'*) keyfile="$HOME${keyfile#\$\{HOME\}}" ;;
+  esac
   if [ ! -s "$keyfile" ]; then gw_key "$keyfile" "$url" "$oldkey"; fi
 
   cost="$(gw_value GATEWAY_COST_DIR)"

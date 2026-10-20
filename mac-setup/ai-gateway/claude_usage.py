@@ -34,23 +34,28 @@ import time
 
 # Same lookup as setting() in index.ts: process environment, then the env file
 # (GATEWAY_ENV_FILE, default ~/.config/ai-gateway/env), then the default.
+def expand_home(path):
+    """~ and a leading $HOME or ${HOME}: the env file is shell syntax, setup.sh writes "$HOME/.keys/..."."""
+    return os.path.expanduser(re.sub(r"^\$(?:HOME\b|\{HOME\})", "~", path))
+
+
 def setting(name, fallback):
     if name in os.environ:
         return os.environ[name]
     value = fallback
     try:
-        with open(os.path.expanduser(os.environ.get("GATEWAY_ENV_FILE", "~/.config/ai-gateway/env")), encoding="utf-8") as f:
+        with open(expand_home(os.environ.get("GATEWAY_ENV_FILE", "~/.config/ai-gateway/env")), encoding="utf-8") as f:
             for line in f:
                 m = re.match(r"\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$", line)
                 if m and m.group(1) == name:
-                    quoted = re.fullmatch(r"([\"'])(.*)\1", m.group(2))
+                    quoted = re.fullmatch(r"([\"'])(.*?)\1(?:\s+#.*)?", m.group(2))  # "v" or "v" # note
                     value = quoted.group(2) if quoted else re.sub(r"\s+#.*$", "", m.group(2))
     except (OSError, ValueError):  # no env file, or not readable text: the default applies
         pass
     return value
 
 
-COST_DIR = os.path.expanduser(setting("GATEWAY_COST_DIR", "~/.gateway-cost"))
+COST_DIR = expand_home(setting("GATEWAY_COST_DIR", "~/.gateway-cost"))
 PROJECTS = os.path.expanduser(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude"), "projects"))
 USAGE_LOG = os.path.join(COST_DIR, "usage.jsonl")
 STATE_FILE = os.path.join(COST_DIR, "claude-code-state.json")

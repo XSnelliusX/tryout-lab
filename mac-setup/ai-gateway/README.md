@@ -388,15 +388,14 @@ cost logic outside OpenCode, to verify the gateway, the key and the mapping:
 python3 check_gateway.py            # fast /models + slow /model/info (about 1 min)
 python3 check_gateway.py --fast     # fast /models only (no costs)
 python3 check_gateway.py --info     # slow /model/info only
-python3 check_gateway.py --out DIR  # write models.json / models.csv to DIR
-python3 check_gateway.py --no-write # print only
+python3 check_gateway.py --out DIR  # also write models.json / models.csv to DIR
 ```
 
 It prints the base URL, key file, model counts, the fingerprint and the number
-of computed rows, then writes `models.json` and `models.csv`. Its default output
-directory is `~/.gateway-cost`, the folder the plugin uses (`GATEWAY_COST_DIR`
-overrides it; `--out DIR` overrides both). Without `GATEWAY_BASE_URL` it exits
-with an error.
+of computed rows. It writes nothing unless `--out DIR` is given. Do not point
+`--out` at `~/.gateway-cost`: the plugin's `models.json` there has more fields
+(price tiers above 200k, effort levels) that the cost logging needs. Without
+`GATEWAY_BASE_URL` it exits with an error.
 
 **Note:** `check_gateway.py` does **not** apply the 1024 rounding, so its
 `models.json` can still show values such as `131100`. The plugin does round.

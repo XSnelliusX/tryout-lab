@@ -58,7 +58,7 @@ function envFile(): Record<string, string> {
     for (const line of readFileSync(expandHome(process.env.GATEWAY_ENV_FILE ?? "~/.config/ai-gateway/env"), "utf8").split(/\r?\n/)) {
       const m = line.match(/^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$/)
       if (!m) continue
-      const quoted = m[2].match(/^(["'])(.*)\1$/)
+      const quoted = m[2].match(/^(["'])(.*?)\1(?:\s+#.*)?$/) // "v" or "v" # note
       values[m[1]] = quoted ? quoted[2] : m[2].replace(/\s+#.*$/, "")
     }
   } catch {} // no env file: the defaults apply
@@ -89,7 +89,7 @@ const INFO_URL = `${BASE_URL}/aiendpoint/v1/model/info`
 const AUTH_HEADER = process.env.GATEWAY_AUTH_HEADER ?? "authorization" // "authorization" | "x-api-key"
 // The gateway expects `Authorization: Bearer <key>`, so prefix the value when
 // using the standard authorization header.
-const AUTH_PREFIX = AUTH_HEADER === "authorization" ? "Bearer " : ""
+const AUTH_PREFIX = AUTH_HEADER.toLowerCase() === "authorization" ? "Bearer " : "" // header names are case-insensitive
 const COST_DIR = expandHome(setting("GATEWAY_COST_DIR", DEFAULT_COST_DIR))
 const COST_DISABLED = process.env.GATEWAY_COST_DISABLED === "1"
 const USAGE_DISABLED = process.env.GATEWAY_USAGE_DISABLED === "1"
@@ -146,6 +146,7 @@ const PROVIDER_NAMES: Record<string, string> = {
 // =============================================================================
 
 function expandHome(p: string): string {
+  p = p.replace(/^\$(?:HOME\b|\{HOME\})/, "~") // the env file is shell syntax: setup.sh writes "$HOME/.keys/..."
   if (p === "~") return homedir()
   if (p.startsWith("~/") || p.startsWith("~\\")) return join(homedir(), p.slice(2))
   return p
@@ -230,7 +231,7 @@ const KEY_PATH = ((): string | undefined => {
 
 const KEY_SOURCE = ENV_KEY ? "GATEWAY_API_KEY" : KEY_PATH ? displayPath(KEY_PATH) : "none (auth disabled)"
 
-type KeyResult = { key?: string; problem?: string }
+type KeyResult = { key?: string; problem?: string; unreadable?: boolean } // unreadable: exists, but permissions or not a file
 
 async function resolveApiKey(): Promise<KeyResult> {
   if (ENV_KEY) return { key: ENV_KEY }
@@ -241,7 +242,7 @@ async function resolveApiKey(): Promise<KeyResult> {
     return key ? { key } : { problem: `${shown} is empty` }
   } catch (err: any) {
     if (err?.code === "ENOENT" || err?.code === "ENOTDIR") return { problem: `${shown} does not exist` }
-    return { problem: `${shown} could not be read (${err?.code ?? errText(err)})` }
+    return { problem: `${shown} could not be read (${err?.code ?? errText(err)})`, unreadable: true }
   }
 }
 
@@ -261,7 +262,9 @@ function applyKeyResult(r: KeyResult, previous: string | undefined): string | un
     "key",
     "error",
     "No API key",
-    `${r.problem}. Put your gateway API key into that file (or set GATEWAY_API_KEY_FILE). ` +
+    (r.unreadable
+      ? `${r.problem}. Check its permissions (chmod 600) and that GATEWAY_API_KEY_FILE points at a file. `
+      : `${r.problem}. Put your gateway API key into that file (or set GATEWAY_API_KEY_FILE). `) +
       "It is picked up automatically, no restart needed.",
   )
   return undefined
@@ -596,7 +599,7 @@ function sortCatalog(catalog: CatalogEntry[]): CatalogEntry[] {
 function buildCatalog(fast: FastModel[], info: InfoEntry[]): CatalogEntry[] {
   const infoByNorm = new Map<string, InfoEntry>()
   for (const e of info) {
-    const k = norm(e.model_name)
+    const k = norm(String(e.model_name ?? "")) // an entry without a name must not break the refresh
     if (!infoByNorm.has(k)) infoByNorm.set(k, e) // first deployment wins (deterministic)
   }
 
@@ -607,7 +610,7 @@ function buildCatalog(fast: FastModel[], info: InfoEntry[]): CatalogEntry[] {
     if (seen.has(fm.id)) continue
     seen.add(fm.id)
 
-    const entry = infoByNorm.get(norm(fm.id)) ?? matchByParamsTail(info, fm.id)
+    const entry = infoByNorm.get(norm(String(fm.id ?? ""))) ?? matchByParamsTail(info, fm.id)
     const mode = entry?.model_info?.mode ?? fm.mode ?? ""
     const endpoints = entry?.model_info?.supported_endpoints
     if (SKIP_MODES.has(mode) || (IMAGE_MODES.has(mode) && !endpoints?.includes("/v1/chat/completions"))) continue
@@ -1132,6 +1135,12 @@ async function modelForStep(ctx: any, data: any): Promise<{ providerID: string; 
   return { providerID: "unknown", modelID: "unknown", agent: null }
 }
 
+// The event time (a number or a date string); now when it is missing or invalid, so a bad timestamp never drops the step
+function validDate(v: unknown): Date {
+  const d = new Date((v as any) ?? Date.now())
+  return Number.isNaN(d.getTime()) ? new Date() : d
+}
+
 async function recordStep(ctx: any, event: any): Promise<void> {
   const data = event?.data
   const tokens = data?.tokens
@@ -1157,7 +1166,7 @@ async function recordStep(ctx: any, event: any): Promise<void> {
   const reported = Number(data.cost ?? 0)
 
   const record: UsageRecord = {
-    ts: new Date(event.created ?? Date.now()).toISOString(),
+    ts: validDate(event.created).toISOString(),
     event_id: event.id,
     session_id: data.sessionID,
     message_id: data.assistantMessageID,
@@ -1389,7 +1398,7 @@ function reportGatewayError(err: unknown, endpoint: string): void {
   const where = sentence(`GET ${endpoint}: ${e.message}`)
   switch (e.kind) {
     case "auth":
-      return setIssue("gateway", "error", "API key rejected", `${where} Check the key in ${KEY_SOURCE}. ${fallback}`)
+      return setIssue("gateway", "error", "API key rejected", `${where} ${KEY_SOURCE.startsWith("none") ? "No key is configured (GATEWAY_API_KEY_FILE is empty)." : `Check the key in ${KEY_SOURCE}.`} ${fallback}`)
     case "timeout":
     case "network":
       return setIssue(

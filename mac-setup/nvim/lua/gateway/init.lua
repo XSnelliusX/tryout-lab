@@ -12,8 +12,10 @@ local M = {}
 
 local home = os.getenv("HOME") or ""
 
--- ~/path -> $HOME/path
+-- ~/path, $HOME/path and ${HOME}/path -> the home folder (the env file is shell syntax,
+-- setup.sh writes "$HOME/.keys/...")
 local function expand(path)
+  path = path:gsub("^%${HOME}", "~"):gsub("^%$HOME$", "~"):gsub("^%$HOME/", "~/")
   return (path:gsub("^~", function()
     return home
   end))
@@ -31,7 +33,9 @@ local function read_env_file(path)
     if line ~= "" and line:sub(1, 1) ~= "#" then
       local key, value = line:match("^([%w_]+)%s*=%s*(.-)%s*$")
       if key then
-        values[key] = value:match('^"(.*)"$') or value:match("^'(.*)'$") or value
+        -- "v", 'v' (each may be followed by # note), or v with an optional " # note"
+        values[key] = value:match('^"(.-)"%s+#') or value:match('^"(.*)"$') or value:match("^'(.-)'%s+#")
+          or value:match("^'(.*)'$") or (value:gsub("%s+#.*$", ""))
       end
     end
   end
@@ -56,7 +60,8 @@ M.base = (setting("GATEWAY_BASE_URL", ""):gsub("/+$", ""))
 M.configured = M.base ~= ""
 M.hint = "AI gateway not configured: run mac-setup/setup.sh --only gateway"
 M.endpoint = M.configured and (M.base .. "/aiendpoint/v1/chat/completions") or ""
-M.key_file = expand(setting("GATEWAY_API_KEY_FILE", "~/.keys/ai-gateway.key"))
+-- A plain path or OpenCode's {file:path} form, like the plugin accepts
+M.key_file = expand(vim.trim(setting("GATEWAY_API_KEY_FILE", "~/.keys/ai-gateway.key"):gsub("^{file:(.*)}$", "%1")))
 M.cost_dir = expand(setting("GATEWAY_COST_DIR", "~/.gateway-cost"))
 
 -- Fast, cheap models and the request fields that switch their reasoning off.
