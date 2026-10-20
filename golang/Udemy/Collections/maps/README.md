@@ -2,7 +2,7 @@
 
 A map stores **key-value pairs**: given a key, it returns the matching value in roughly constant time. It is Go's built-in hash map, created with `map[KeyType]ValueType`.
 
-Lessons 119–125, code in [maps.go](maps.go). Run all collection demos with `go run .` from the [Collections folder](../) — [main.go](../main.go) calls each demo in turn.
+Code in [maps.go](maps.go). Run all collection demos with `go run .` from the [Collections folder](../) — [main.go](../main.go) calls each demo in turn.
 
 ## Creating a map
 

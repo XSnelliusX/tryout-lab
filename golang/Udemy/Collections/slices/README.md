@@ -2,7 +2,7 @@
 
 A slice is a flexible **view into an array**. Slices are what you use most in Go, and they are always based on an array under the hood. The basics of that array are covered in the [arrays README](../arrays/README.md).
 
-Lessons 113–119, code in [slices.go](slices.go) (`Run`, `RunCapacity`, `RunLoop`). Practice exercises, code in [../practice/array_practice.go](../practice/array_practice.go). Run all collection demos with `go run .` from the [Collections folder](../) — [main.go](../main.go) calls each demo in turn.
+Code in [slices.go](slices.go) (`Run`, `RunCapacity`, `RunLoop`). Practice exercises, code in [../practice/array_practice.go](../practice/array_practice.go). Run all collection demos with `go run .` from the [Collections folder](../) — [main.go](../main.go) calls each demo in turn.
 
 ## Creating a slice
 

@@ -2,7 +2,7 @@
 
 An array has a **fixed size**. The size is part of the type: `[4]float64` and `[5]float64` are different types. Arrays are the foundation that slices are built on — see the [slices README](slices/README.md).
 
-Lessons 109–112, code in [arrays.go](arrays.go). Run all collection demos with `go run .` from the [Collections folder](../Collections/) — [main.go](../main.go) calls each demo in turn.
+Code in [arrays.go](arrays.go). Run all collection demos with `go run .` from the [Collections folder](../Collections/) — [main.go](../main.go) calls each demo in turn.
 
 ## Creating an array
 

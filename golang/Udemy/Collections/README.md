@@ -1,6 +1,6 @@
 # Collections: Arrays, Slices and Maps
 
-Go's core collection types, lessons 109–125, each covered in its own README:
+Go's core collection types, each covered in its own README:
 
 | Collection | Fixed size? | Use for | Code | README |
 | --- | --- | --- | --- | --- |
