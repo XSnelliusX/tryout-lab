@@ -291,8 +291,10 @@ Recipe, conflict after `git pull --rebase`: `<leader>gg`, `Enter` on each confli
 | `Ctrl+/` | toggle a terminal at the bottom (project root); `<leader>fT` in cwd |
 | `Esc Esc` | (inside the terminal) back to normal mode, to scroll or copy; `i` to type again |
 | `Ctrl+h/j/k/l` | leave the terminal to another window |
+| `Ctrl+\` `Ctrl+n` | (inside the terminal) back to normal mode, always works |
+| `Ctrl+q` | (inside the terminal) hide it, cursor back to the code window; `q` does the same in normal mode |
 
-Good for `go test`, `kubectl`, k9s. Long-running things are better in a separate cmux pane.
+Good for `go test`, `kubectl`, k9s. Long-running things are better in a separate cmux pane. The Claude Code and OpenCode splits work the same way: see [README](README.md#moving-between-the-code-and-the-agent-split).
 
 ## Sessions
 

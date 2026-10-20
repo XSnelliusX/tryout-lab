@@ -167,7 +167,8 @@ end
 -- minuet has no response hook, so wrap the function that runs every curl request.
 -- Only requests to the gateway are logged; any failure here never breaks a completion.
 function M.setup()
-  if vim.env.GATEWAY_USAGE_DISABLED == "1" then
+  -- No gateway configured: nothing is sent, and an empty base URL would match every request.
+  if vim.env.GATEWAY_USAGE_DISABLED == "1" or not gw.configured then
     return
   end
   local common = require("minuet.backends.common")
