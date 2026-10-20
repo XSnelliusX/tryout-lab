@@ -6,9 +6,11 @@
 
 Machine-specific and personal keys are left out of the export: feature
 availability probes, window sizes, shelf contents, the command-bar habit key and
-update/onboarding bookkeeping. Clipboard history and the scratchpad live in
+update/onboarding bookkeeping, usage counters, and anything holding a path in the
+home folder (e.g. the screenshot folder). Clipboard history and the scratchpad live in
 ~/Library/Application Support and are never exported.
 """
+import os
 import plistlib
 import subprocess
 import sys
@@ -19,7 +21,10 @@ SKIP_KEYS = {
     "commandBarQueryHabitKey", "shelfItems", "lastUpdateIntroVersion",
     "supportUpdateIntroVersion", "updateHighlightsSeenVersion",
     "bluetoothSleepRestorePending", "onboardingStep",
+    "appUpdatesLastCheck", "appUpdatesLastCount", "appUpdatesNotifiedIDs",
+    "commandBarQueryHabits", "commandBarUsage", "screenshotLastTool",
 }
+HOME = os.path.expanduser("~")
 
 
 def live():
@@ -32,6 +37,7 @@ def portable(data):
         k: v for k, v in data.items()
         if k not in SKIP_KEYS and not k.startswith(SKIP_PREFIXES)
         and not isinstance(v, bytes)
+        and HOME not in str(v).replace("\\/", "/")  # JSON strings escape "/"
     }
 
 
