@@ -5,6 +5,8 @@ import (
 	"functions/anonymous"
 	"functions/closures"
 	"functions/functionvalues"
+	"functions/recursion"
+	"functions/variadic"
 )
 
 func main() {
@@ -15,4 +17,10 @@ func main() {
 	anonymous.Run()
 	fmt.Println("")
 	closures.Run()
+	fmt.Println("")
+	recursion.Run()
+	fmt.Println("")
+	variadic.Run()
+	fmt.Println("")
+	variadic.RunSpread()
 }
