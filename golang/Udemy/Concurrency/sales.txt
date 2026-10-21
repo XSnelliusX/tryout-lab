@@ -1,0 +1,6 @@
+north,120.50
+south,80
+north,45.25
+east,310
+west,95.75
+south,20
