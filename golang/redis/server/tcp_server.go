@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -38,24 +39,26 @@ func handleConnection(conn net.Conn) {
 
 func connectionReadLoop(conn net.Conn) {
 	// Read needs a byte buffer to write to
-	readBuf := make([]byte, 128)
+	reader := bufio.NewReader(conn)
 	for {
-		nBytes, err := conn.Read(readBuf)
+		// Handle Request
+		decodedString, err := resp.DecodeRespRequest(reader)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("++++++++++++++++++++++++++++++++++++")
 				fmt.Println("Client disconnected:", conn.RemoteAddr().String())
 				fmt.Println("++++++++++++++++++++++++++++++++++++")
 			} else {
-				fmt.Println("Error reading received bytes:", err)
+				fmt.Println("Error decoding request:", err)
+				fmt.Println("++++++++++++++++++++++++++++++++++++")
+				fmt.Println("Closing connection: ", conn.RemoteAddr().String())
+				fmt.Println("++++++++++++++++++++++++++++++++++++")
 			}
 			return
 		}
-		// Handle Request
 		fmt.Println("\n--------------------------------")
 		fmt.Println("New request from", conn.RemoteAddr().String())
-		fmt.Println("\nNumber of bytes: ", nBytes, "\nRead Bytes: ", readBuf[:nBytes])
-		fmt.Print("\nRequest string:\n\n", resp.DecodeRespRequest(readBuf[:nBytes]))
+		fmt.Print("\nRequest string:\n\n", decodedString)
 		fmt.Println("\n--------------------------------")
 
 		// just return okay for now
