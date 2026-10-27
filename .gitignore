@@ -1,4 +1,6 @@
 .DS_Store
+.idea
+
 hello_world
 golang/Udemy/Bank/balance.txt
 golang/Udemy/Profit Calculator/profits.txt
