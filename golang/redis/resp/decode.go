@@ -44,10 +44,25 @@ func (r *respByteReader) expectType(expectedType string) (bool, error) {
 	return true, nil
 }
 
-func (s *respByteReader) parseIntFromByte() (int, error) {
+func (r *respByteReader) expectCRLF() error {
+	actualBytes, err := r.stream.Peek(2)
+	if err != nil {
+		return err
+	}
+	if string(actualBytes) != "\r\n" {
+		return errors.New("expected CRLF")
+	}
+	_, err = r.stream.ReadBytes('\n')
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *respByteReader) parseIntFromByte() (int, error) {
 	// ReadSlice limits the header to the buffered reader's capacity instead of
 	// allowing a peer to send an unbounded line. It includes the final '\n'.
-	line, err := s.stream.ReadSlice('\n')
+	line, err := r.stream.ReadSlice('\n')
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return 0, io.ErrUnexpectedEOF
@@ -92,36 +107,36 @@ func DecodeRespRequest(reader *bufio.Reader) ([]string, error) {
 	return request, err
 }
 
-func (s *respByteReader) decodeBulkString() (string, error) {
+func (r *respByteReader) decodeBulkString() (string, error) {
 	// Expect '$'
-	correctType, err := s.expectType(BULK_STRING)
+	correctType, err := r.expectType(BULK_STRING)
 	if err != nil || !correctType {
 		return "", err
 	}
 
 	// Read byte-length header
-	stringLen, err := s.parseIntFromByte()
-	stringBytes := make([]byte, stringLen)
+	stringLen, err := r.parseIntFromByte()
 	if err != nil {
 		return "", err
 	} else if stringLen <= 0 {
 		// Reject null and other unsupported negative lengths.
 		return "", errors.New("invalid string length")
 	}
+	stringBytes := make([]byte, stringLen)
 
 	// Go through the string and catch unexpected CRLF
 	for i := range stringLen {
-		readByte, err := s.stream.ReadByte()
+		readByte, err := r.stream.ReadByte()
 		if err != nil {
 			return "", err
 		}
 		// Catch unexpected CRLF
 		if readByte == '\r' {
-			peakByte, err := s.stream.Peek(1)
+			peakByte, err := r.stream.Peek(1)
 			if err != nil {
 				return "", err
 			} else if string(peakByte) != "\n" {
-				_, err := s.stream.ReadByte()
+				_, err := r.stream.ReadByte()
 				if err != nil {
 					return "", err
 				}
@@ -133,9 +148,9 @@ func (s *respByteReader) decodeBulkString() (string, error) {
 	return string(stringBytes), nil
 }
 
-func (s *respByteReader) decodeArrayString() ([]string, error) {
+func (r *respByteReader) decodeArrayString() ([]string, error) {
 	// The '*' marker has already been consumed by the caller therefore the next byte has to be the number or arrays
-	numArrays, err := s.parseIntFromByte()
+	numArrays, err := r.parseIntFromByte()
 	command := make([]string, numArrays)
 
 	if err != nil {
@@ -143,7 +158,11 @@ func (s *respByteReader) decodeArrayString() ([]string, error) {
 	}
 
 	for range numArrays {
-		commandString, err := s.decodeBulkString()
+		commandString, err := r.decodeBulkString()
+		if err != nil {
+			return command, err
+		}
+		err = r.expectCRLF()
 		if err != nil {
 			return command, err
 		}
