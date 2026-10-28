@@ -118,30 +118,17 @@ func (r *respByteReader) decodeBulkString() (string, error) {
 	stringLen, err := r.parseIntFromByte()
 	if err != nil {
 		return "", err
-	} else if stringLen <= 0 {
+	} else if stringLen < 0 {
 		// Reject null and other unsupported negative lengths.
 		return "", errors.New("invalid string length")
 	}
 	stringBytes := make([]byte, stringLen)
 
-	// Go through the string and catch unexpected CRLF
+	// Go through the string
 	for i := range stringLen {
 		readByte, err := r.stream.ReadByte()
 		if err != nil {
 			return "", err
-		}
-		// Catch unexpected CRLF
-		if readByte == '\r' {
-			peakByte, err := r.stream.Peek(1)
-			if err != nil {
-				return "", err
-			} else if string(peakByte) != "\n" {
-				_, err := r.stream.ReadByte()
-				if err != nil {
-					return "", err
-				}
-				return "", io.ErrUnexpectedEOF
-			}
 		}
 		stringBytes[i] = readByte
 	}
@@ -157,7 +144,7 @@ func (r *respByteReader) decodeArrayString() ([]string, error) {
 		return command, err
 	}
 
-	for range numArrays {
+	for i := range numArrays {
 		commandString, err := r.decodeBulkString()
 		if err != nil {
 			return command, err
@@ -166,7 +153,7 @@ func (r *respByteReader) decodeArrayString() ([]string, error) {
 		if err != nil {
 			return command, err
 		}
-		command = append(command, commandString)
+		command[i] = commandString
 	}
 	return command, nil
 }
