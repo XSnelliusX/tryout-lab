@@ -36,8 +36,11 @@ func (r *respByteReader) expectType(expectedType string) (bool, error) {
 	if string(actualType) != expectedType {
 		return false, respTypeError{expectedType, actualType[0]}
 	}
-	// Only read/consume if its the expected type
-	r.stream.ReadByte()
+	// Only read/consume if actualType == expectedType
+	_, err = r.stream.ReadByte()
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -71,40 +74,80 @@ func (s *respByteReader) parseIntFromByte() (int, error) {
 }
 
 // DecodeRespRequest starts decoding one request from a persistent reader.
-// TODO: Return decoded command once array and bulk-string decoding are implemented.
-func DecodeRespRequest(reader *bufio.Reader) (string, error) {
+// Return decoded command once array and bulk-string decoding are implemented.
+func DecodeRespRequest(reader *bufio.Reader) ([]string, error) {
 	requestStream := newRespByteReader(reader)
 
 	// expectType waits for the first byte and consumes it only if it is '*'.
 	// EOF means the connection closed before a new request started.
 	correctType, err := requestStream.expectType(ARRAYS)
 	if err != nil || !correctType {
-		return "", err
+		return []string{}, err
 	}
 
 	request, err := requestStream.decodeArrayString()
 	if errors.Is(err, io.EOF) {
-		return "", io.ErrUnexpectedEOF
+		return []string{}, io.ErrUnexpectedEOF
 	}
 	return request, err
 }
 
 func (s *respByteReader) decodeBulkString() (string, error) {
-	// Return (string, error). Expect '$', then read its byte-length header
-	// Reject null and other unsupported negative lengths.
-	string_len, err := s.parseIntFromByte()
-	if err != nil {
+	// Expect '$'
+	correctType, err := s.expectType(BULK_STRING)
+	if err != nil || !correctType {
 		return "", err
 	}
-	return "", fmt.Errorf("bulk string decoding not implemented (string len: %d)", string_len)
+
+	// Read byte-length header
+	stringLen, err := s.parseIntFromByte()
+	stringBytes := make([]byte, stringLen)
+	if err != nil {
+		return "", err
+	} else if stringLen <= 0 {
+		// Reject null and other unsupported negative lengths.
+		return "", errors.New("invalid string length")
+	}
+
+	// Go through the string and catch unexpected CRLF
+	for i := range stringLen {
+		readByte, err := s.stream.ReadByte()
+		if err != nil {
+			return "", err
+		}
+		// Catch unexpected CRLF
+		if readByte == '\r' {
+			peakByte, err := s.stream.Peek(1)
+			if err != nil {
+				return "", err
+			} else if string(peakByte) != "\n" {
+				_, err := s.stream.ReadByte()
+				if err != nil {
+					return "", err
+				}
+				return "", io.ErrUnexpectedEOF
+			}
+		}
+		stringBytes[i] = readByte
+	}
+	return string(stringBytes), nil
 }
 
-func (s *respByteReader) decodeArrayString() (string, error) {
-	// The '*' marker has already been consumed by the caller therfore the next byte has to be the number or arrays
-	num_arrays, err := s.parseIntFromByte()
+func (s *respByteReader) decodeArrayString() ([]string, error) {
+	// The '*' marker has already been consumed by the caller therefore the next byte has to be the number or arrays
+	numArrays, err := s.parseIntFromByte()
+	command := make([]string, numArrays)
+
 	if err != nil {
-		return "", err
+		return command, err
 	}
-	// TODO: Use num_arrays to read the elements before returning a request.
-	return "", fmt.Errorf("array decoding not implemented (element count: %d)", num_arrays)
+
+	for range numArrays {
+		commandString, err := s.decodeBulkString()
+		if err != nil {
+			return command, err
+		}
+		command = append(command, commandString)
+	}
+	return command, nil
 }
