@@ -31,6 +31,42 @@ flowchart LR
 
 Go maps need synchronization when reads and writes, or multiple writes, happen concurrently. A mutex protects each map operation. The lock is held only while accessing the map, not while reading from or writing to the network.
 
+### Mutex and reader-writer mutex
+
+A `sync.Mutex` allows one goroutine at a time to access the protected map, whether it reads or writes. A `sync.RWMutex` distinguishes readers from writers: multiple readers can hold the lock together, but a writer needs exclusive access.
+
+```mermaid
+flowchart LR
+    subgraph Mutex["sync.Mutex"]
+        M1[Reader 1] -->|Lock| MM[Map]
+        M2[Reader 2] -. waits .-> M1
+        MW[Writer] -. waits .-> M1
+    end
+    subgraph RWMutex["sync.RWMutex: readers"]
+        R1[Reader 1] -->|RLock| RM[Map]
+        R2[Reader 2] -->|RLock| RM
+        W[Writer] -. waits for readers .-> RM
+    end
+    subgraph RWMutexWrite["sync.RWMutex: writer"]
+        W1[Writer 1] -->|Lock| WM[Map]
+        R3[Reader] -. waits .-> W1
+        W2[Writer 2] -. waits .-> W1
+    end
+    Mutex ~~~ RWMutex
+    RWMutex ~~~ RWMutexWrite
+    style Mutex fill:none,stroke:none
+    style RWMutex fill:none,stroke:none
+    style RWMutexWrite fill:none,stroke:none
+```
+
+| Lock | Access already holding the lock | Another reader | Another writer |
+| --- | --- | --- | --- |
+| `Mutex` | Reader or writer | Waits | Waits |
+| `RWMutex` | One or more readers | Can read concurrently | Waits for readers to unlock |
+| `RWMutex` | Writer | Waits for the writer to unlock | Waits for the writer to unlock |
+
+The store uses `RWMutex` to allow concurrent reads and to explore reader-writer synchronization. `Get` uses `RLock` and `RUnlock`; `Set` uses `Lock` and `Unlock`. Both methods must use the same mutex associated with the store.
+
 ## Test-driven development
 
 While the rest of the project omits tests, I decided to follow a test-driven approach for the data store: each step starts with a test for an observable behavior, followed by the implementation needed to make it pass.

@@ -1,20 +1,27 @@
 package store
 
+import "sync"
+
 type Store struct {
-	ValueMap map[string]string
+	mu       sync.RWMutex
+	valueMap map[string]string
 }
 
 func (s *Store) Set(key string, value string) {
-	s.ValueMap[key] = value
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.valueMap[key] = value
 }
 
 func (s *Store) Get(key string) (string, bool) {
-	val, exists := s.ValueMap[key]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	val, exists := s.valueMap[key]
 	return val, exists
 }
 
 func NewStore() *Store {
 	return &Store{
-		ValueMap: make(map[string]string),
+		valueMap: make(map[string]string),
 	}
 }
