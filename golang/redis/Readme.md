@@ -33,6 +33,7 @@ Initially out of scope: full Redis compatibility, inline commands, persistence, 
 | [Inspecting Redis traffic](docs/redis-traffic.md) | Observed requests and replies using tcpdump and Wireshark |
 | [GET and SET](docs/commands.md) | Command syntax, behavior, responses, errors, and examples |
 | [Architecture](docs/architecture.md) | Expected Kubernetes deployment, request flow, Go module responsibilities, and in-memory data model |
+| [Store and TDD](docs/store.md) | Planned store interface, concurrency, and first Go testing exercises |
 
 ## First manual scenario
 
