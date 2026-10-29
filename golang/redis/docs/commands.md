@@ -2,6 +2,42 @@
 
 The [traffic capture](redis-traffic.md#observed-requests-and-replies) shows actual `SET` and `GET` requests and their replies from Redis.
 
+## Handling a command
+
+The [decoder](decode.md) turns a RESP request into a slice of strings, for example, `get greeting` becomes `[]string{"get", "greeting"}`. The command handler interprets this slice and uses the shared [store](store.md) that the server provides. It doesn't write to the connection, but returns a result to the server which will give it to the RESP encoder to turn the result into reply bytes.
+
+```mermaid
+flowchart LR
+    D[Decoded command] --> H[HandleCommand]
+    H --> V{Command name}
+    V -->|get| G[Validate and get]
+    V -->|set| S[Validate and set]
+    V -->|unknown or empty| E[Error result]
+    G --> Store[Shared store]
+    S --> Store
+    Store --> R[Command result]
+    E --> R
+    R --> Enc[RESP encoder]
+    Enc --> C[Connection]
+```
+
+1. The server creates one store and one handler and shares them with the connection goroutines.
+2. `HandleCommand` checks for an empty slice, then selects `get` or `set` by command name.
+3. The selected method checks the argument count before accessing the slice or the store.
+4. `get` reads the value and whether it exists; `set` stores the value. The handler returns the corresponding result.
+5. The intended response path passes the result to the encoder, then writes the encoded bytes to the connection.
+
+## Command results
+
+`Result` contains a `Kind` and a string `Value`. The kind distinguishes outcomes that cannot be represented by a string alone:
+
+| Outcome | Result kind | Value |
+| --- | --- | --- |
+| Successful `SET` | `ReplySimpleString` | `OK` |
+| `GET` finds a key | `ReplyBulkString` | Stored value, including an empty string |
+| `GET` misses a key | `ReplyNoneBulkString` | Empty string; the kind marks the missing key |
+| Empty, unknown, or invalid command | `ReplyError` | Error message |
+
 ## Shared rules
 
 - Treat keys as case-sensitive: `name` and `Name` are different keys.
