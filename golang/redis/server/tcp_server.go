@@ -62,18 +62,18 @@ func connectionReadLoop(conn net.Conn, commandHandler *commands.Handler) {
 			return
 		}
 		fmt.Println("\n--------------------------------")
-		fmt.Println("New request from", conn.RemoteAddr().String())
-		fmt.Print("\nHandling Request:\n\n", decodedCommand)
-		// TODO: encode the handler Result and send it to the connection
-		_ = commandHandler.HandleCommand(decodedCommand)
+		fmt.Println("New request from", conn.RemoteAddr().String(), ":\n", decodedCommand)
+		// encode the handler Result and send it to the connection
+		resultObject := commandHandler.HandleCommand(decodedCommand)
+		resultBytes, err := resp.Encode(resultObject)
 		if err != nil {
-			return
+			fmt.Println("Error encoding response:", err)
 		}
-
+		_, err = conn.Write(resultBytes)
+		if err != nil {
+			fmt.Println("Error writing response:", err)
+		}
+		fmt.Println("Server Response:\n", string(resultBytes))
 		fmt.Println("\n--------------------------------")
-
-		// just return okay for now
-		okBytes := []byte("+OK\r\n")
-		conn.Write(okBytes)
 	}
 }
