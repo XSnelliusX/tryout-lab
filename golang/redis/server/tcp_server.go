@@ -65,7 +65,7 @@ func connectionReadLoop(conn net.Conn, commandHandler *commands.Handler) {
 		fmt.Println("New request from", conn.RemoteAddr().String())
 		fmt.Print("\nHandling Request:\n\n", decodedCommand)
 		// TODO: encode the handler Result and send it to the connection
-		_, err = commandHandler.HandleCommand(decodedCommand)
+		_ = commandHandler.HandleCommand(decodedCommand)
 		if err != nil {
 			return
 		}

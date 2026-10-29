@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"errors"
+	"fmt"
 	"redis/store"
 	"strings"
 )
@@ -16,9 +16,9 @@ func NewHandler(valueStore *store.Store) *Handler {
 	}
 }
 
-func (h *Handler) HandleCommand(command []string) (Result, error) {
+func (h *Handler) HandleCommand(command []string) Result {
 	if len(command) == 0 {
-		return Result{ReplyError, "empty command"}, errors.New("empty command")
+		return Result{ReplyError, "Invalid argument(s)"}
 	}
 
 	switch strings.ToLower(command[0]) {
@@ -27,5 +27,6 @@ func (h *Handler) HandleCommand(command []string) (Result, error) {
 	case "set":
 		return h.set(command)
 	}
-	return Result{ReplyError, "command not supported"}, errors.New("command not supported")
+	unknownCommandReply := fmt.Sprintf("ERR unknown command  %s", command[0])
+	return Result{ReplyError, unknownCommandReply}
 }

@@ -1,16 +1,13 @@
 package commands
 
-import "errors"
-
-func (h *Handler) get(command []string) (Result, error) {
+func (h *Handler) get(command []string) Result {
 	if len(command) != 2 {
-		return Result{ReplyError, "wrong number of arguments for 'get' command"},
-			errors.New("wrong number of arguments for 'get' command")
+		return Result{ReplyError, "ERR wrong number of arguments for 'get' command"}
 	}
 
 	val, exists := h.valueStore.Get(command[1])
 	if !exists {
-		return Result{ReplyNoneBulkString, ""}, nil
+		return Result{ReplyNoneBulkString, ""}
 	}
-	return Result{ReplyBulkString, val}, nil
+	return Result{ReplyBulkString, val}
 }
