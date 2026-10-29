@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"redis/store"
+	"strings"
 )
 
 type Handler struct {
@@ -19,7 +20,8 @@ func (h *Handler) HandleCommand(command []string) (Result, error) {
 	if len(command) == 0 {
 		return Result{ReplyError, "empty command"}, errors.New("empty command")
 	}
-	switch command[0] {
+
+	switch strings.ToLower(command[0]) {
 	case "get":
 		return h.get(command)
 	case "set":
