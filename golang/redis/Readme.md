@@ -30,10 +30,11 @@ Initially out of scope: full Redis compatibility, inline commands, persistence, 
 | Topic | What to document |
 | --- | --- |
 | [RESP](docs/resp.md) | Wire format, byte lengths, request framing, and decoder/encoder notes |
+| [Decoding](docs/decode.md) and [encoding](docs/encode.md) | Request parsing and response formatting |
 | [Inspecting Redis traffic](docs/redis-traffic.md) | Observed requests and replies using tcpdump and Wireshark |
 | [GET and SET](docs/commands.md) | Command syntax, behavior, responses, errors, and examples |
 | [Architecture](docs/architecture.md) | Expected Kubernetes deployment, request flow, Go module responsibilities, and in-memory data model |
-| [Store and TDD](docs/store.md) | Planned store interface, concurrency, and first Go testing exercises |
+| [Store and TDD](docs/store.md) | Store behavior, concurrency, and tests |
 
 ## First manual scenario
 

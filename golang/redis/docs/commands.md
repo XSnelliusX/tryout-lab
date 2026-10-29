@@ -25,7 +25,7 @@ flowchart LR
 2. `HandleCommand` checks for an empty slice, then selects `get` or `set` by command name.
 3. The selected method checks the argument count before accessing the slice or the store.
 4. `get` reads the value and whether it exists; `set` stores the value. The handler returns the corresponding result.
-5. The intended response path passes the result to the encoder, then writes the encoded bytes to the connection.
+5. The server passes the result to the [encoder](encode.md), then writes the encoded bytes to the connection.
 
 ## Command results
 

@@ -8,7 +8,7 @@ RESP describes how values are encoded as bytes between a client and a server.
 
 Source: [official Redis Serialization Protocol specification](https://redis.io/docs/latest/develop/reference/protocol-spec/).
 
-The proposed first version supports a **subset of RESP2**:
+The server supports a **subset of RESP2**:
 
 - Decode commands as arrays of bulk strings: the command name followed by its arguments.
 - Encode simple-string success replies, bulk-string values, null bulk strings, and simple errors.
@@ -17,6 +17,7 @@ The proposed first version supports a **subset of RESP2**:
 TCP provides an ordered byte stream, not message boundaries. A single read can contain part of a command, a complete command, or several commands.
 
 The [traffic capture](redis-traffic.md) shows how these types appear in actual `GET` and `SET` exchanges.
+The [decoder](decode.md) and [encoder](encode.md) notes describe how the Go code handles requests and replies.
 
 Examples below show `\r\n` as visible escape sequences. On the wire, each pair means the actual two bytes CR and LF, not four printable characters.
 

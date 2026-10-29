@@ -57,17 +57,17 @@ sequenceDiagram
 
 ## Go modules and responsibilities
 
-The intended package layout is:
+The package layout is:
 
 ```text
-main.go          wires the server, command executor, and store together
-server/          TCP listener and per-connection lifecycle
+main.go          parses flags and starts the server
+server/          creates the store and handler; manages TCP connections
 resp/            RESP request decoder and reply encoder
-command/         GET/SET command execution
+commands/        GET/SET command execution and results
 store/           shared in-process key/value map
 ```
 
-`main.go` is the composition point: it creates the store, gives it to the command executor, and gives the executor to the TCP server through a small handler interface. The server should not need to know how commands or values are stored.
+`StartServer` creates one store and one command handler before accepting connections. Each connection handler receives the same command handler, so clients share the store. The RESP encoder currently imports the command result type to determine the reply format.
 
 ### TCP server (`server`)
 
