@@ -2,15 +2,17 @@ package server
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"redis/commands"
 	"redis/resp"
 	"redis/store"
+	"syscall"
 )
 
-func StartServer(port string) {
+func StartServer(port string, verbose bool) {
 	valueStore := store.NewStore()
 	commandHandler := commands.NewHandler(valueStore)
 
@@ -34,56 +36,66 @@ func StartServer(port string) {
 			fmt.Println("Connection error: ", err)
 			return
 		}
-		go handleConnection(conn, commandHandler)
+		go handleConnection(conn, commandHandler, verbose)
 	}
 }
 
-func handleConnection(conn net.Conn, commandHandler *commands.Handler) {
+func handleConnection(conn net.Conn, commandHandler *commands.Handler, verbose bool) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
 			fmt.Println("Error closing connection: ", err)
 		}
 	}(conn)
-	fmt.Println("++++++++++++++++++++++++++++++++++++")
-	fmt.Println("New connection from:", conn.RemoteAddr().String())
-	fmt.Println("++++++++++++++++++++++++++++++++++++")
+	if verbose {
+		fmt.Println("New connection from:", conn.RemoteAddr().String())
+	}
 
-	connectionReadLoop(conn, commandHandler)
+	connectionReadLoop(conn, commandHandler, verbose)
 }
 
-func connectionReadLoop(conn net.Conn, commandHandler *commands.Handler) {
+func connectionReadLoop(conn net.Conn, commandHandler *commands.Handler, verbose bool) {
 	// Read needs a byte buffer to write to
 	reader := bufio.NewReader(conn)
 	for {
 		// Handle Request
 		decodedCommand, err := resp.DecodeRespRequest(reader)
 		if err != nil {
-			if err == io.EOF {
-				fmt.Println("++++++++++++++++++++++++++++++++++++")
-				fmt.Println("Client disconnected:", conn.RemoteAddr().String())
-				fmt.Println("++++++++++++++++++++++++++++++++++++")
-			} else {
-				fmt.Println("Error decoding request:", err)
-				fmt.Println("++++++++++++++++++++++++++++++++++++")
-				fmt.Println("Closing connection: ", conn.RemoteAddr().String())
-				fmt.Println("++++++++++++++++++++++++++++++++++++")
+			switch {
+			case errors.Is(err, io.EOF):
+				if verbose {
+					fmt.Println("Client disconnected:", conn.RemoteAddr())
+				}
+			case errors.Is(err, syscall.ECONNRESET):
+				if verbose {
+					fmt.Println("Client reset connection:", conn.RemoteAddr())
+				}
+			default:
+				fmt.Println("Error reading request from", conn.RemoteAddr(), ":", err)
 			}
 			return
 		}
-		fmt.Println("\n--------------------------------")
+		fmt.Println("--------------------------------")
 		fmt.Println("New request from", conn.RemoteAddr().String(), ":\n", decodedCommand)
 		// encode the handler Result and send it to the connection
 		resultObject := commandHandler.HandleCommand(decodedCommand)
 		resultBytes, err := resp.Encode(resultObject)
 		if err != nil {
+			fmt.Println("++++++++++++++++++++++++++++++++++++")
 			fmt.Println("Error encoding response:", err)
+			fmt.Println("Closing connection:", conn.RemoteAddr().String())
+			fmt.Println("++++++++++++++++++++++++++++++++++++")
+			return
 		}
 		_, err = conn.Write(resultBytes)
 		if err != nil {
+			fmt.Println("++++++++++++++++++++++++++++++++++++")
 			fmt.Println("Error writing response:", err)
+			fmt.Println("Closing connection:", conn.RemoteAddr().String())
+			fmt.Println("++++++++++++++++++++++++++++++++++++")
+			return
 		}
-		fmt.Println("Server Response:\n", string(resultBytes))
-		fmt.Println("\n--------------------------------")
+		fmt.Println("--------------------------------")
+		fmt.Println("Server Response for request", decodedCommand, ":\n", string(resultBytes), "Bytes:", resultBytes)
 	}
 }

@@ -1,9 +1,15 @@
 package main
 
 import (
+	"flag"
 	"redis/server"
 )
 
 func main() {
-	server.StartServer("6379")
+	var verbose bool
+	flag.BoolVar(&verbose, "v", false, "print connection and request details")
+	flag.BoolVar(&verbose, "verbose", false, "print connection and request details")
+	flag.Parse()
+
+	server.StartServer("6379", verbose)
 }
