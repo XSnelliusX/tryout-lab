@@ -19,7 +19,12 @@ func StartServer(port string) {
 		fmt.Println("Error starting server: ", err)
 		return
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err = listener.Close()
+		if err != nil {
+			fmt.Println("Error closing listener: ", err)
+		}
+	}(listener)
 	fmt.Println("Redis server running on port", port)
 
 	// Connection loop accepting connections
@@ -34,7 +39,12 @@ func StartServer(port string) {
 }
 
 func handleConnection(conn net.Conn, commandHandler *commands.Handler) {
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println("Error closing connection: ", err)
+		}
+	}(conn)
 	fmt.Println("++++++++++++++++++++++++++++++++++++")
 	fmt.Println("New connection from:", conn.RemoteAddr().String())
 	fmt.Println("++++++++++++++++++++++++++++++++++++")
