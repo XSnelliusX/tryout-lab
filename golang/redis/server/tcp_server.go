@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"redis/commands"
 	"redis/resp"
+	"redis/store"
 )
 
 func StartServer(port string) {
+	valueStore := store.NewStore()
+	commandHandler := commands.NewHandler(valueStore)
+
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error starting server: ", err)
@@ -24,25 +29,25 @@ func StartServer(port string) {
 			fmt.Println("Connection error: ", err)
 			return
 		}
-		go handleConnection(conn)
+		go handleConnection(conn, commandHandler)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, commandHandler *commands.Handler) {
 	defer conn.Close()
 	fmt.Println("++++++++++++++++++++++++++++++++++++")
 	fmt.Println("New connection from:", conn.RemoteAddr().String())
 	fmt.Println("++++++++++++++++++++++++++++++++++++")
 
-	connectionReadLoop(conn)
+	connectionReadLoop(conn, commandHandler)
 }
 
-func connectionReadLoop(conn net.Conn) {
+func connectionReadLoop(conn net.Conn, commandHandler *commands.Handler) {
 	// Read needs a byte buffer to write to
 	reader := bufio.NewReader(conn)
 	for {
 		// Handle Request
-		decodedString, err := resp.DecodeRespRequest(reader)
+		decodedCommand, err := resp.DecodeRespRequest(reader)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("++++++++++++++++++++++++++++++++++++")
@@ -58,7 +63,13 @@ func connectionReadLoop(conn net.Conn) {
 		}
 		fmt.Println("\n--------------------------------")
 		fmt.Println("New request from", conn.RemoteAddr().String())
-		fmt.Print("\nRequest string:\n\n", decodedString)
+		fmt.Print("\nHandling Request:\n\n", decodedCommand)
+		// TODO: encode the handler Result and send it to the connection
+		_, err = commandHandler.HandleCommand(decodedCommand)
+		if err != nil {
+			return
+		}
+
 		fmt.Println("\n--------------------------------")
 
 		// just return okay for now
