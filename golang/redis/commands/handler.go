@@ -18,7 +18,7 @@ func NewHandler(valueStore *store.Store) *Handler {
 
 func (h *Handler) HandleCommand(command []string) Result {
 	if len(command) == 0 {
-		return Result{ReplyError, "Invalid argument(s)"}
+		return Result{ReplyError, "invalid argument(s)"}
 	}
 
 	switch strings.ToLower(command[0]) {
@@ -27,6 +27,6 @@ func (h *Handler) HandleCommand(command []string) Result {
 	case "set":
 		return h.set(command)
 	}
-	unknownCommandReply := fmt.Sprintf("ERR unknown command  %s", command[0])
+	unknownCommandReply := fmt.Sprintf("unknown command %s", command[0])
 	return Result{ReplyError, unknownCommandReply}
 }

@@ -2,7 +2,7 @@ package commands
 
 func (h *Handler) get(command []string) Result {
 	if len(command) != 2 {
-		return Result{ReplyError, "ERR wrong number of arguments for 'get' command"}
+		return Result{ReplyError, "wrong number of arguments for 'get' command"}
 	}
 
 	val, exists := h.valueStore.Get(command[1])
