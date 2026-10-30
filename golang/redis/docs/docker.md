@@ -1,4 +1,5 @@
 # Docker
+
 ## Building the container image
 
 The Dockerfile uses a multi-stage build. The first stage uses a Go image to compile the server. The second stage starts from Alpine and copies only the compiled binary from the build stage. The final image does not need the Go compiler or the project source code to run the server.

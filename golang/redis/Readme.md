@@ -37,6 +37,21 @@ Initially out of scope: full Redis compatibility, inline commands, persistence, 
 | [Docker](docs/docker.md) | Container image choices, Docker build stages, and local testing |
 | [Kubernetes deployment](docs/kubernetes.md) | Namespace and local deployment learning steps |
 | [Store and TDD](docs/store.md) | Store behavior, concurrency, and tests |
+| [Benchmark results](docs/benchmark.md) | Recorded SET/GET workload, throughput, latency, and measurement limitations |
+| [Confluence page draft](docs/confluence.md) | Presentation-oriented project overview and development milestones |
+
+## Completed deployment and benchmark results
+
+The server was deployed using a local Kubernetes cluster using one server replica because each process owns an independent in-memory store.
+
+The supplied `redis-benchmark` output records 1,000,000 requests for each command with 100 parallel clients and four benchmark threads:
+
+| Command | Requests per second | Average latency | p95 latency | p99 latency |
+| --- | ---: | ---: | ---: | ---: |
+| SET | 58,782.04 | 1.632 ms | 2.783 ms | 3.991 ms |
+| GET | 60,569.35 | 1.580 ms | 2.703 ms | 3.983 ms |
+
+See the [benchmark notes](docs/benchmark.md) for the exact command, recorded workload, and full output.
 
 ## Run locally
 
