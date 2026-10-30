@@ -34,7 +34,31 @@ Initially out of scope: full Redis compatibility, inline commands, persistence, 
 | [Inspecting Redis traffic](docs/redis-traffic.md) | Observed requests and replies using tcpdump and Wireshark |
 | [GET and SET](docs/commands.md) | Command syntax, behavior, responses, errors, and examples |
 | [Architecture](docs/architecture.md) | Expected Kubernetes deployment, request flow, Go module responsibilities, and in-memory data model |
+| [Docker](docs/docker.md) | Container image choices, Docker build stages, and local testing |
+| [Kubernetes deployment](docs/kubernetes.md) | Namespace and local deployment learning steps |
 | [Store and TDD](docs/store.md) | Store behavior, concurrency, and tests |
+
+## Run locally
+
+From this project directory, run the server with Go, or build and run the [Docker image](docs/docker.md):
+
+```bash
+# Run with Go
+go run .
+
+# Or build and run with Docker
+docker build -t redis-server:local .
+docker run --rm -p 127.0.0.1:6379:6379 redis-server:local
+```
+
+For Kubernetes, build the image first and ensure it is available to the local cluster. From this project directory:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -n redis-lab -f k8s/deployment.yaml
+kubectl apply -n redis-lab -f k8s/service.yaml
+kubectl rollout status deployment/redis-server -n redis-lab
+```
 
 ## First manual scenario
 
