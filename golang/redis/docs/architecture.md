@@ -2,7 +2,7 @@
 
 ## Overview
 
-![Redis server architecture](architecture.svg)
+![Redis server architecture](architecture-planned.svg)
 
 The architecture has two parts: Kubernetes exposes and runs one Redis server pod; inside that pod, the Go server handles TCP connections, RESP messages, commands, and the in-memory data store.
 
