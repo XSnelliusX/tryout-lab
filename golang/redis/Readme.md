@@ -38,7 +38,7 @@ Initially out of scope: full Redis compatibility, inline commands, persistence, 
 | [Kubernetes deployment](docs/kubernetes.md) | Namespace and local deployment learning steps |
 | [Store and TDD](docs/store.md) | Store behavior, concurrency, and tests |
 | [Benchmark results](docs/benchmark.md) | Recorded SET/GET workload, throughput, latency, and measurement limitations |
-| [Confluence page draft](docs/confluence.md) | Presentation-oriented project overview and development milestones |
+| [Results](results.md) | Presentation-oriented project overview |
 
 ## Completed deployment and benchmark results
 
