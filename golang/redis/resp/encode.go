@@ -13,7 +13,7 @@ func Encode(resultObject commands.Result) ([]byte, error) {
 		resultString := fmt.Sprintf("-ERR %s\r\n", message)
 		return []byte(resultString), nil
 	case commands.ReplyNoneBulkString:
-		resultString := fmt.Sprintf("$-1\r\n")
+		resultString := "$-1\r\n"
 		return []byte(resultString), nil
 	case commands.ReplySimpleString:
 		if strings.ContainsAny(resultObject.Value, "\r\n") {
