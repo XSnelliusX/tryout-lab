@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,34 +10,74 @@ import (
 	"redis/commands"
 	"redis/resp"
 	"redis/store"
+	"sync"
 	"syscall"
 )
 
-func StartServer(port string, verbose bool) {
+func StartServer(ctx context.Context, port string, verbose bool) {
 	valueStore := store.NewStore()
 	commandHandler := commands.NewHandler(valueStore)
+	wg := sync.WaitGroup{}
 
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error starting server: ", err)
 		return
 	}
-	defer func(listener net.Listener) {
-		err = listener.Close()
-		if err != nil {
-			fmt.Println("Error closing listener: ", err)
-		}
-	}(listener)
+
 	fmt.Println("Redis server running on port", port)
+
+	stopWatcher := make(chan struct{})
+	watcherDone := make(chan struct{})
+
+	go gracefulShutdown(ctx, listener, stopWatcher, watcherDone)
+	shuttingDown := false
 
 	// Connection loop accepting connections
 	for {
 		conn, err := listener.Accept()
-		if err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			fmt.Println("Listener closed, no new connections accepted")
+			shuttingDown = true
+			break
+		} else if err != nil {
 			fmt.Println("Connection error: ", err)
-			return
+			break
 		}
-		go handleConnection(conn, commandHandler, verbose)
+
+		wg.Go(func() {
+			handleConnection(conn, commandHandler, verbose)
+		})
+	}
+
+	close(stopWatcher)
+	<-watcherDone
+
+	err = listener.Close()
+	if err != nil && !errors.Is(err, net.ErrClosed) {
+		fmt.Println("Error closing listener: ", err)
+	}
+
+	wg.Wait()
+	if shuttingDown {
+		fmt.Println("Server shutdown completed")
+	}
+}
+
+func gracefulShutdown(ctx context.Context, listener net.Listener, stopWatcher chan struct{}, watcherDone chan struct{}) {
+	defer close(watcherDone)
+
+	select {
+	case <-ctx.Done():
+		fmt.Println("Gracefully shutting down...")
+
+		err := listener.Close()
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			fmt.Println("Error closing listener during shutdown:", err)
+		}
+
+	case <-stopWatcher:
+
 	}
 }
 
@@ -50,7 +91,6 @@ func handleConnection(conn net.Conn, commandHandler *commands.Handler, verbose b
 	if verbose {
 		fmt.Println("New connection from:", conn.RemoteAddr().String())
 	}
-
 	connectionReadLoop(conn, commandHandler, verbose)
 }
 

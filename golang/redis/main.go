@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"os"
+	"os/signal"
 	"redis/server"
+	"syscall"
 )
 
 func main() {
@@ -11,5 +15,8 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "print connection and request details")
 	flag.Parse()
 
-	server.StartServer("6379", verbose)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	server.StartServer(ctx, "6379", verbose)
 }
