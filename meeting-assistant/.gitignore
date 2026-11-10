@@ -1,0 +1,60 @@
+# Credentials and local overrides
+.env
+.env.*
+!.env.example
+config.local.*
+*.key
+*.pem
+
+# Model artifacts and local caches
+models/
+.cache/
+*.safetensors
+*.gguf
+*.nemo
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.mlmodelc/
+*.mlpackage/
+
+# Meeting content, generated output and voice-derived data
+data/
+recordings/
+transcripts/
+exports/
+artifacts/
+logs/
+private/
+benchmarks/private/
+*.log
+*.npy
+*.npz
+*.wav
+*.flac
+*.mp3
+*.m4a
+*.mp4
+*.opus
+*.vtt
+*.srt
+*.rttm
+*.sqlite*
+*.db
+*.db-*
+
+# Development environments
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.build/
+DerivedData/
+.DS_Store
+
+# Local Python packaging and native build output
+*.egg-info/
+dist/
+build/

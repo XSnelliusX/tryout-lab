@@ -9,6 +9,7 @@ Every project, tool, or language trial is isolated into its own dedicated direct
 *   📂 `golang/` — Learning Go syntax, concurrent programming, and microservices ([Redis-like server](golang/redis/), [Udemy course progress](golang/Udemy/Readme.md)).
 *   📂 `kubernetes/` — Kubernetes manifests, local cluster configurations, and notes ([Essentials](kubernetes/kubernetes.md), [kubectl](kubernetes/kubectl.md), [Namespaces](kubernetes/namespaces/namespaces.md), [Deployments](kubernetes/deployments/deployments.md), [Networking](kubernetes/networking/networking.md), [Storage](kubernetes/storage/storage.md), [k9s](kubernetes/k9s.md), [Helm](kubernetes/helm/helm.md), [Monitoring](kubernetes/monitoring/monitoring.md), [Rancher Desktop](kubernetes/rancher.md))
 *   📂 `mac-setup/` — New-Mac setup script and terminal configs ([overview + Vorssaint](mac-setup/README.md), [zsh](mac-setup/zsh/README.md), [cmux](mac-setup/cmux/README.md), [Claude Code statusline](mac-setup/claude-code/README.md), [Neovim / LazyVim](mac-setup/nvim/README.md), [Vim + LazyVim usage](mac-setup/nvim/usage.md))
+*   📂 [`meeting-assistant/`](meeting-assistant/README.md) — Preview of a local Mandarin–English meeting assistant for captions, technical vocabulary and Chinese learning.
 
 ## 🛠️ Purpose & Goals
 

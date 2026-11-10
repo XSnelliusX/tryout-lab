@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meeting Assistant</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <header><h1>Meeting Assistant</h1><p>Local Chinese speech → English captions</p><button id="caption-mode" type="button" aria-pressed="false">Focus captions</button></header>
+    <section class="card capture-card" aria-label="Setup and recording">
+      <div class="status"><strong>Model setup</strong><span id="model">Connecting…</span></div>
+      <p class="hint">Models load in the background from local files. They are not downloaded by this app. Prepare the models and capture helper before starting.</p>
+      <div class="controls">
+        <label for="source">Audio source</label>
+        <select id="source"><option value="teams">Teams desktop audio</option><option value="system">All system audio</option><option value="microphone">Microphone — in-person meeting</option></select>
+        <p id="source-hint" class="hint">Teams captures remote digital audio, not your microphone or voices in the room.</p>
+        <p id="source-warning" class="warning" hidden>System audio may include unrelated apps, alerts, and private audio. Only choose this if you intend to record all system output.</p>
+        <details id="permissions" class="permission-guide">
+          <summary>Which app needs macOS permission?</summary>
+          <p id="launcher-hint" class="hint">Allow the app that launched this tool, not Teams or your web browser.</p>
+          <p class="hint">Double-click launcher → <strong>Terminal</strong> (<code>/System/Applications/Utilities/Terminal.app</code>). Started from cmux → <strong>cmux</strong> (<code>/Applications/cmux.app</code>). If macOS lists capture-audio itself, allow that requesting item. After changing access, fully quit and reopen the responsible launcher; save other terminal work first.</p>
+          <p class="hint"><strong>Teams / System:</strong> Privacy &amp; Security → Screen &amp; System Audio Recording. <a href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open recording permissions</a></p>
+          <p class="hint">If the launcher is missing from that list, use its <strong>+</strong> button, press <strong>⌘⇧G</strong>, and enter the Terminal or cmux application path above. Grant only the permissions for the source you intend to use.</p>
+          <p class="hint"><strong>Microphone:</strong> Privacy &amp; Security → Microphone. No Screen Recording access is needed. Start once to request access; Microphone settings may not list the launcher until then. <a href="x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone">Open microphone permissions</a></p>
+        </details>
+        <label class="consent"><input id="consent" type="checkbox"> I have given the required notice and obtained consent to record, locally archive, and transcribe this session.</label>
+        <div class="buttons"><button id="start" disabled>Start recording</button><button id="stop" disabled>Stop &amp; finish</button><span id="recording">Idle</span></div>
+      </div>
+      <div class="metrics"><label for="level">Audio level</label><meter id="level" min="0" max="0.2" value="0"></meter><span id="queue">Queue: 0</span></div>
+      <p id="capture-status" class="hint" role="status">Not capturing</p>
+      <p id="feed-status" class="hint" role="status">Received: 0.0 seconds of audio</p>
+      <p id="no-audio" class="warning" hidden>No audio signal detected for 8 seconds. Check the selected source, permissions, and input/output routing. Silence can also cause this warning.</p>
+      <p id="notice" class="warning" role="status" hidden></p>
+    </section>
+    <section class="card workbench-card">
+      <h2>Sessions</h2>
+      <div class="buttons"><label for="session-select">Saved session</label><select id="session-select"><option value="">No sessions available</option></select><button id="session-open" type="button">Open</button><button id="session-delete" type="button" class="danger">Delete</button></div>
+      <p id="session-info" class="hint">Session information unavailable.</p>
+      <p class="hint">Deletion removes the app-owned session and its exports, not backups or other copies.</p>
+    </section>
+    <section class="card transcript-card">
+      <div class="section-head"><h2>Transcript</h2><button id="save">Save transcript</button></div>
+      <p class="hint">Times are approximate audio chunk boundaries, not word timings. Captions may be incomplete or inaccurate; no speaker names are inferred. Stop &amp; finish before closing this page or the launcher. Save exports currently available captions; wait until finishing is done for the full available transcript.</p>
+      <div id="segments" class="segments" aria-live="polite"><p class="hint">Captions will appear here.</p></div>
+    </section>
+    <section class="card workbench-card">
+      <h2>Meeting context and vocabulary</h2>
+      <p class="hint">Context and enabled terms are hints, not mandatory substitutions. Changes are saved locally. Use Chinese → preferred English pairs for translation, or leave the English rendering empty for recognition-only hints. English product names can use the same English spelling as their rendering.</p>
+      <label for="meeting-context">Persistent meeting context</label><textarea id="meeting-context" rows="4" maxlength="4000"></textarea>
+      <div class="buttons"><button id="context-save" type="button">Save context</button><button id="context-technical" type="button" class="secondary">Use technical meeting example</button></div>
+      <h3>Vocabulary</h3>
+      <div id="vocabulary-list"></div>
+      <form id="vocabulary-form" class="form-grid"><label>Term <input id="vocab-term" maxlength="100" required></label><label>Preferred English <input id="vocab-translation" maxlength="200"></label><label>Note <input id="vocab-note" maxlength="1000"></label><button type="submit">Add term</button></form>
+    </section>
+    <section class="card workbench-card">
+      <h2>Speaker names</h2><p class="hint">Cluster labels are not verified identities. Name them only if you know who they represent; unknown stays unknown.</p>
+      <label class="consent"><input id="attribution-unreliable" type="checkbox"> More than 8 distinct voices may be present, or speaker attribution is unreliable. Use anonymous post-meeting notes.</label>
+      <div id="speaker-names"></div><div class="buttons"><button id="speakers-save" type="button">Save speaker names</button><button id="speakers-cancel" class="secondary" type="button">Cancel speaker edits</button></div>
+    </section>
+    <section class="card workbench-card">
+      <h2>Post-meeting processing</h2>
+      <p id="diarization-status" class="hint">Diarization availability unknown.</p>
+      <div class="form-grid"><label>Gateway HTTPS endpoint <input id="gateway-endpoint" type="url" autocomplete="off"></label><label>Model <input id="gateway-model" autocomplete="off"></label><button id="gateway-save" type="button">Save gateway settings</button><label>API key (optional, memory only) <input id="gateway-key" type="password" autocomplete="off"></label></div>
+      <p class="hint">The key is not saved in settings or browser storage. Clear it or close this page to discard it.</p>
+      <p id="remote-preview" class="hint">Open a session to preview the text payload.</p>
+      <details><summary>Preview source text, context and speaker labels</summary><p class="hint">This is the source data before chunking and overlap. English translations and raw audio are not sent.</p><pre id="remote-preview-text" class="payload-preview">No session open.</pre></details>
+      <p class="warning">Remote review, summary and learning send transcript text, meeting context and speaker names to the configured gateway. Raw audio is not uploaded. Check the endpoint and your organization’s policy before sending.</p>
+      <label class="consent"><input id="remote-confirm" type="checkbox"> I explicitly confirm sending this session’s text to the configured gateway.</label>
+      <div class="buttons job-buttons"><button type="button" data-task="refine">Refine locally</button><button type="button" data-task="diarize">Diarize locally</button><button type="button" data-task="review">Remote review</button><button type="button" data-task="summary">Remote summary</button><button type="button" data-task="learning">Remote learning</button><button id="job-cancel" type="button" class="secondary">Cancel job</button></div>
+      <p id="job-status" role="status">No job information available.</p>
+    </section>
+    <section class="card workbench-card"><h2>Results and proposals</h2><p class="hint">Results refer to a specific session version. Review proposals before applying; changed sessions make older results stale.</p><div id="artifacts"></div></section>
+    <section class="card workbench-card"><h2>Export</h2><div class="buttons"><button type="button" data-export="markdown">Markdown</button><button type="button" data-export="json">JSON</button><button type="button" data-export="anki">Anki</button></div><p id="export-status" role="status"></p></section>
+    <section class="card workbench-card">
+      <h2>Translate text manually</h2>
+      <p class="hint">Paste Chinese text as a fallback. It uses the same local model worker as captions.</p>
+      <textarea id="manual-text" maxlength="5000" rows="3" placeholder="輸入中文…"></textarea>
+      <button id="translate" disabled>Translate</button>
+    </section>
+    <section class="card privacy workbench-card">
+      <h2>Privacy &amp; retention</h2>
+      <p>Live audio, transcription and translation stay on this Mac. Optional post-meeting text processing sends text to your chosen gateway only after confirmation. Recording saves audio and transcript events locally until you delete them. Exports are separate copies. Review consent and your organization’s policy before recording.</p>
+      <p>Sessions and exports: <code id="archive">~/Library/Application Support/Meeting Assistant/sessions</code>. Delete session folders and exports there when no longer needed; backups or other copies must be removed separately.</p>
+    </section>
+    <p id="message" role="status"></p>
+  </main>
+</body>
+</html>

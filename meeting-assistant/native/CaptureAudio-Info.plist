@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>org.meeting-assistant.capture-audio</string>
+    <key>CFBundleName</key>
+    <string>Meeting Assistant Audio Capture</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Meeting Assistant records the microphone only when you explicitly start microphone capture.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Meeting Assistant captures Teams or system audio when you explicitly start screen-based audio capture.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Meeting Assistant captures Teams or system audio when you explicitly start system audio capture.</string>
+</dict>
+</plist>
