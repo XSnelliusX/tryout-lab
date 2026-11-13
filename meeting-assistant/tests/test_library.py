@@ -197,6 +197,43 @@ class LibraryTests(unittest.TestCase):
         self.assertCountEqual(outcomes, [2, "conflict"])
         self.assertEqual(len(self.library.segment_history("session-1", 1)), 2)
 
+    def test_blank_speaker_names_are_dropped(self):
+        self.register()
+        self.library.upsert_segment("session-1", self.segment())
+        session = self.library.set_speaker_names("session-1", {"speaker_1": "  ", "speaker_2": "Ann"})
+        self.assertEqual(session["speaker_names"], {"speaker_2": "Ann"})
+
+    def test_speaker_only_edit_keeps_translation_and_clears_ambiguity(self):
+        self.register()
+        self.library.upsert_segment("session-1", self.segment())
+        self.library.assign_speakers("session-1", [{"id": 1, "speaker": "unknown", "ambiguous": True,
+                                                    "speaker_candidates": ["a", "b"], "reason": "multiple_speakers"}])
+        seg = self.library.get_session("session-1")["segments"][0]
+        self.library.update_translation("session-1", 1, seg["revision"], "hello")
+        seg = self.library.get_session("session-1")["segments"][0]
+        edited = self.library.edit_segment("session-1", 1, seg["traditional_text"], seg["revision"], speaker="b")
+        self.assertEqual((edited["english"], edited["status"], edited["speaker"]), ("hello", "complete", "b"))
+        self.assertEqual(edited["revision"], seg["revision"] + 1)
+        for key in ("ambiguous", "speaker_candidates", "reason"):
+            self.assertNotIn(key, edited)
+        changed = self.library.edit_segment("session-1", 1, "new text", edited["revision"])
+        self.assertEqual((changed["english"], changed["status"]), ("", "pending"))
+
+    def test_legacy_import_skips_torn_final_line_then_picks_it_up(self):
+        directory = self.root / "sessions" / "torn"
+        directory.mkdir(parents=True)
+        journal = directory / "events.jsonl"
+        started = json.dumps({"type": "session_started", "source": "teams"}) + "\n"
+        second = json.dumps({"type": "source_segment", "id": 1, "raw_text": "a", "traditional_text": "b", "status": "translating"})
+        journal.write_text(started + second[:10], encoding="utf-8")
+        self.assertEqual(self.library.import_legacy(), ["torn"])
+        self.assertEqual(self.library.import_warnings, [])
+        self.assertEqual(self.library.get_session("torn")["segments"], [])
+        journal.write_text(started + second + "\n", encoding="utf-8")
+        self.assertEqual(self.library.import_legacy(), ["torn"])
+        self.assertEqual(len(self.library.get_session("torn")["segments"]), 1)
+        self.assertEqual(self.library.import_legacy(), [])
+
     def test_legacy_import_is_incremental_and_does_not_overwrite_edits(self):
         directory = self.root / "sessions" / "legacy"
         directory.mkdir(parents=True)
@@ -222,23 +259,20 @@ class LibraryTests(unittest.TestCase):
 
     def test_import_skips_corrupt_and_truncated_journals_atomically(self):
         sessions = self.root / "sessions"
-        for name in ("broken", "truncated", "valid"):
+        for name in ("broken", "valid"):
             (sessions / name).mkdir(parents=True)
         good = {"type": "source_segment", "id": 1, "raw_text": "synthetic", "traditional_text": "synthetic"}
         good_line = json.dumps(good) + "\n"
         (sessions / "broken" / "events.jsonl").write_text(good_line + "{bad secret text}\n")
-        (sessions / "truncated" / "events.jsonl").write_text(good_line + '{"type":')
         (sessions / "valid" / "events.jsonl").write_text(good_line)
         self.assertEqual(self.library.import_legacy(), ["valid"])
-        self.assertEqual(self.library.import_warnings, ["broken", "truncated"])
+        self.assertEqual(self.library.import_warnings, ["broken"])
         with self.assertRaises(ValueError):
             self.library.get_session("broken")
-        with self.assertRaises(ValueError):
-            self.library.get_session("truncated")
         self.assertEqual(self.library.get_session("valid")["status"], "interrupted")
         (sessions / "broken" / "events.jsonl").write_text(good_line)
         self.assertEqual(self.library.import_legacy(), ["broken"])
-        self.assertEqual(self.library.import_warnings, ["truncated"])
+        self.assertEqual(self.library.import_warnings, [])
 
     def test_legacy_import_never_interrupts_registered_session(self):
         self.register()

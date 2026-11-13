@@ -1,14 +1,28 @@
-"""Read the capture helper and segment speech without blocking audio capture."""
+"""Capture helper process, audio reader thread and helper capability probes.
+
+The reader thread does no application work: per block it archives the audio,
+updates the level meter and feeds the segmenter, whose events go straight to
+the caller's thread-safe handoff. A wall-clock watchdog flushes an open
+utterance when the source stops delivering frames, so a stalled source cannot
+hold back a final.
+"""
 
 import collections
 import json
+import os
+import signal
 import subprocess
 import threading
+import time
 from pathlib import Path
 
+from .levels import LevelMeter
+from .vad import Segmenter
+
 RATE = 16000
-FRAME = 1600  # 100 ms
-THRESHOLD = 0.008
+READ_BYTES = 16384  # raw pipe reads return whatever has arrived, up to this
+STALL_SECONDS = 2.0  # flush an open utterance after this long without frames
+_CLEAN_STOP_CODES = {0, -signal.SIGTERM, -signal.SIGKILL, -signal.SIGINT}
 
 
 def capture_error(lines):
@@ -34,29 +48,172 @@ def capture_error(lines):
     return "Capture failed. Check the selected source, macOS permissions, and the permission guide."
 
 
+# -- helper capability probes ---------------------------------------------------
+
+_DEVICE_FIELDS = {"uid": str, "name": str, "transport": str, "sample_rate": (int, float), "channels": int,
+                  "is_default": bool, "input_volume": (int, float, type(None)), "input_volume_settable": bool}
+_probe_lock = threading.Lock()
+_protocol_cache = {}
+_devices_cache = {}
+
+
+def _stderr_events(text):
+    for line in text.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            yield event
+
+
+def clean_device(event):
+    """Keep only the documented device fields with the documented types."""
+    if not isinstance(event, dict):
+        return None
+    device = {}
+    for key, kind in _DEVICE_FIELDS.items():
+        value = event.get(key)
+        if kind is bool:
+            value = value if isinstance(value, bool) else None
+        elif isinstance(value, bool) or not isinstance(value, kind):
+            value = None
+        if isinstance(value, str):
+            value = value[:300]
+        device[key] = value
+    return device if device.get("uid") or device.get("name") else None
+
+
+def helper_protocol(helper):
+    """1 for an old helper binary, 2 for one that answers --version; None if missing. Cached per mtime."""
+    helper = Path(helper)
+    try:
+        stat = helper.stat()
+    except OSError:
+        return None
+    if not os.access(helper, os.X_OK):
+        return None
+    key = (str(helper), stat.st_mtime_ns, stat.st_size)
+    with _probe_lock:
+        if key in _protocol_cache:
+            return _protocol_cache[key]
+    protocol = 1
+    try:
+        done = subprocess.run([str(helper), "--version"], capture_output=True, timeout=3,
+                              stdin=subprocess.DEVNULL, start_new_session=True)
+        if done.returncode == 0:
+            for event in _stderr_events(done.stderr.decode("utf-8", "replace")):
+                if event.get("event") == "version" and isinstance(event.get("protocol"), int):
+                    protocol = event["protocol"]
+    except (OSError, subprocess.SubprocessError):
+        protocol = 1
+    with _probe_lock:
+        _protocol_cache[key] = protocol
+    return protocol
+
+
+def helper_stale(helper, source):
+    """True when the Swift source is newer than the built helper binary."""
+    try:
+        return Path(source).stat().st_mtime > Path(helper).stat().st_mtime
+    except OSError:
+        return False
+
+
+def list_devices(helper, max_age=5.0):
+    """{"supported": bool, "devices": [...]} from the helper's --list-devices, cached for max_age seconds."""
+    if helper_protocol(helper) != 2:
+        return {"supported": False, "devices": []}
+    key = str(helper)
+    now = time.monotonic()
+    with _probe_lock:
+        cached = _devices_cache.get(key)
+        if cached and now - cached[0] < max_age:
+            return {"supported": True, "devices": [dict(d) for d in cached[1]]}
+        devices = []
+        try:
+            done = subprocess.run([str(helper), "--list-devices"], capture_output=True, timeout=5,
+                                  stdin=subprocess.DEVNULL, start_new_session=True)
+            if done.returncode != 0:
+                raise ValueError("The capture helper could not list input devices.")
+            for event in _stderr_events(done.stderr.decode("utf-8", "replace")):
+                if event.get("event") == "device":
+                    device = clean_device(event)
+                    if device:
+                        devices.append(device)
+        except subprocess.TimeoutExpired:
+            raise ValueError("Listing input devices timed out.") from None
+        except OSError:
+            raise ValueError("The capture helper could not be run.") from None
+        _devices_cache[key] = (time.monotonic(), devices)
+        return {"supported": True, "devices": [dict(d) for d in devices]}
+
+
+def clear_probe_cache():
+    with _probe_lock:
+        _protocol_cache.clear()
+        _devices_cache.clear()
+
+
+# -- capture -------------------------------------------------------------------
+
 class Capture:
-    def __init__(self, executable: Path, source, archive, on_chunk, on_level, on_done, on_status=None):
+    """Run the helper and turn its PCM into level updates and segmenter events.
+
+    Callbacks (all must be quick and must not block on application locks):
+      on_segment(event)     Segmenter event, from the reader or watchdog thread
+      on_block(capture, now) after each block: levels/detector state are current
+      on_status(event)      helper stderr event (started, format, input, permission, error)
+      on_done(error)        once, after the final flush; error is None for a clean stop
+    """
+
+    def __init__(self, executable: Path, source, archive, *, on_segment, on_block=None, on_status=None,
+                 on_done=None, device_uid=None, segmenter_options=None, stall_seconds=STALL_SECONDS):
         self.executable = executable
         self.source = source
         self.archive = archive
-        self.on_chunk = on_chunk
-        self.on_level = on_level
-        self.on_done = on_done
+        self.on_segment = on_segment
+        self.on_block = on_block
         self.on_status = on_status
+        self.on_done = on_done
+        self.device_uid = device_uid
+        self.stall_seconds = stall_seconds
         self.proc = None
         self.reader = None
+        self.stderr_reader = None
+        self.watchdog = None
         self.stop_requested = False
         self.stderr_tail = collections.deque(maxlen=20)
+        self.meter = LevelMeter(RATE)
+        self.segmenter = Segmenter(self._emit, rate=RATE, **(segmenter_options or {}))
+        self.detector = self.segmenter.detector
+        self.samples = 0
+        self.last_frame_at = None
+        self.stall_flushes = 0
+        self._seg_lock = threading.Lock()
+        self._finished = threading.Event()
+
+    def command(self):
+        command = [str(self.executable), "--source", self.source]
+        if self.device_uid:
+            command += ["--device", self.device_uid]
+        return command
 
     def start(self):
-        self.proc = subprocess.Popen(
-            [str(self.executable), "--source", self.source],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
-        )
-        self.stderr_reader = threading.Thread(target=self._stderr, daemon=True)
+        # A new session keeps terminal Ctrl-C away from the helper: the app stops
+        # it explicitly and still collects the final audio.
+        self.proc = subprocess.Popen(self.command(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, bufsize=0, start_new_session=True)
+        self.stderr_reader = threading.Thread(target=self._stderr, name="capture-stderr", daemon=True)
         self.stderr_reader.start()
-        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader = threading.Thread(target=self._read, name="capture-reader", daemon=True)
         self.reader.start()
+        self.watchdog = threading.Thread(target=self._watch, name="capture-watchdog", daemon=True)
+        self.watchdog.start()
+
+    def _emit(self, event):
+        # Called by the segmenter with _seg_lock held.
+        self.on_segment(event)
 
     def _stderr(self):
         # Drain diagnostics so a verbose helper cannot block the audio pipe.
@@ -69,10 +226,13 @@ class Capture:
             if self.on_status:
                 try:
                     event = json.loads(message)
-                    if isinstance(event, dict) and event.get("event") in ("permission", "started", "error"):
-                        self.on_status(event)
                 except (ValueError, TypeError):
-                    pass
+                    continue
+                if isinstance(event, dict) and event.get("event") in ("permission", "started", "error", "format", "input"):
+                    try:
+                        self.on_status(event)
+                    except Exception:
+                        pass  # Diagnostics must never stop the drain.
 
     def stop(self):
         self.stop_requested = True
@@ -82,81 +242,84 @@ class Capture:
             except ProcessLookupError:
                 pass
 
+    def _watch(self):
+        while not self._finished.wait(0.25):
+            with self._seg_lock:
+                if self._finished.is_set():
+                    return
+                last = self.last_frame_at
+                if self.segmenter.open and last is not None and time.monotonic() - last >= self.stall_seconds:
+                    self.stall_flushes += 1
+                    self.segmenter.flush()
+
+    def _process(self, block):
+        import numpy as np
+
+        block = np.nan_to_num(block, nan=0.0, posinf=0.0, neginf=0.0)
+        self.archive.write_audio(block)
+        now = time.monotonic()
+        self.meter.update(block)
+        with self._seg_lock:
+            self.samples += len(block)
+            self.last_frame_at = now
+            self.segmenter.process(block, now)
+            if self.on_block:
+                self.on_block(self, now)
+
     def _read(self):
         import numpy as np
 
-        parts = []
-        pre = collections.deque(maxlen=2)
-        samples_seen = 0
-        chunk_start = 0
-        chunk_length = 0
-        silence = 0
         pending = b""
         error = None
-
-        def flush():
-            nonlocal parts, chunk_length, silence
-            if parts:
-                self.on_chunk(np.concatenate(parts), chunk_start / RATE, (chunk_start + chunk_length) / RATE)
-            parts = []
-            chunk_length = 0
-            silence = 0
-
-        def process(block):
-            nonlocal samples_seen, chunk_start, chunk_length, silence, parts
-            self.archive.write_audio(block)
-            level = float(np.sqrt(np.mean(np.square(block, dtype=np.float64)))) if len(block) else 0.0
-            self.on_level(level, (samples_seen + len(block)) / RATE)
-            start = samples_seen
-            samples_seen += len(block)
-            voiced = level >= THRESHOLD
-            if not parts:
-                if not voiced:
-                    pre.append((start, block))
-                    return
-                chunk_start = pre[0][0] if pre else start
-                parts = [p[1] for p in pre]
-                chunk_length = sum(len(p) for p in parts)
-                pre.clear()
-            parts.append(block)
-            chunk_length += len(block)
-            silence = 0 if voiced else silence + len(block)
-            if chunk_length >= RATE * 6 or (chunk_length >= RATE and silence >= int(RATE * 0.6)):
-                flush()
-
+        flushed = False
         try:
             while True:
-                data = self.proc.stdout.read(FRAME * 4)
+                data = self.proc.stdout.read(READ_BYTES)
                 if not data:
                     break
                 pending += data
-                while len(pending) >= FRAME * 4:
-                    block = np.frombuffer(pending[:FRAME * 4], dtype="<f4").copy()
-                    pending = pending[FRAME * 4:]
-                    process(np.nan_to_num(block, nan=0.0, posinf=0.0, neginf=0.0))
-            usable = len(pending) - len(pending) % 4
-            if usable:
-                process(np.nan_to_num(np.frombuffer(pending[:usable], dtype="<f4").copy(), nan=0.0, posinf=0.0, neginf=0.0))
-            if len(pending) % 4:
+                usable = len(pending) - len(pending) % 4
+                if usable:
+                    self._process(np.frombuffer(pending[:usable], dtype="<f4").copy())
+                    pending = pending[usable:]
+            if pending:
                 error = "Capture ended with an incomplete audio sample."
-            flush()
+            with self._seg_lock:
+                self.segmenter.flush()
+            flushed = True
         except Exception as exc:
             error = f"Audio capture/archive failed: {exc}"
             if self.proc.poll() is None:
                 self.proc.terminate()
         finally:
+            if not flushed:
+                try:
+                    with self._seg_lock:
+                        self.segmenter.flush()
+                except Exception:
+                    pass  # Report the original capture/archive failure.
+            self._finished.set()
             try:
                 self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 self.proc.wait()
             self.stderr_reader.join(timeout=1)
+            for stream in (self.proc.stdout, self.proc.stderr):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
             try:
                 self.archive.close_audio()
             except Exception as exc:
                 error = error or f"Could not finalize audio archive: {exc}"
-            if self.proc.returncode != 0:
+            code = self.proc.returncode
+            if self.stop_requested and code in _CLEAN_STOP_CODES:
+                pass  # A requested stop, even by signal, is a clean end.
+            elif code != 0:
                 error = error or capture_error(self.stderr_tail)
             elif not self.stop_requested:
                 error = error or "Capture ended unexpectedly."
-            self.on_done(error)
+            if self.on_done:
+                self.on_done(error)

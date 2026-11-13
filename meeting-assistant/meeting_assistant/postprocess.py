@@ -114,11 +114,13 @@ def _transport(endpoint: str, payload: dict, api_key: str) -> dict:
         def connect(self):
             # Never resolve the hostname a second time, including on reconnect.
             last_error = None
-            # One address per attempt keeps the socket timeout bounded even
-            # when DNS returns many addresses. Validate every answer above.
-            for address in addresses[:1]:
+            # At most three already-validated addresses, splitting the timeout
+            # so the total connect time stays bounded.
+            candidates = addresses[:3]
+            per_try = self.timeout / len(candidates) if isinstance(self.timeout, (int, float)) and self.timeout else self.timeout
+            for address in candidates:
                 try:
-                    sock = socket.create_connection((address, port), self.timeout)
+                    sock = socket.create_connection((address, port), per_try)
                     try:
                         self.sock = self._context.wrap_socket(sock, server_hostname=host)
                     except Exception:
@@ -312,6 +314,8 @@ class GatewayClient:
             raise ValueError("Context must be a string of at most 4000 characters")
         if speaker_names is None:
             speaker_names = {}
+        if isinstance(speaker_names, dict):
+            speaker_names = {k: v for k, v in speaker_names.items() if not (isinstance(v, str) and not v.strip())}
         if not isinstance(speaker_names, dict) or any(
             not _text(k, max_length=200) or not _text(v, max_length=200) for k, v in speaker_names.items()
         ):

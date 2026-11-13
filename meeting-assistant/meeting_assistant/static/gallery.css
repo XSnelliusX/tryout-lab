@@ -1,0 +1,71 @@
+/* Gallery-only layout. Not part of the component library. */
+html { min-width: 1100px; }
+body { margin: 0; background: light-dark(#eceefb, #14141a); }
+
+/* Content layer: a soft static colour field (indigo -> teal -> warm) the glass can pick up */
+.ambient {
+  position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(900px 600px at 8% 6%, light-dark(rgba(120, 118, 235, .45), rgba(88, 86, 214, .5)), transparent 70%),
+    radial-gradient(900px 700px at 92% 38%, light-dark(rgba(60, 200, 190, .38), rgba(30, 150, 150, .4)), transparent 70%),
+    radial-gradient(900px 700px at 25% 100%, light-dark(rgba(255, 170, 110, .4), rgba(200, 110, 60, .38)), transparent 70%),
+    light-dark(#eceefb, #14141a);
+}
+
+.scroll-edge { --edge-h: 96px; }
+.gallery-bar { position: fixed; z-index: 10; top: var(--s-2); left: var(--s-3); right: var(--s-3); }
+.gallery-switch { gap: var(--s-2); padding: 0 var(--s-3); }
+.gallery { box-sizing: border-box; max-width: 1100px; margin: 0 auto; padding: 88px var(--s-5) 64px; display: flex; flex-direction: column; gap: 40px; }
+.demo h2 { margin: 0 0 var(--s-1); font: var(--text-title2); font-weight: 600; }
+.note { margin: 0 0 var(--s-3); max-width: 70ch; color: var(--label-2); font: var(--text-callout); }
+
+/* Stages give the glass something rich to refract */
+.stage { position: relative; display: flex; gap: var(--s-4); align-items: center; padding: var(--s-5); margin-bottom: var(--s-3); border-radius: var(--r-panel); overflow: hidden; }
+.stage--ambient {
+  background:
+    radial-gradient(380px 220px at 12% 20%, light-dark(#7b79f0, #4b49c8), transparent 70%),
+    radial-gradient(360px 240px at 60% 90%, light-dark(#3ec9b8, #1e8a86), transparent 70%),
+    radial-gradient(360px 200px at 95% 10%, light-dark(#ffab6e, #b8602d), transparent 70%),
+    light-dark(#dfe2f7, #1c1c24);
+}
+.stage--media {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .5) 0 18px, transparent 18px 44px),
+    linear-gradient(120deg, #ffd27a, #ff7a8a 45%, #6a7bff);
+}
+.stage--row { flex-wrap: wrap; }
+.stage--split { align-items: stretch; }
+.stage > .glass { padding: var(--s-4) var(--s-5); display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
+.stage > .glass[data-shape="capsule"] { padding: var(--s-3) var(--s-5); min-width: 0; }
+.stage > .glass span { color: var(--label-2); font: var(--text-callout); }
+.stage-toolbar { flex: 1; padding: 0; }
+
+.matrix { border-spacing: var(--s-4) var(--s-3); }
+.matrix th { text-align: start; font: var(--text-callout); font-weight: 600; color: var(--label); }
+.matrix thead th { color: var(--label); }
+.matrix td { vertical-align: middle; }
+.stage .matrix { padding: var(--s-2) var(--s-3); border-radius: var(--r-group); background: light-dark(rgba(255, 255, 255, .55), rgba(20, 20, 26, .55)); }
+
+/* Sidebar + scroll edge sample */
+.stage--split .glass-sidebar { height: 340px; flex: none; }
+.edge-demo { position: relative; flex: 1; height: 340px; border-radius: var(--r-group); overflow: hidden; background: light-dark(rgba(255, 255, 255, .7), rgba(24, 24, 30, .8)); }
+.edge-scroller { height: 100%; --edge-h: 72px; }
+.edge-content { padding: 64px var(--s-4) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
+.edge-bar { z-index: 3; position: absolute; top: 0; left: 0; right: 0; }
+.edge-en { font: var(--text-caption-en); }
+.edge-zh { color: var(--label-2); font: var(--text-caption-zh); }
+
+/* Content-layer plates */
+.plate { padding: var(--s-5); border-radius: var(--r-panel); background: var(--surface); box-shadow: inset 0 0 0 1px var(--separator); }
+.meters { display: flex; flex-direction: column; gap: var(--s-3); max-width: 640px; }
+.meter-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: var(--s-4); }
+.forms { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
+.form-col { display: flex; flex-direction: column; gap: var(--s-3); }
+.badges { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.type p { margin: 0 0 var(--s-2); }
+.cap-en { font: var(--text-caption-en); }
+.cap-zh { color: var(--label-2); font: var(--text-caption-zh); }
+.icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s-3); margin-top: var(--s-4); }
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: var(--s-1); margin: 0; }
+.icon-cell .icon { width: 24px; height: 24px; }
+.icon-cell figcaption { color: var(--label-2); font: var(--text-subheadline); }

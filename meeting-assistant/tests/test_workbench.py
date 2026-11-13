@@ -7,6 +7,7 @@ import threading
 import unittest
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 from meeting_assistant.workbench import Workbench
 
@@ -96,12 +97,31 @@ class WorkbenchTests(unittest.TestCase):
             self.app.audio_clip("synthetic", 0, 1)
 
     def test_context_bumps_version_and_export_matches_edited_source(self):
-        self.app.update_settings({"meeting_context": "Engineering release planning"})
+        self.app.session_context("Engineering release planning")
         self.app.segment_edit({"id": 1, "text": "container protection", "expected_revision": 1})
         output = Path(self.app.export("json"))
         exported = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(exported["segments"][0]["traditional_text"], "container protection")
         self.assertEqual(exported["context"], "Engineering release planning")
+
+    def test_global_context_does_not_rewrite_open_archived_session(self):
+        before = self.app.library.get_session("synthetic")
+        self.app.update_settings({"meeting_context": "new default"})
+        after = self.app.library.get_session("synthetic")
+        self.assertEqual((after["context"], after["version"]), (before["context"], before["version"]))
+        updated = self.app.session_context("explicit", expected_session="synthetic")
+        self.assertEqual(updated["context"], "explicit")
+        self.assertEqual(updated["version"], before["version"] + 1)
+        with self.assertRaisesRegex(ValueError, "changed"):
+            self.app.session_context("x", expected_session="other")
+
+    def test_delete_with_pending_cleanup_clears_selection_and_raises(self):
+        with patch.object(self.app.library, "_purge_quarantine", side_effect=OSError("injected")):
+            with self.assertRaises(OSError):
+                self.app.session_delete("synthetic", True)
+        self.assertIsNone(self.app.session_id)
+        self.assertEqual(self.app.segments, [])
+        self.assertIn("cleanup is pending", self.app.notice)
 
     def test_refinement_is_not_automatically_applied_to_different_windows(self):
         session = self.app._selected()

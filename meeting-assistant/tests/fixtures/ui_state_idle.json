@@ -1,0 +1,116 @@
+{
+ "settings": {
+  "meeting_context": "Technical meeting discussing software development and infrastructure.",
+  "gateway": {
+   "endpoint": "",
+   "model": ""
+  },
+  "vocabulary": [
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000001",
+    "term": "Kubernetes",
+    "translation": "Kubernetes",
+    "note": "",
+    "enabled": true,
+    "known": false
+   },
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000002",
+    "term": "灰度發佈",
+    "translation": "canary release",
+    "note": "deployment",
+    "enabled": true,
+    "known": true
+   },
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000003",
+    "term": "回滾",
+    "translation": "rollback",
+    "note": "",
+    "enabled": true,
+    "known": false
+   }
+  ],
+  "audio": {
+   "device_uid": "",
+   "language": "auto",
+   "normalize": true
+  }
+ },
+ "session": null,
+ "sessions": [
+  {
+   "id": "20261113-093012-a1b2",
+   "source": "teams",
+   "created_at": "2026-11-13T09:30:12+08:00",
+   "status": "complete",
+   "version": 1,
+   "context": "Weekly engineering sync.",
+   "speaker_names": {
+    "speaker_1": "Mei",
+    "speaker_2": "Jason"
+   },
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261112-141500-c3d4",
+   "source": "microphone",
+   "created_at": "2026-11-12T14:15:00+08:00",
+   "status": "complete",
+   "version": 4,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261110-100000-e5f6",
+   "source": "system",
+   "created_at": "2026-11-10T10:00:00+08:00",
+   "status": "complete",
+   "version": 2,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261105-163000-0789",
+   "source": "teams",
+   "created_at": "2026-11-05T16:30:00+08:00",
+   "status": "interrupted",
+   "version": 1,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  }
+ ],
+ "job": null,
+ "diarization": {
+  "ready": true,
+  "reason": ""
+ },
+ "model_status": "Models ready",
+ "model_ready": true,
+ "recording_state": "idle",
+ "session_id": null,
+ "segments": [],
+ "live_preview": null,
+ "no_audio": false,
+ "queue_length": 0,
+ "queue_lag_seconds": 0,
+ "pending_work": 0,
+ "dropped": 0,
+ "notice": "",
+ "capture_status": "Not capturing",
+ "audio_seconds": 0,
+ "feed_status": "Capture inactive",
+ "launcher_name": "Terminal",
+ "archive_dir": "/Users/demo/Library/Application Support/Meeting Assistant/sessions",
+ "session_path": "/Users/demo/Library/Application Support/Meeting Assistant/sessions/20261113-093012-a1b2",
+ "audio": null,
+ "latency": null,
+ "capabilities": {
+  "helper_protocol": 2,
+  "helper_stale": false,
+  "event_stream": true
+ }
+}

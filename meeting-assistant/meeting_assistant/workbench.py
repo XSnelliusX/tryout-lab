@@ -5,7 +5,6 @@ import io
 import os
 import secrets
 import threading
-import time
 import wave
 from pathlib import Path
 
@@ -56,12 +55,29 @@ class Workbench:
             if self._post_busy():
                 raise ValueError("Wait for or cancel post-meeting work before changing its settings.")
             settings = self.library.save_settings(data)
-            if "meeting_context" in data and self.session_id:
+            # The global default only reaches the live session while capturing;
+            # archived sessions change through session_context().
+            if "meeting_context" in data and self.session_id and self.recording_state in ("starting", "recording"):
                 self.library.set_session_context(self.session_id, settings["meeting_context"])
                 if getattr(self, "capture_profile", None) is not None:
                     self.capture_profile = dict(self.capture_profile, context=settings["meeting_context"])
+                self._context_notice(settings["meeting_context"])
             self._refresh_capture_profile(settings)
             return settings
+
+    def _context_notice(self, context):
+        """Hook: the live application warns once about a slow, long context."""
+
+    def session_context(self, context, expected_session=None):
+        with self.lock:
+            if self._post_busy():
+                raise ValueError("Wait for or cancel post-meeting work before changing its context.")
+            session = self.library.set_session_context(self._selected(expected_session)["id"], context)
+            if self.recording_state in ("starting", "recording") and getattr(self, "capture_profile", None) is not None:
+                self.capture_profile = dict(self.capture_profile, context=session["context"])
+                self._context_notice(session["context"])
+            self._sync_selected()
+            return session
 
     def vocabulary_add(self, data):
         with self.lock:
@@ -79,6 +95,8 @@ class Workbench:
             existing = getattr(self, "capture_profile", None) or {}
             self.capture_profile = {"context": existing.get("context", settings.get("meeting_context", "")),
                                     "vocabulary": settings.get("vocabulary", [])}
+            # Language and normalisation apply to the next recognition; the device to the next recording.
+            self.capture_audio = dict(settings.get("audio") or {})
 
     def session_open(self, session_id):
         with self.lock:
@@ -88,7 +106,6 @@ class Workbench:
             self.segments = session.get("segments", [])
             self.next_id = max((s["id"] for s in self.segments), default=0) + 1
             self.audio_seconds = 0.0
-            self.level = 0.0
             self.notice = "Opened an archived session. Original recognition is retained alongside edits."
             return session
 
@@ -97,7 +114,21 @@ class Workbench:
             raise ValueError("Confirm deletion of this session and its app-owned audio, revisions and exports.")
         with self.lock:
             self._require_idle()
-            self.library.delete_session(session_id)
+            try:
+                self.library.delete_session(session_id)
+            except OSError:
+                # The deletion may have committed with only file cleanup pending.
+                try:
+                    self.library.get_session(session_id)
+                    gone = False
+                except Exception:
+                    gone = True
+                if gone and self.session_id == session_id:
+                    self.session_id = None
+                    self.segments = []
+                    self.next_id = 1
+                    self.notice = "Session deleted, but file cleanup is pending; restart the app to finish it."
+                raise
             if self.session_id == session_id:
                 self.session_id = None
                 self.segments = []
@@ -131,15 +162,10 @@ class Workbench:
             return segment
 
     def _enqueue_translation(self, segment, session_id):
-        import queue
+        from .scheduler import Job
 
-        try:
-            self.jobs.put_nowait({"type": "retranslate", "id": segment["id"],
-                                 "revision": segment["revision"], "text": segment["traditional_text"],
-                                 "session_id": session_id, "profile": self.profile(session_id),
-                                 "queued_at": time.monotonic()})
-        except queue.Full:
-            self.notice = "Edit saved; translation queue is full. Use Retranslate after it drains."
+        self.jobs.submit(Job("retranslate", session_id, id=segment["id"], revision=segment["revision"],
+                             text=segment["traditional_text"], profile=self.profile(session_id)))
 
     def segment_retranslate(self, ident, expected_session=None):
         with self.lock:
@@ -178,13 +204,22 @@ class Workbench:
             return result
 
     def workbench_state(self):
-        with self.lock:
-            from .diarization import capabilities
+        from .diarization import capabilities
 
-            session = self.library.get_session(self.session_id) if self.session_id else None
-            return {"settings": self.library.get_settings(), "session": session,
-                    "sessions": self.library.list_sessions(), "job": copy.deepcopy(self.background_job),
-                    "diarization": capabilities(self.data_dir)}
+        # Only the in-memory fields need the lock; the library has its own
+        # transactions, so its reads do not hold up the live pipeline.
+        with self.lock:
+            session_id = self.session_id
+            job = copy.deepcopy(self.background_job)
+        session = None
+        if session_id:
+            try:
+                session = self.library.get_session(session_id)
+            except ValueError:
+                session = None  # Deleted concurrently; the next refresh is consistent.
+        return {"settings": self.library.get_settings(), "session": session,
+                "sessions": self.library.list_sessions(), "job": job,
+                "diarization": capabilities(self.data_dir)}
 
     def _session_path(self, session_id):
         self.library.get_session(session_id)  # Validate a known application-owned ID first.
@@ -232,7 +267,7 @@ class Workbench:
 
     def job_start(self, data):
         task = data.get("task")
-        if task not in TASKS:
+        if not isinstance(task, str) or task not in TASKS:
             raise ValueError("Unknown post-meeting task.")
         with self.lock:
             self._require_idle()

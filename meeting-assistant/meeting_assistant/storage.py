@@ -8,7 +8,11 @@ import wave
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR = Path.home() / "Library" / "Application Support" / "Meeting Assistant"
+# MEETING_ASSISTANT_DATA_DIR redirects all app data (library, sessions, exports),
+# e.g. for measurements against a temporary directory. Unset: the normal location.
+DATA_DIR = (Path(os.environ["MEETING_ASSISTANT_DATA_DIR"]).expanduser().absolute()
+            if os.environ.get("MEETING_ASSISTANT_DATA_DIR")
+            else Path.home() / "Library" / "Application Support" / "Meeting Assistant")
 
 
 class Archive:

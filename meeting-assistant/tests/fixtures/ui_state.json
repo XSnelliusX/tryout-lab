@@ -1,0 +1,629 @@
+{
+ "settings": {
+  "meeting_context": "Technical meeting discussing software development and infrastructure.",
+  "gateway": {
+   "endpoint": "",
+   "model": ""
+  },
+  "vocabulary": [
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000001",
+    "term": "Kubernetes",
+    "translation": "Kubernetes",
+    "note": "",
+    "enabled": true,
+    "known": false
+   },
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000002",
+    "term": "灰度發佈",
+    "translation": "canary release",
+    "note": "deployment",
+    "enabled": true,
+    "known": true
+   },
+   {
+    "id": "6f1d2c1e-0000-4000-8000-000000000003",
+    "term": "回滾",
+    "translation": "rollback",
+    "note": "",
+    "enabled": true,
+    "known": false
+   }
+  ],
+  "audio": {
+   "device_uid": "",
+   "language": "auto",
+   "normalize": true
+  }
+ },
+ "session": {
+  "id": "20261113-093012-a1b2",
+  "source": "teams",
+  "created_at": "2026-11-13T09:30:12+08:00",
+  "status": "recording",
+  "version": 1,
+  "context": "Weekly engineering sync.",
+  "speaker_names": {
+   "speaker_1": "Mei",
+   "speaker_2": "Jason"
+  },
+  "attribution_unreliable": false,
+  "segments": [
+   {
+    "id": 1,
+    "start": 2.0,
+    "end": 7.4,
+    "kind": "audio",
+    "raw_text": "大家早安，我們先看一下這週 sprint 的進度。",
+    "traditional_text": "大家早安，我們先看一下這週 sprint 的進度。",
+    "english": "Good morning everyone, let's start with this week's sprint progress.",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 380,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1210
+    }
+   },
+   {
+    "id": 2,
+    "start": 8.1,
+    "end": 14.6,
+    "kind": "audio",
+    "raw_text": "後端的 API gateway 已經部署到 staging 環境了。",
+    "traditional_text": "後端的 API gateway 已經部署到 staging 環境了。",
+    "english": "The backend API gateway has already been deployed to the staging environment.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 260,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1090
+    }
+   },
+   {
+    "id": 3,
+    "start": 15.2,
+    "end": 20.0,
+    "kind": "audio",
+    "raw_text": "不過 latency 在高峰時段還是偏高。",
+    "traditional_text": "不過 latency 在高峰時段還是偏高。",
+    "english": "However, latency is still on the high side during peak hours.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 150,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 980
+    }
+   },
+   {
+    "id": 4,
+    "start": 21.0,
+    "end": 27.3,
+    "kind": "audio",
+    "raw_text": "Kubernetes 的 autoscaling 設定需要再調整。",
+    "traditional_text": "Kubernetes 的 autoscaling 設定需要再調整。",
+    "english": "The Kubernetes autoscaling settings need further tuning.",
+    "revision": 1,
+    "speaker": "unknown",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 510,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1340
+    }
+   },
+   {
+    "id": 5,
+    "start": 28.0,
+    "end": 33.5,
+    "kind": "audio",
+    "raw_text": "我可以負責這個部分，下週三之前給大家結果。",
+    "traditional_text": "我可以負責這個部分，下週三之前給大家結果。",
+    "english": "I can take care of this part and share results with everyone before next Wednesday.",
+    "revision": 2,
+    "speaker": "speaker_3",
+    "status": "complete",
+    "edited": true
+   },
+   {
+    "id": 6,
+    "start": 34.4,
+    "end": 40.2,
+    "kind": "audio",
+    "raw_text": "好的，那 monitoring dashboard 呢？",
+    "traditional_text": "好的，那 monitoring dashboard 呢？",
+    "english": "Okay, and what about the monitoring dashboard?",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 190,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1020
+    }
+   },
+   {
+    "id": 7,
+    "start": 41.0,
+    "end": 47.8,
+    "kind": "audio",
+    "raw_text": "Grafana 的面板已經有了，但是 alert rule 還沒設定。",
+    "traditional_text": "Grafana 的面板已經有了，但是 alert rule 還沒設定。",
+    "english": "The Grafana panels are ready, but the alert rules have not been set up yet.",
+    "revision": 1,
+    "speaker": "speaker_3",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 320,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1150
+    }
+   },
+   {
+    "id": 8,
+    "start": 48.5,
+    "end": 52.0,
+    "kind": "audio",
+    "raw_text": "這個部分的翻譯暫時失敗了。",
+    "traditional_text": "這個部分的翻譯暫時失敗了。",
+    "english": "",
+    "revision": 1,
+    "speaker": "unknown",
+    "status": "error",
+    "edited": false,
+    "error": "Translation worker timed out after 20 s"
+   },
+   {
+    "id": 9,
+    "start": 53.0,
+    "end": 60.4,
+    "kind": "audio",
+    "raw_text": "我們需要在發佈前完成 load testing 和 security review。",
+    "traditional_text": "我們需要在發佈前完成 load testing 和 security review。",
+    "english": "We need to finish load testing and the security review before the release.",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 430,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1260
+    }
+   },
+   {
+    "id": 10,
+    "start": 61.2,
+    "end": 67.0,
+    "kind": "audio",
+    "raw_text": "對，我會跟 QA 團隊確認時程。",
+    "traditional_text": "對，我會跟 QA 團隊確認時程。",
+    "english": "Yes, I'll confirm the schedule with the QA team.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 110,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 940
+    }
+   },
+   {
+    "id": 11,
+    "start": 68.0,
+    "end": 74.5,
+    "kind": "audio",
+    "raw_text": "另外，資料庫的 migration 預計週五晚上執行。",
+    "traditional_text": "另外，資料庫的 migration 預計週五晚上執行。",
+    "english": "Also, the database migration is scheduled for Friday night.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "edited": false,
+    "timing": {
+     "endpoint_ms": 450,
+     "asr_ms": 380,
+     "translate_ms": 270,
+     "speech_end_to_source_ms": 830,
+     "speech_end_to_english_ms": 1100
+    }
+   },
+   {
+    "id": 12,
+    "start": 75.3,
+    "end": 80.9,
+    "kind": "audio",
+    "raw_text": "這次 rollback 計畫要寫得更清楚一點，因為上次",
+    "traditional_text": "這次 rollback 計畫要寫得更清楚一點，因為上次",
+    "english": "This time the rollback plan needs to be written more clearly, because last time",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "translating",
+    "edited": false
+   }
+  ],
+  "artifacts": []
+ },
+ "sessions": [
+  {
+   "id": "20261113-093012-a1b2",
+   "source": "teams",
+   "created_at": "2026-11-13T09:30:12+08:00",
+   "status": "recording",
+   "version": 1,
+   "context": "Weekly engineering sync.",
+   "speaker_names": {
+    "speaker_1": "Mei",
+    "speaker_2": "Jason"
+   },
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261112-141500-c3d4",
+   "source": "microphone",
+   "created_at": "2026-11-12T14:15:00+08:00",
+   "status": "complete",
+   "version": 4,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261110-100000-e5f6",
+   "source": "system",
+   "created_at": "2026-11-10T10:00:00+08:00",
+   "status": "complete",
+   "version": 2,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  },
+  {
+   "id": "20261105-163000-0789",
+   "source": "teams",
+   "created_at": "2026-11-05T16:30:00+08:00",
+   "status": "interrupted",
+   "version": 1,
+   "context": "",
+   "speaker_names": {},
+   "attribution_unreliable": false
+  }
+ ],
+ "job": null,
+ "diarization": {
+  "ready": true,
+  "reason": ""
+ },
+ "model_status": "Models ready",
+ "model_ready": true,
+ "recording_state": "recording",
+ "session_id": "20261113-093012-a1b2",
+ "segments": [
+  {
+   "id": 1,
+   "start": 2.0,
+   "end": 7.4,
+   "kind": "audio",
+   "raw_text": "大家早安，我們先看一下這週 sprint 的進度。",
+   "traditional_text": "大家早安，我們先看一下這週 sprint 的進度。",
+   "english": "Good morning everyone, let's start with this week's sprint progress.",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 380,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1210
+   }
+  },
+  {
+   "id": 2,
+   "start": 8.1,
+   "end": 14.6,
+   "kind": "audio",
+   "raw_text": "後端的 API gateway 已經部署到 staging 環境了。",
+   "traditional_text": "後端的 API gateway 已經部署到 staging 環境了。",
+   "english": "The backend API gateway has already been deployed to the staging environment.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 260,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1090
+   }
+  },
+  {
+   "id": 3,
+   "start": 15.2,
+   "end": 20.0,
+   "kind": "audio",
+   "raw_text": "不過 latency 在高峰時段還是偏高。",
+   "traditional_text": "不過 latency 在高峰時段還是偏高。",
+   "english": "However, latency is still on the high side during peak hours.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 150,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 980
+   }
+  },
+  {
+   "id": 4,
+   "start": 21.0,
+   "end": 27.3,
+   "kind": "audio",
+   "raw_text": "Kubernetes 的 autoscaling 設定需要再調整。",
+   "traditional_text": "Kubernetes 的 autoscaling 設定需要再調整。",
+   "english": "The Kubernetes autoscaling settings need further tuning.",
+   "revision": 1,
+   "speaker": "unknown",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 510,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1340
+   }
+  },
+  {
+   "id": 5,
+   "start": 28.0,
+   "end": 33.5,
+   "kind": "audio",
+   "raw_text": "我可以負責這個部分，下週三之前給大家結果。",
+   "traditional_text": "我可以負責這個部分，下週三之前給大家結果。",
+   "english": "I can take care of this part and share results with everyone before next Wednesday.",
+   "revision": 2,
+   "speaker": "speaker_3",
+   "status": "complete",
+   "edited": true
+  },
+  {
+   "id": 6,
+   "start": 34.4,
+   "end": 40.2,
+   "kind": "audio",
+   "raw_text": "好的，那 monitoring dashboard 呢？",
+   "traditional_text": "好的，那 monitoring dashboard 呢？",
+   "english": "Okay, and what about the monitoring dashboard?",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 190,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1020
+   }
+  },
+  {
+   "id": 7,
+   "start": 41.0,
+   "end": 47.8,
+   "kind": "audio",
+   "raw_text": "Grafana 的面板已經有了，但是 alert rule 還沒設定。",
+   "traditional_text": "Grafana 的面板已經有了，但是 alert rule 還沒設定。",
+   "english": "The Grafana panels are ready, but the alert rules have not been set up yet.",
+   "revision": 1,
+   "speaker": "speaker_3",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 320,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1150
+   }
+  },
+  {
+   "id": 8,
+   "start": 48.5,
+   "end": 52.0,
+   "kind": "audio",
+   "raw_text": "這個部分的翻譯暫時失敗了。",
+   "traditional_text": "這個部分的翻譯暫時失敗了。",
+   "english": "",
+   "revision": 1,
+   "speaker": "unknown",
+   "status": "error",
+   "edited": false,
+   "error": "Translation worker timed out after 20 s"
+  },
+  {
+   "id": 9,
+   "start": 53.0,
+   "end": 60.4,
+   "kind": "audio",
+   "raw_text": "我們需要在發佈前完成 load testing 和 security review。",
+   "traditional_text": "我們需要在發佈前完成 load testing 和 security review。",
+   "english": "We need to finish load testing and the security review before the release.",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 430,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1260
+   }
+  },
+  {
+   "id": 10,
+   "start": 61.2,
+   "end": 67.0,
+   "kind": "audio",
+   "raw_text": "對，我會跟 QA 團隊確認時程。",
+   "traditional_text": "對，我會跟 QA 團隊確認時程。",
+   "english": "Yes, I'll confirm the schedule with the QA team.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 110,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 940
+   }
+  },
+  {
+   "id": 11,
+   "start": 68.0,
+   "end": 74.5,
+   "kind": "audio",
+   "raw_text": "另外，資料庫的 migration 預計週五晚上執行。",
+   "traditional_text": "另外，資料庫的 migration 預計週五晚上執行。",
+   "english": "Also, the database migration is scheduled for Friday night.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "edited": false,
+   "timing": {
+    "endpoint_ms": 450,
+    "asr_ms": 380,
+    "translate_ms": 270,
+    "speech_end_to_source_ms": 830,
+    "speech_end_to_english_ms": 1100
+   }
+  },
+  {
+   "id": 12,
+   "start": 75.3,
+   "end": 80.9,
+   "kind": "audio",
+   "raw_text": "這次 rollback 計畫要寫得更清楚一點，因為上次",
+   "traditional_text": "這次 rollback 計畫要寫得更清楚一點，因為上次",
+   "english": "This time the rollback plan needs to be written more clearly, because last time",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "translating",
+   "edited": false
+  }
+ ],
+ "live_preview": {
+  "id": 13,
+  "start": 81.0,
+  "end": null,
+  "kind": "audio",
+  "raw_text": "所以我建議我們",
+  "traditional_text": "所以我建議我們",
+  "english": "",
+  "revision": 1,
+  "speaker": "unknown",
+  "status": "provisional",
+  "error": null,
+  "edited": false
+ },
+ "no_audio": false,
+ "queue_length": 1,
+ "queue_lag_seconds": 1.4,
+ "pending_work": 2,
+ "dropped": 0,
+ "notice": "",
+ "capture_status": "Capturing Microsoft Teams audio",
+ "audio_seconds": 81.3,
+ "feed_status": "Audio frames and a signal are arriving",
+ "launcher_name": "Terminal",
+ "archive_dir": "/Users/demo/Library/Application Support/Meeting Assistant/sessions",
+ "session_path": "/Users/demo/Library/Application Support/Meeting Assistant/sessions/20261113-093012-a1b2",
+ "audio": {
+  "rms_db": -31.2,
+  "peak_db": -12.4,
+  "noise_db": -52.0,
+  "speech_db": -27.5,
+  "snr_db": 24.5,
+  "threshold_db": -44.0,
+  "speaking": true,
+  "gain_db": 9.5,
+  "clipped_recent": 0,
+  "clipped_total": 12,
+  "advice": "",
+  "device": {
+   "name": "MacBook Pro Microphone",
+   "uid": "BuiltInMicrophoneDevice",
+   "transport": "built-in",
+   "sample_rate": 48000,
+   "channels": 1,
+   "input_volume": 0.62,
+   "input_volume_settable": true
+  }
+ },
+ "latency": {
+  "count": 11,
+  "last": {
+   "endpoint_ms": 450,
+   "asr_ms": 380,
+   "translate_ms": 410,
+   "speech_end_to_source_ms": 830,
+   "speech_end_to_english_ms": 1240
+  },
+  "median": {
+   "endpoint_ms": 440,
+   "asr_ms": 390,
+   "translate_ms": 300,
+   "speech_end_to_source_ms": 830,
+   "speech_end_to_english_ms": 1120
+  },
+  "p90": {
+   "endpoint_ms": 520,
+   "asr_ms": 470,
+   "translate_ms": 520,
+   "speech_end_to_source_ms": 990,
+   "speech_end_to_english_ms": 1340
+  }
+ },
+ "capabilities": {
+  "helper_protocol": 2,
+  "helper_stale": false,
+  "event_stream": true
+ }
+}

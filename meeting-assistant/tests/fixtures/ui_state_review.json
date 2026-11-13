@@ -1,0 +1,575 @@
+{
+ "settings": {
+  "meeting_context": "Technical meeting discussing software development, architecture, infrastructure, incidents, and project decisions.",
+  "vocabulary": [
+   {
+    "id": "280c317d-cd91-5a5f-9f0c-bc15466a5250",
+    "term": "微服務",
+    "translation": "microservices",
+    "note": "Architecture style; keep English term in captions",
+    "enabled": true,
+    "known": true
+   },
+   {
+    "id": "dd0f61ee-d8be-565f-a33f-3430776db880",
+    "term": "部署流程",
+    "translation": "deployment pipeline",
+    "note": "",
+    "enabled": true,
+    "known": false
+   },
+   {
+    "id": "b40ac71e-01f8-5e29-ab96-cb62428b7777",
+    "term": "Kubernetes",
+    "translation": "Kubernetes",
+    "note": "Product name, never translate",
+    "enabled": true,
+    "known": false
+   },
+   {
+    "id": "ed9dda16-54f0-5d65-be88-c8c13d301555",
+    "term": "回滾",
+    "translation": "rollback",
+    "note": "Used for reverting a release",
+    "enabled": false,
+    "known": false
+   },
+   {
+    "id": "2355b522-6909-58ba-9e79-a69634835324",
+    "term": "監控告警",
+    "translation": "monitoring alerts",
+    "note": "",
+    "enabled": true,
+    "known": false
+   },
+   {
+    "id": "2c58ec16-87a9-5313-b5a7-b401755839e2",
+    "term": "API 閘道",
+    "translation": "API gateway",
+    "note": "Taiwan usage: 閘道, not 網關",
+    "enabled": true,
+    "known": true
+   }
+  ],
+  "gateway": {
+   "endpoint": "https://gateway.example.test/v1",
+   "model": "assistant-large"
+  },
+  "audio": {
+   "device_uid": "",
+   "language": "auto",
+   "normalize": true
+  }
+ },
+ "session": {
+  "id": "20261112-093000-teams",
+  "created_at": "2026-11-12T09:30:00Z",
+  "source": "teams",
+  "status": "complete",
+  "version": 7,
+  "context": "Technical meeting discussing microservice migration, Kubernetes deployments and incident follow-ups.",
+  "speaker_names": {
+   "speaker_1": "Wei",
+   "speaker_2": "Mei-Ling"
+  },
+  "attribution_unreliable": false,
+  "segments": [
+   {
+    "id": 1,
+    "start": 0.0,
+    "end": 6.2,
+    "kind": "audio",
+    "raw_text": "大家早安，今天主要討論微服務拆分的進度。",
+    "traditional_text": "大家早安，今天主要討論微服務拆分的進度。",
+    "english": "Good morning everyone, today we mainly discuss the progress of splitting the microservices.",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "error": null,
+    "edited": false
+   },
+   {
+    "id": 2,
+    "start": 6.2,
+    "end": 13.0,
+    "kind": "audio",
+    "raw_text": "我這邊已經把部署流程改成自動化，用 Kubernetes 來管理。",
+    "traditional_text": "我這邊已經把部署流程改成自動化，用 Kubernetes 來管理。",
+    "english": "On my side I have made the deployment pipeline automated, managed with Kubernetes.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "error": null,
+    "edited": false
+   },
+   {
+    "id": 3,
+    "start": 13.0,
+    "end": 19.4,
+    "kind": "audio",
+    "raw_text": "那回滾的機制測過了嗎？",
+    "traditional_text": "那回滾的機制測過了嗎？",
+    "english": "Has the rollback mechanism been tested?",
+    "revision": 1,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "error": null,
+    "edited": false
+   },
+   {
+    "id": 4,
+    "start": 19.4,
+    "end": 27.8,
+    "kind": "audio",
+    "raw_text": "還沒有，下週三之前會完成測試並提交報告。",
+    "traditional_text": "還沒有，下週三之前會完成測試並提交報告。",
+    "english": "Not yet; we will finish testing and submit a report before next Wednesday.",
+    "revision": 1,
+    "speaker": "speaker_2",
+    "status": "complete",
+    "error": null,
+    "edited": false
+   },
+   {
+    "id": 5,
+    "start": 27.8,
+    "end": 34.1,
+    "kind": "audio",
+    "raw_text": "監控告警的門檻也需要重新調整。",
+    "traditional_text": "監控告警的門檻也需要重新調整。",
+    "english": "The monitoring alert thresholds also need to be readjusted.",
+    "revision": 1,
+    "speaker": "speaker_3",
+    "status": "complete",
+    "error": null,
+    "edited": false
+   },
+   {
+    "id": 6,
+    "start": 34.1,
+    "end": 41.0,
+    "kind": "audio",
+    "raw_text": "好，那我們決定先上線 API 鬧道，其他服務稍後再遷移。",
+    "traditional_text": "好，那我們決定先上線 API 閘道，其他服務稍後再遷移。",
+    "english": "Okay, so we decide to launch the API gateway first and migrate other services later.",
+    "revision": 2,
+    "speaker": "speaker_1",
+    "status": "complete",
+    "error": null,
+    "edited": true
+   }
+  ],
+  "artifacts": [
+   {
+    "id": "a1",
+    "session_id": "S",
+    "kind": "review",
+    "source_version": 7,
+    "status": "ready",
+    "stale": false,
+    "created_at": "2026-11-12T09:40:00Z",
+    "data": {
+     "status": "ready",
+     "limitations": [
+      "Chunk-grounded draft only; cross-chunk contradictions have not been reconciled.",
+      "Exact quotations do not establish semantic accuracy; review all results against the source."
+     ],
+     "proposals": [
+      {
+       "segment_id": 6,
+       "original": "好，那我們決定先上線 API 閘道，其他服務稍後再遷移。",
+       "replacement": "好，那我們決定先上線 API 閘道，其他服務稍後再遷移到新叢集。",
+       "quote": "先上線 API 閘道",
+       "reason": "Likely trailing phrase dropped by the recognizer",
+       "uncertainty": "medium"
+      },
+      {
+       "segment_id": 3,
+       "original": "那回滾的機制測過了嗎？",
+       "replacement": "那回滾的機制測試過了嗎？",
+       "quote": "回滾的機制測過了",
+       "reason": "Missing measure word",
+       "uncertainty": "low"
+      }
+     ]
+    }
+   },
+   {
+    "id": "a2",
+    "session_id": "S",
+    "kind": "refine",
+    "source_version": 7,
+    "status": "ready",
+    "stale": false,
+    "created_at": "2026-11-12T09:41:00Z",
+    "data": {
+     "limitations": [
+      "Times describe audio windows, not word or speaker alignment.",
+      "Windows do not map exactly to original segments; results are review-only and do not replace original recognition."
+     ],
+     "segments": [
+      {
+       "start": 0.0,
+       "end": 12.4,
+       "traditional_text": "大家早安，今天主要討論微服務拆分的進度，還有部署流程。",
+       "english": "Good morning everyone, today we mainly discuss the progress of splitting the microservices and the deployment pipeline."
+      },
+      {
+       "start": 12.4,
+       "end": 24.0,
+       "traditional_text": "那回滾的機制測試過了嗎？還沒有，下週三之前會完成。",
+       "english": "Has the rollback mechanism been tested? Not yet, it will be done before next Wednesday."
+      }
+     ]
+    }
+   },
+   {
+    "id": "a3",
+    "session_id": "S",
+    "kind": "diarize",
+    "source_version": 7,
+    "status": "ready",
+    "stale": false,
+    "created_at": "2026-11-12T09:42:00Z",
+    "data": {
+     "timeline": [
+      {
+       "start": 0.0,
+       "end": 6.2,
+       "speaker": "speaker_1"
+      },
+      {
+       "start": 6.2,
+       "end": 13.0,
+       "speaker": "speaker_2"
+      },
+      {
+       "start": 13.0,
+       "end": 19.4,
+       "speaker": "speaker_1"
+      },
+      {
+       "start": 19.4,
+       "end": 27.8,
+       "speaker": "speaker_2"
+      },
+      {
+       "start": 27.8,
+       "end": 34.1,
+       "speaker": "speaker_3"
+      },
+      {
+       "start": 34.1,
+       "end": 41.0,
+       "speaker": "speaker_1"
+      }
+     ],
+     "limitations": [
+      "Anonymous clusters are not verified identities.",
+      "At most eight distinct voices per session; overflow cannot be detected reliably and must be flagged by the user."
+     ]
+    }
+   },
+   {
+    "id": "a4",
+    "session_id": "S",
+    "kind": "summary",
+    "source_version": 7,
+    "status": "ready",
+    "stale": false,
+    "created_at": "2026-11-12T09:43:00Z",
+    "data": {
+     "status": "ready",
+     "limitations": [
+      "Chunk-grounded draft only; cross-chunk contradictions have not been reconciled."
+     ],
+     "overview": [
+      {
+       "text": "The team reviewed the microservice split and the automated deployment pipeline on Kubernetes.",
+       "evidence": [
+        {
+         "segment_id": 1,
+         "quote": "大家早安，今天主要討論微服務拆分的進"
+        },
+        {
+         "segment_id": 2,
+         "quote": "我這邊已經把部署流程改成自動化，用 "
+        }
+       ]
+      }
+     ],
+     "decisions": [
+      {
+       "text": "Launch the API gateway first and migrate the other services later.",
+       "evidence": [
+        {
+         "segment_id": 6,
+         "quote": "好，那我們決定先上線 API 閘道，"
+        }
+       ]
+      }
+     ],
+     "actions": [
+      {
+       "text": "Finish rollback testing and submit a report.",
+       "owner": "speaker_2",
+       "deadline": "next Wednesday",
+       "status": "proposed",
+       "evidence": [
+        {
+         "segment_id": 4,
+         "quote": "還沒有，下週三之前會完成測試並提交報"
+        }
+       ]
+      },
+      {
+       "text": "Re-tune the monitoring alert thresholds.",
+       "owner": null,
+       "deadline": null,
+       "status": "proposed",
+       "evidence": [
+        {
+         "segment_id": 5,
+         "quote": "監控告警的門檻也需要重新調整。"
+        }
+       ]
+      }
+     ],
+     "people": [
+      {
+       "speaker": "Wei",
+       "summary": "Led the discussion and asked about rollback tests.",
+       "evidence": [
+        {
+         "segment_id": 3,
+         "quote": "那回滾的機制測過了嗎？"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "a5",
+    "session_id": "S",
+    "kind": "learning",
+    "source_version": 7,
+    "status": "ready",
+    "stale": false,
+    "created_at": "2026-11-12T09:44:00Z",
+    "data": {
+     "limitations": [
+      "Exact quotations do not establish semantic accuracy; review all results against the source."
+     ],
+     "items": [
+      {
+       "term": "微服務",
+       "pinyin": "wei1 fu2 wu4",
+       "meaning": "microservices",
+       "quote": "微服務拆分的進度",
+       "segment_id": 1,
+       "validation_status": "needs_review",
+       "validation_flags": [
+        "context_review_required",
+        "taiwan_usage_review_required"
+       ],
+       "dictionary_provenance": "pypinyin 0.53 (local readings; not a meaning or Taiwan-variant dictionary)"
+      },
+      {
+       "term": "回滾",
+       "pinyin": "hui2 gun3",
+       "meaning": "to roll back a release",
+       "quote": "那回滾的機制測過了嗎",
+       "segment_id": 3,
+       "validation_status": "needs_review",
+       "validation_flags": [
+        "context_review_required"
+       ],
+       "dictionary_provenance": "pypinyin 0.53"
+      },
+      {
+       "term": "門檻",
+       "pinyin": "men2 jian4",
+       "meaning": "threshold",
+       "quote": "監控告警的門檻",
+       "segment_id": 5,
+       "validation_status": "needs_review",
+       "validation_flags": [
+        "context_review_required",
+        "taiwan_usage_review_required"
+       ],
+       "dictionary_provenance": "pypinyin unavailable"
+      },
+      {
+       "term": "遷移",
+       "pinyin": "qian1 yi2",
+       "meaning": "to migrate",
+       "quote": "其他服務稍後再遷移",
+       "segment_id": 6,
+       "validation_status": "needs_review",
+       "validation_flags": [],
+       "dictionary_provenance": "pypinyin 0.53"
+      }
+     ]
+    }
+   },
+   {
+    "id": "a0",
+    "session_id": "S",
+    "kind": "review",
+    "source_version": 5,
+    "status": "ready",
+    "stale": true,
+    "created_at": "2026-11-12T09:30:00Z",
+    "data": {
+     "status": "ready",
+     "limitations": [],
+     "proposals": [
+      {
+       "segment_id": 2,
+       "original": "我這邊已經把部署流程改成自動化",
+       "replacement": "我這邊已經把部署流程改為自動化",
+       "quote": "部署流程改成自動化",
+       "reason": "Style",
+       "uncertainty": "high"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "sessions": [
+  {
+   "id": "20261112-093000-teams",
+   "created_at": "2026-11-12T09:30:00Z",
+   "source": "teams",
+   "status": "complete",
+   "version": 7
+  }
+ ],
+ "job": {
+  "id": "j1",
+  "task": "learning",
+  "session_id": "20261112-093000-teams",
+  "source_version": 7,
+  "status": "complete",
+  "progress": "Finished — review the results below",
+  "error": null,
+  "artifact_id": "a5"
+ },
+ "diarization": {
+  "ready": true,
+  "reason": "Configured assets verified; inference and hardware have not been tested.",
+  "max_speakers": 8
+ },
+ "model_status": "Models ready",
+ "model_ready": true,
+ "recording_state": "idle",
+ "session_id": "20261112-093000-teams",
+ "segments": [
+  {
+   "id": 1,
+   "start": 0.0,
+   "end": 6.2,
+   "kind": "audio",
+   "raw_text": "大家早安，今天主要討論微服務拆分的進度。",
+   "traditional_text": "大家早安，今天主要討論微服務拆分的進度。",
+   "english": "Good morning everyone, today we mainly discuss the progress of splitting the microservices.",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "error": null,
+   "edited": false
+  },
+  {
+   "id": 2,
+   "start": 6.2,
+   "end": 13.0,
+   "kind": "audio",
+   "raw_text": "我這邊已經把部署流程改成自動化，用 Kubernetes 來管理。",
+   "traditional_text": "我這邊已經把部署流程改成自動化，用 Kubernetes 來管理。",
+   "english": "On my side I have made the deployment pipeline automated, managed with Kubernetes.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "error": null,
+   "edited": false
+  },
+  {
+   "id": 3,
+   "start": 13.0,
+   "end": 19.4,
+   "kind": "audio",
+   "raw_text": "那回滾的機制測過了嗎？",
+   "traditional_text": "那回滾的機制測過了嗎？",
+   "english": "Has the rollback mechanism been tested?",
+   "revision": 1,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "error": null,
+   "edited": false
+  },
+  {
+   "id": 4,
+   "start": 19.4,
+   "end": 27.8,
+   "kind": "audio",
+   "raw_text": "還沒有，下週三之前會完成測試並提交報告。",
+   "traditional_text": "還沒有，下週三之前會完成測試並提交報告。",
+   "english": "Not yet; we will finish testing and submit a report before next Wednesday.",
+   "revision": 1,
+   "speaker": "speaker_2",
+   "status": "complete",
+   "error": null,
+   "edited": false
+  },
+  {
+   "id": 5,
+   "start": 27.8,
+   "end": 34.1,
+   "kind": "audio",
+   "raw_text": "監控告警的門檻也需要重新調整。",
+   "traditional_text": "監控告警的門檻也需要重新調整。",
+   "english": "The monitoring alert thresholds also need to be readjusted.",
+   "revision": 1,
+   "speaker": "speaker_3",
+   "status": "complete",
+   "error": null,
+   "edited": false
+  },
+  {
+   "id": 6,
+   "start": 34.1,
+   "end": 41.0,
+   "kind": "audio",
+   "raw_text": "好，那我們決定先上線 API 鬧道，其他服務稍後再遷移。",
+   "traditional_text": "好，那我們決定先上線 API 閘道，其他服務稍後再遷移。",
+   "english": "Okay, so we decide to launch the API gateway first and migrate other services later.",
+   "revision": 2,
+   "speaker": "speaker_1",
+   "status": "complete",
+   "error": null,
+   "edited": true
+  }
+ ],
+ "live_preview": null,
+ "no_audio": false,
+ "queue_length": 0,
+ "queue_lag_seconds": 0.0,
+ "pending_work": 0,
+ "dropped": 0,
+ "notice": "",
+ "capture_status": "Not capturing",
+ "audio_seconds": 0.0,
+ "feed_status": "idle",
+ "launcher_name": "Terminal",
+ "archive_dir": "/Users/demo/Library/Application Support/Meeting Assistant",
+ "session_path": "/Users/demo/Library/Application Support/Meeting Assistant/sessions/20261112-093000-teams",
+ "audio": null,
+ "latency": null,
+ "capabilities": {
+  "helper_protocol": 2,
+  "helper_stale": false,
+  "event_stream": true
+ }
+}

@@ -1,0 +1,329 @@
+/* Liquid Glass component set. Tokens first, then components.
+   Layers: glass is ONLY for the functional layer (toolbar, sidebar, inspector, sheet, toast).
+   Form controls, banners, badges and lists live on the content layer and never blur. */
+
+/* ---------- Tokens ---------- */
+:root {
+  color-scheme: light dark;
+
+  /* colour: labels, accent, status */
+  --label: light-dark(rgba(0, 0, 0, .85), rgba(255, 255, 255, .85));
+  --label-2: light-dark(rgba(0, 0, 0, .62), rgba(255, 255, 255, .65)); /* spec .55; raised to hold 4.5:1 on glass */
+  --label-3: light-dark(rgba(0, 0, 0, .3), rgba(255, 255, 255, .3));
+  --accent: light-dark(#5856D6, #5E5CE6);
+  --accent-hover: light-dark(#4B49C8, #4F4DD0);
+  --on-accent: #fff;
+  --red: light-dark(#FF3B30, #FF453A);
+  --orange: light-dark(#FF9500, #FF9F0A);
+  --green: light-dark(#34C759, #30D158);
+  --destructive: light-dark(#D70015, #C4281C); /* red fill that carries a white label at >= 4.5:1 */
+  --accent-ink: light-dark(#4B49C8, #A5A3FF);
+  --red-ink: light-dark(#C20012, #FF8A80);
+  --orange-ink: light-dark(#8A4B00, #FFB74D);
+  --green-ink: light-dark(#17692D, #5FE07E);
+  --focus: light-dark(#4B49C8, #A5A3FF);
+
+  /* colour: content layer surfaces and control fills */
+  --surface: light-dark(#fff, #222228);
+  --field-bg: light-dark(#fff, #2c2c33);
+  --field-border: light-dark(rgba(0, 0, 0, .42), rgba(255, 255, 255, .36));
+  --separator: light-dark(rgba(0, 0, 0, .12), rgba(255, 255, 255, .14));
+  --fill-1: light-dark(rgba(0, 0, 0, .06), rgba(255, 255, 255, .09));
+  --fill-2: light-dark(rgba(0, 0, 0, .09), rgba(255, 255, 255, .14));
+  --fill-3: light-dark(rgba(0, 0, 0, .14), rgba(255, 255, 255, .2));
+  --thumb: light-dark(#fff, rgba(255, 255, 255, .24));
+
+  /* material */
+  --glass-fill: light-dark(rgba(255, 255, 255, .66), rgba(38, 38, 44, .62));
+  --glass-fill-thick: light-dark(rgba(250, 250, 252, .8), rgba(30, 30, 36, .78));
+  --glass-fill-clear: light-dark(rgba(255, 255, 255, .28), rgba(38, 38, 44, .28));
+  --glass-filter: blur(28px) saturate(1.5);
+  --glass-filter-thick: blur(36px) saturate(1.5);
+  --glass-filter-clear: blur(12px) saturate(1.3);
+  --glass-opaque: light-dark(#f2f2f6, #2a2a30);
+  --glass-opaque-thick: light-dark(#fafafc, #1e1e24);
+  --glass-edge: light-dark(rgba(255, 255, 255, .5), rgba(255, 255, 255, .14));
+  --glass-edge-w: .5px;
+  --glass-highlight: light-dark(rgba(255, 255, 255, .7), rgba(255, 255, 255, .12));
+  --glass-rim: light-dark(rgba(0, 0, 0, .07), rgba(0, 0, 0, .35));
+  --glass-shadow: 0 12px 32px -12px light-dark(rgba(0, 0, 0, .28), rgba(0, 0, 0, .6));
+  --scrim: rgba(0, 0, 0, .3);
+  --dim: rgba(0, 0, 0, .35);
+  --edge-tint: light-dark(rgba(240, 241, 250, .4), rgba(18, 18, 24, .4));
+
+  /* type: macOS text styles (size/line-height) */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-zh: "PingFang TC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --caption-scale: 1;
+  --text-body: 400 13px/16px var(--font);
+  --text-headline: 700 13px/16px var(--font);
+  --text-title3: 400 15px/20px var(--font);
+  --text-title2: 400 17px/22px var(--font);
+  --text-title1: 400 22px/26px var(--font);
+  --text-callout: 400 12px/15px var(--font);
+  --text-subheadline: 400 11px/14px var(--font);
+  --text-footnote: 400 10px/13px var(--font);
+  --text-caption-en: 500 calc(20px * var(--caption-scale))/calc(28px * var(--caption-scale)) var(--font);
+  --text-caption-zh: 400 calc(16px * var(--caption-scale))/calc(24px * var(--caption-scale)) var(--font-zh);
+
+  /* shape, size, spacing */
+  --r-capsule: 999px;
+  --r-panel: 20px;
+  --r-sheet: 26px;
+  --r-control: 8px;
+  --r-group: 12px;
+  --h-control: 28px;
+  --h-large: 36px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+
+  /* motion */
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-meter: 90ms;
+  --ease: cubic-bezier(.3, .1, .2, 1);
+  --spring: cubic-bezier(.2, .9, .3, 1.15);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* ---------- Accessibility fallbacks ---------- */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-fill: var(--glass-opaque); --glass-fill-thick: var(--glass-opaque-thick); --glass-fill-clear: var(--glass-opaque);
+    --glass-filter: none; --glass-filter-thick: none; --glass-filter-clear: none; --edge-tint: transparent; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass-fill: var(--glass-opaque); --glass-fill-thick: var(--glass-opaque-thick); --glass-fill-clear: var(--glass-opaque);
+    --glass-filter: none; --glass-filter-thick: none; --glass-filter-clear: none; --edge-tint: transparent; }
+}
+:root[data-transparency="reduced"] {
+  --glass-fill: var(--glass-opaque); --glass-fill-thick: var(--glass-opaque-thick); --glass-fill-clear: var(--glass-opaque);
+  --glass-filter: none; --glass-filter-thick: none; --glass-filter-clear: none; --edge-tint: transparent;
+}
+@media (prefers-contrast: more) {
+  :root { --glass-fill: var(--glass-opaque); --glass-fill-thick: var(--glass-opaque-thick); --glass-fill-clear: var(--glass-opaque);
+    --glass-filter: none; --glass-filter-thick: none; --glass-filter-clear: none; --edge-tint: transparent;
+    --glass-edge: light-dark(rgba(0, 0, 0, .7), rgba(255, 255, 255, .75)); --glass-edge-w: 1px; --glass-highlight: transparent;
+    --label: light-dark(#000, #fff); --label-2: light-dark(rgba(0, 0, 0, .75), rgba(255, 255, 255, .8));
+    --field-border: light-dark(rgba(0, 0, 0, .75), rgba(255, 255, 255, .75)); --separator: var(--field-border); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur: 0ms; --dur-meter: 0ms; }
+}
+
+/* ---------- Base ---------- */
+:root { font: var(--text-body); color: var(--label); -webkit-font-smoothing: antialiased; }
+:lang(zh), :lang(zh-Hant) { font-family: var(--font-zh); }
+.tnum { font-variant-numeric: tabular-nums; }
+.icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* Visible keyboard focus on every control */
+:is(.glass-button, .glass-list-item, .text-input, .text-area, .select, .switch, .checkbox, glass-segmented button, .glass-toast button):focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.glass-list-item:focus-visible, glass-segmented button:focus-visible { outline-offset: -2px; }
+
+/* ---------- 1. Material ---------- */
+.glass, .glass-group, .glass-sidebar {
+  background: var(--m-fill, var(--glass-fill));
+  -webkit-backdrop-filter: var(--m-filter, var(--glass-filter));
+  backdrop-filter: var(--m-filter, var(--glass-filter));
+  border: var(--glass-edge-w) solid var(--glass-edge);
+  border-radius: var(--r-panel);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 0 0 .5px var(--glass-rim), var(--glass-shadow);
+  color: var(--label);
+}
+.glass--thick, .glass-sidebar { --m-fill: var(--glass-fill-thick); --m-filter: var(--glass-filter-thick); }
+.glass--clear { --m-fill: var(--glass-fill-clear); --m-filter: var(--glass-filter-clear); }
+.glass[data-shape="capsule"], .glass-group { border-radius: var(--r-capsule); }
+.glass[data-shape="panel"] { border-radius: var(--r-panel); }
+.glass[data-shape="sheet"] { border-radius: var(--r-sheet); }
+/* Optional 35% dimming layer: an absolutely positioned sibling between bright media and clear glass. */
+.glass-dim { position: absolute; inset: 0; background: var(--dim); pointer-events: none; }
+
+/* ---------- 2. Toolbar ---------- */
+.glass-toolbar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
+.glass-group { display: inline-flex; align-items: center; gap: 2px; box-sizing: border-box; height: var(--h-large); padding: 0 3.5px; }
+.glass-spacer { flex: 1; }
+.glass-toolbar-title { font: var(--text-headline); padding: 0 var(--s-2); white-space: nowrap; }
+
+/* ---------- 3. Button ---------- */
+.glass-button {
+  --_bg: transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+  box-sizing: border-box; height: var(--h-control); min-width: var(--h-control); padding: 0 var(--s-3);
+  border: 0; border-radius: var(--r-capsule); background: var(--_bg); color: var(--label);
+  font: var(--text-body); font-weight: 500; white-space: nowrap; cursor: default; user-select: none;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.glass-button:hover { --_bg: var(--fill-1); }
+.glass-button:active { --_bg: var(--fill-3); transform: scale(.97); }
+.glass-button[aria-pressed="true"] { --_bg: var(--fill-2); }
+.glass-button[aria-pressed="true"]:hover { --_bg: var(--fill-3); }
+.glass-button:disabled { opacity: .4; pointer-events: none; }
+.glass-button.glass { background: linear-gradient(var(--_bg), var(--_bg)), var(--m-fill, var(--glass-fill)); }
+.glass-button--filled { --_bg: var(--fill-2); }
+.glass-button--filled:hover { --_bg: var(--fill-3); }
+.glass-button--prominent, .glass-button--destructive { color: var(--on-accent); }
+.glass-button--prominent, .glass-button--prominent[aria-pressed="true"] { --_bg: var(--accent); }
+.glass-button--prominent:hover { --_bg: var(--accent-hover); }
+.glass-button--destructive, .glass-button--destructive[aria-pressed="true"] { --_bg: var(--destructive); }
+.glass-button--destructive:hover { --_bg: color-mix(in srgb, var(--destructive), black 12%); }
+.glass-button--large { --h-control: var(--h-large); padding: 0 var(--s-4); }
+.glass-button--icon { padding: 0; width: var(--h-control); }
+
+/* ---------- 4. Sidebar and list ---------- */
+.glass-sidebar { display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; width: var(--sidebar-w, 260px); padding: var(--s-2); overflow: hidden; }
+.glass-list { list-style: none; margin: 0; padding: 0; min-height: 0; overflow-y: auto; }
+.glass-list-header { padding: var(--s-3) var(--s-2) var(--s-1); color: var(--label-2); font: var(--text-subheadline); font-weight: 600; }
+.glass-list-item {
+  display: grid; grid-template-columns: 1fr auto; column-gap: var(--s-2); align-items: center; width: 100%; box-sizing: border-box;
+  min-height: var(--h-large); padding: 5px var(--s-2); border: 0; border-radius: var(--r-group); background: transparent;
+  text-align: start; cursor: default;
+}
+.glass-list-item:hover { background: var(--fill-1); }
+.glass-list-item[aria-current="true"] { background: var(--fill-2); }
+.glass-list-item[aria-current="true"] .glass-list-title { font-weight: 600; }
+.glass-list-title { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--text-body); }
+.glass-list-sub { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--label-2); font: var(--text-subheadline); }
+.glass-list-accessory { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 4px; color: var(--label-2); font: var(--text-callout); }
+
+/* ---------- 5. Scroll edge effect ---------- */
+/* Put on the scrolling element. Content blurs and fades under a floating bar; no bar background is painted. */
+.scroll-edge { --edge-h: 64px; overflow-y: auto; }
+.scroll-edge::before, .scroll-edge--bottom::after {
+  content: ""; display: block; position: sticky; z-index: 2; height: var(--edge-h); pointer-events: none;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  background: linear-gradient(to bottom, var(--edge-tint), transparent);
+  -webkit-mask-image: linear-gradient(#000 45%, transparent); mask-image: linear-gradient(#000 45%, transparent);
+}
+.scroll-edge::before { top: 0; margin-bottom: calc(var(--edge-h) * -1); }
+.scroll-edge--bottom::after { bottom: 0; margin-top: calc(var(--edge-h) * -1); transform: scaleY(-1); }
+
+/* ---------- 6. Content-layer controls (no glass) ---------- */
+.field { display: flex; flex-direction: column; gap: var(--s-1); }
+.field > label, .field-label { font: var(--text-body); font-weight: 500; }
+.field-help { color: var(--label-2); font: var(--text-subheadline); }
+.field--inline { flex-direction: row; align-items: center; gap: var(--s-2); }
+.text-input, .text-area, .select {
+  box-sizing: border-box; width: 100%; min-height: var(--h-control); padding: 0 var(--s-2);
+  border: 1px solid var(--field-border); border-radius: var(--r-control); background-color: var(--field-bg); color: var(--label); font: var(--text-body);
+}
+.text-area { padding: 6px var(--s-2); min-height: 72px; resize: vertical; }
+.text-input::placeholder, .text-area::placeholder { color: var(--label-2); }
+.text-input:focus-visible, .text-area:focus-visible, .select:focus-visible { outline-offset: 0; border-color: var(--focus); }
+:is(.text-input, .text-area, .select)[aria-invalid="true"] { border-color: var(--red-ink); }
+.select {
+  -webkit-appearance: none; appearance: none; padding-inline-end: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--label-2) 50%), linear-gradient(135deg, var(--label-2) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 12px, calc(100% - 10px) 12px; background-size: 4px 5px; background-repeat: no-repeat;
+}
+:is(.text-input, .text-area, .select, .switch, .checkbox):disabled { opacity: .5; }
+
+.switch, .checkbox { -webkit-appearance: none; appearance: none; position: relative; flex: none; margin: 0; }
+.switch { width: 38px; height: 22px; border-radius: 11px; background: var(--field-border); transition: background var(--dur-fast) var(--ease); }
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform var(--dur) var(--spring), width var(--dur) var(--spring);
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(16px); }
+.switch:active::after { width: 22px; }
+.switch:checked:active::after { transform: translateX(12px); }
+.checkbox { width: 16px; height: 16px; border: 1px solid var(--field-border); border-radius: 4px; background: var(--field-bg); }
+.checkbox:checked { background: var(--accent); border-color: var(--accent); }
+.checkbox:checked::after {
+  content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 1.75px 1.75px 0; transform: rotate(45deg);
+}
+
+.badge {
+  --_c: var(--label-2); --_bg: var(--fill-2);
+  display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; height: 18px; padding: 0 var(--s-2);
+  border-radius: var(--r-capsule); background: var(--_bg); color: var(--_c); font: var(--text-subheadline); font-weight: 600; white-space: nowrap;
+}
+.badge--accent { --_c: var(--accent-ink); --_bg: color-mix(in srgb, var(--accent) 16%, transparent); }
+.badge--green { --_c: var(--green-ink); --_bg: color-mix(in srgb, var(--green) 18%, transparent); }
+.badge--orange { --_c: var(--orange-ink); --_bg: color-mix(in srgb, var(--orange) 20%, transparent); }
+.badge--red { --_c: var(--red-ink); --_bg: color-mix(in srgb, var(--red) 16%, transparent); }
+
+.banner {
+  --_c: var(--label-2);
+  display: flex; align-items: flex-start; gap: var(--s-3); padding: 10px var(--s-3); border-radius: var(--r-group);
+  background: color-mix(in srgb, var(--_c) 12%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_c) 28%, transparent);
+  color: var(--label); font: var(--text-body);
+}
+.banner > .icon { margin-top: 0; color: var(--_c); }
+.banner--info { --_c: var(--accent-ink); }
+.banner--warning { --_c: var(--orange-ink); }
+.banner--error { --_c: var(--red-ink); }
+
+.group-box { padding: var(--s-1); border-radius: var(--r-group); background: var(--fill-1); box-shadow: inset 0 0 0 1px var(--separator); }
+.group-box-title { margin: 0; padding: var(--s-2) var(--s-3) var(--s-1); color: var(--label-2); font: var(--text-subheadline); font-weight: 600; }
+.group-box-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--h-large); padding: 0 var(--s-3); }
+.group-box-row + .group-box-row { border-top: 1px solid var(--separator); }
+.divider { height: 1px; margin: var(--s-3) 0; border: 0; background: var(--separator); }
+.divider--vertical { width: 1px; height: 16px; margin: 0 var(--s-1); flex: none; }
+
+/* ---------- 7. Segmented control ---------- */
+glass-segmented { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; box-sizing: border-box; height: var(--h-control); padding: 2px; border-radius: var(--r-capsule); background: var(--fill-2); }
+glass-segmented > button {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 var(--s-3);
+  border: 0; border-radius: var(--r-capsule); background: transparent; color: var(--label); font: var(--text-body); font-weight: 500; white-space: nowrap; cursor: default;
+}
+glass-segmented > button[aria-checked="true"] { font-weight: 600; }
+.glass-segmented-thumb {
+  position: absolute; top: 2px; bottom: 2px; left: 0; width: 0; border-radius: var(--r-capsule); background: var(--thumb);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .06);
+}
+glass-segmented[data-ready] .glass-segmented-thumb { transition: transform var(--dur) var(--spring), width var(--dur) var(--spring); }
+glass-segmented[disabled] { opacity: .4; pointer-events: none; }
+:is(.glass-group, .glass-sidebar) glass-segmented { height: var(--h-control); }
+
+/* ---------- 8. Sheet ---------- */
+glass-sheet { display: contents; }
+.glass-sheet-dialog { box-sizing: border-box; width: min(var(--sheet-w, 440px), calc(100vw - 48px)); max-height: calc(100vh - 48px); margin: auto; padding: var(--s-5) var(--s-5) var(--s-4); overflow: auto; }
+.glass-sheet-dialog[open] { animation: sheet-in var(--dur) var(--spring); }
+.glass-sheet-dialog::backdrop { background: var(--scrim); animation: fade-in var(--dur) var(--ease); }
+.glass-sheet-title { margin: 0 0 var(--s-2); font: var(--text-title3); font-weight: 600; }
+.glass-sheet-body { font: var(--text-body); }
+.glass-sheet-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-5); }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(-10px) scale(.96); } }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* ---------- 9. Toasts ---------- */
+glass-toasts {
+  position: fixed; inset: var(--s-3) auto auto 50%; z-index: 1000; margin: 0; padding: 0; border: 0; background: none; overflow: visible; color: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-2); transform: translateX(-50%); pointer-events: none;
+}
+.glass-toast {
+  display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 44px; max-width: 520px; padding: 6px 6px 6px 14px;
+  pointer-events: auto; font: var(--text-body); animation: toast-in var(--dur) var(--spring);
+}
+.glass-toast[data-leaving] { opacity: 0; transform: translateY(-8px); transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
+.glass-toast-message { flex: 1; padding: 4px 0; }
+.glass-toast > .icon { color: var(--label-2); }
+.glass-toast[data-kind="success"] > .icon { color: var(--green-ink); }
+.glass-toast[data-kind="warning"] > .icon { color: var(--orange-ink); }
+.glass-toast[data-kind="error"] > .icon { color: var(--red-ink); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-12px) scale(.96); } }
+
+/* ---------- 10. Level meter ---------- */
+level-meter { display: flex; align-items: center; gap: var(--s-2); min-width: 120px; }
+.lm-track { position: relative; flex: 1; height: 8px; }
+.lm-zones, .lm-bar {
+  position: absolute; inset: 0; border-radius: 4px;
+  background: linear-gradient(90deg, var(--green) 0 80%, var(--orange) 80% 95%, var(--red) 95% 100%);
+}
+.lm-zones { opacity: .25; }
+.lm-bar { clip-path: inset(0 100% 0 0); transition: clip-path var(--dur-meter) linear; }
+.lm-tick { position: absolute; top: -3px; left: 0; width: 2px; height: 14px; border-radius: 1px; background: var(--label); transition: transform var(--dur-meter) linear; }
+.lm-tick[data-kind="floor"] { top: -1px; height: 10px; background: var(--label-2); opacity: .8; }
+.lm-tick[data-kind="threshold"] { background: var(--accent-ink); }
+.lm-clip { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fill-3); }
+level-meter[data-clipped] .lm-clip { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.lm-readout { min-width: 8ch; text-align: end; color: var(--label-2); font: var(--text-callout); font-variant-numeric: tabular-nums; }

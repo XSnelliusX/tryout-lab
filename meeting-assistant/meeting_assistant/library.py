@@ -46,6 +46,25 @@ def _id(value):
     return value
 
 
+AUDIO_DEFAULTS = {"device_uid": "", "language": "auto", "normalize": True}
+_TIMING_KEYS = ("endpoint_ms", "asr_ms", "translate_ms", "speech_end_to_source_ms", "speech_end_to_english_ms")
+
+
+def _timing(value):
+    """Validate live latency measurements: a dict of the known keys, each a non-negative int or None."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - set(_TIMING_KEYS):
+        raise ValueError("Segment timing must be an object with known latency fields")
+    result = {}
+    for key in _TIMING_KEYS:
+        item = value.get(key)
+        if item is not None and (isinstance(item, bool) or not isinstance(item, int) or not 0 <= item < 10**9):
+            raise ValueError("Segment timing values must be non-negative integers (milliseconds)")
+        result[key] = item
+    return result
+
+
 def _segment_id(value):
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("Segment id must be a non-negative integer")
@@ -116,6 +135,9 @@ class Library:
                 db.execute("ALTER TABLE imports ADD COLUMN legacy_owned INTEGER NOT NULL DEFAULT 1")
             if "attribution_unreliable" not in {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}:
                 db.execute("ALTER TABLE sessions ADD COLUMN attribution_unreliable INTEGER NOT NULL DEFAULT 0")
+            # Live latency measurements (JSON); NULL for imported, manual or older segments.
+            if "timing" not in {row["name"] for row in db.execute("PRAGMA table_info(segments)")}:
+                db.execute("ALTER TABLE segments ADD COLUMN timing TEXT")
         self._recover_deletions()
 
     @contextmanager
@@ -156,6 +178,9 @@ class Library:
         ambiguity = result.pop("ambiguity")
         if ambiguity is not None:
             result.update(json.loads(ambiguity))
+        timing = result.pop("timing", None)
+        if timing is not None:
+            result["timing"] = json.loads(timing)
         if result["error"] is None:
             result.pop("error")
         return result
@@ -190,10 +215,34 @@ class Library:
 
     @staticmethod
     def _settings(db):
-        result = {"meeting_context": "", "vocabulary": [], "gateway": {"endpoint": "", "model": ""}}
+        result = {"meeting_context": "", "vocabulary": [], "gateway": {"endpoint": "", "model": ""},
+                  "audio": dict(AUDIO_DEFAULTS)}
         for row in db.execute("SELECT * FROM settings"):
             result[row["key"]] = json.loads(row["value"])
+        if not isinstance(result["audio"], dict):
+            result["audio"] = {}
+        result["audio"] = {**AUDIO_DEFAULTS, **{k: v for k, v in result["audio"].items() if k in AUDIO_DEFAULTS}}
         return result
+
+    @staticmethod
+    def _audio_settings(current, updates):
+        if not isinstance(updates, dict) or set(updates) - set(AUDIO_DEFAULTS):
+            raise ValueError("Audio settings may contain only device_uid, language and normalize")
+        audio = dict(current)
+        if "device_uid" in updates:
+            uid = _text(updates["device_uid"], "device_uid", 300)
+            if uid.startswith("-"):
+                raise ValueError("device_uid must be an input device UID")
+            audio["device_uid"] = uid
+        if "language" in updates:
+            if updates["language"] not in ("auto", "zh", "en") or not isinstance(updates["language"], str):
+                raise ValueError("Recognition language must be auto, zh or en")
+            audio["language"] = updates["language"]
+        if "normalize" in updates:
+            if not isinstance(updates["normalize"], bool):
+                raise ValueError("normalize must be a boolean")
+            audio["normalize"] = updates["normalize"]
+        return audio
 
     @staticmethod
     def _vocabulary(value):
@@ -221,7 +270,7 @@ class Library:
         return result
 
     def save_settings(self, updates):
-        if not isinstance(updates, dict) or set(updates) - {"meeting_context", "vocabulary", "gateway"}:
+        if not isinstance(updates, dict) or set(updates) - {"meeting_context", "vocabulary", "gateway", "audio"}:
             raise ValueError("Invalid settings fields")
         with self._connection(write=True) as db:
             settings = self._settings(db)
@@ -234,6 +283,8 @@ class Library:
                 if not isinstance(gateway, dict) or set(gateway) - {"endpoint", "model"}:
                     raise ValueError("Gateway settings may contain only endpoint and model; never store API keys")
                 settings["gateway"] = {k: _text(gateway.get(k, settings["gateway"][k]), k, 2048 if k == "endpoint" else 200) for k in ("endpoint", "model")}
+            if "audio" in updates:
+                settings["audio"] = self._audio_settings(settings["audio"], updates["audio"])
             for key, value in settings.items():
                 db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?)", (key, _json(value)))
             return settings
@@ -313,9 +364,11 @@ class Library:
             text = segment.get("traditional_text", raw)
             if not isinstance(raw, str) or not isinstance(text, str):
                 raise ValueError("Segment source must be text")
-            db.execute("INSERT INTO segments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            timing = _timing(segment.get("timing"))
+            db.execute("INSERT INTO segments (session_id, id, start, end, kind, raw_text, traditional_text, english, revision, status, speaker, error, edited, ambiguity, timing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                        (session_id, ident, segment.get("start"), segment.get("end"), segment.get("kind", "audio"), raw, text,
-                        segment.get("english", ""), 1, segment.get("status", "complete"), segment.get("speaker") or "unknown", segment.get("error"), 0, None))
+                        segment.get("english", ""), 1, segment.get("status", "complete"), segment.get("speaker") or "unknown", segment.get("error"), 0, None,
+                        None if timing is None else _json(timing)))
             self._bump(db, session_id)
             row = self._segment(db, session_id, ident)
             self._history(db, row)
@@ -324,12 +377,21 @@ class Library:
         # Inference does not own edited text or translations for user revisions.
         incoming_revision = segment.get("revision", 1)
         incoming_text = segment.get("traditional_text", row["traditional_text"])
+        # Timing is measurement metadata, not content: it is kept even when a
+        # user edit has superseded the live result.
+        timing = row["timing"]
+        if "timing" in segment:
+            new_timing = _timing(segment["timing"])
+            timing = None if new_timing is None else _json(new_timing)
         if (row["edited"] and "revision" not in segment) or incoming_revision != row["revision"] or incoming_text != row["traditional_text"]:
+            if timing != row["timing"]:
+                db.execute("UPDATE segments SET timing=? WHERE session_id=? AND id=?", (timing, session_id, ident))
+                return self._segment_dict(self._segment(db, session_id, ident))
             return self._segment_dict(row)
         english = segment.get("english", row["english"])
         status = segment.get("status", row["status"])
         error = segment.get("error", row["error"])
-        db.execute("UPDATE segments SET english=?, status=?, error=? WHERE session_id=? AND id=?", (english, status, error, session_id, ident))
+        db.execute("UPDATE segments SET english=?, status=?, error=?, timing=? WHERE session_id=? AND id=?", (english, status, error, timing, session_id, ident))
         return self._segment_dict(self._segment(db, session_id, ident))
 
     def upsert_segment(self, session_id, segment):
@@ -345,8 +407,16 @@ class Library:
             if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision != row["revision"]:
                 raise ValueError(f"Revision conflict: expected {expected_revision}, current {row['revision']}; reload the segment")
             new_speaker = row["speaker"] if speaker is None else speaker
-            if text != row["traditional_text"] or new_speaker != row["speaker"]:
-                db.execute("UPDATE segments SET traditional_text=?, speaker=?, english='', error=NULL, status='pending', revision=revision+1, edited=1 WHERE session_id=? AND id=?", (text, new_speaker, session_id, segment_id))
+            text_changed = text != row["traditional_text"]
+            # An explicit manual speaker supersedes stale diarization ambiguity.
+            clear_ambiguity = speaker is not None and row["ambiguity"] is not None
+            if text_changed or new_speaker != row["speaker"] or clear_ambiguity:
+                assignments = ["traditional_text=?", "speaker=?", "revision=revision+1", "edited=1"]
+                if text_changed:
+                    assignments += ["english=''", "error=NULL", "status='pending'"]
+                if clear_ambiguity:
+                    assignments.append("ambiguity=NULL")
+                db.execute(f"UPDATE segments SET {', '.join(assignments)} WHERE session_id=? AND id=?", (text, new_speaker, session_id, segment_id))
                 self._bump(db, session_id)
                 row = self._segment(db, session_id, segment_id)
                 self._history(db, row)
@@ -373,6 +443,8 @@ class Library:
         for key, value in names.items():
             _text(key, "speaker label", 200, required=True)
             _text(value, "speaker name", 200)
+        # A cleared name means "no reviewed name": drop it rather than store blanks.
+        names = {k: v for k, v in names.items() if v.strip()}
         with self._connection(write=True) as db:
             row = self._session(db, session_id)
             if json.loads(row["speaker_names"]) != names:
@@ -396,7 +468,7 @@ class Library:
                 row = self._segment(db, session_id, ident)
                 # Store optional metadata without allowing it to overwrite record fields.
                 metadata = {k: v for k, v in item.items() if k not in {"id", "speaker"}}
-                if set(metadata) & {"start", "end", "kind", "raw_text", "traditional_text", "english", "revision", "status", "error", "session_id", "edited"}:
+                if set(metadata) & {"start", "end", "kind", "raw_text", "traditional_text", "english", "revision", "status", "error", "session_id", "edited", "timing"}:
                     raise ValueError("Invalid speaker assignment metadata")
                 encoded = _json(metadata) if metadata else None
                 if speaker != row["speaker"] or encoded != row["ambiguity"]:
@@ -674,8 +746,10 @@ class Library:
     def _import_legacy_journal(self, session_id, journal):
         with journal.open(encoding="utf-8") as stream:
             lines = stream.readlines()
+        # A crash mid-write can leave a torn final line. Import only complete
+        # lines; the offset counts those, so the line is read once completed.
         if lines and not lines[-1].endswith("\n"):
-            raise ValueError("Incomplete legacy journal")
+            lines.pop()
         with self._connection(write=True) as db:
             record = db.execute("SELECT lines, legacy_owned FROM imports WHERE session_id=?", (session_id,)).fetchone()
             offset = record["lines"] if record else 0

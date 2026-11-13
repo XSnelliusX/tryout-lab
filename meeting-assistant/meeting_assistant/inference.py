@@ -8,10 +8,12 @@ audio or text anywhere. Model files are installed by scripts/download_models.py.
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -63,6 +65,65 @@ _MAX_HISTORY_CHARS = 8000
 _MAX_ASR_TOKENS = 2048
 _ASR_CONTEXT_TOKENS = 65536  # pinned Qwen text_config.max_position_embeddings
 _ASR_AUDIO_RESERVE = 2048  # > 30s of audio tokens plus prompt control tokens
+# Default ASR output budget is 32 + 16 tokens per second of audio, capped. Fast
+# Mandarin is about 5-6 characters (roughly as many tokens) per second, so this
+# leaves about 3x headroom while bounding a runaway repetition loop on noise to
+# a fraction of a second of decoding per second of audio. 30 s -> 512 tokens.
+_ASR_TOKENS_BASE = 32
+_ASR_TOKENS_PER_SECOND = 16
+_MAX_TOKENS_CAP = 512
+# Public language choices -> names in the pinned config's support_languages.
+_ASR_LANGUAGES = {"auto": None, "zh": "Chinese", "en": "English"}
+# Detected languages accepted as-is in auto mode; anything else (for example a
+# Taiwanese Mandarin clip detected as Japanese) is decoded again as Chinese.
+_EXPECTED_LANGUAGES = {"chinese", "english", "cantonese"}
+_ON_TEXT_INTERVAL = 0.08  # seconds between partial translation callbacks
+# A unit of 1-24 characters starting and ending with non-space, followed by at
+# least four more copies (five in a row), optionally whitespace separated.
+# Both quantifiers are lazy so the shortest repeating unit is tried first.
+_REPEAT_RE = re.compile(r"(\S(?:.{0,22}?\S)??)(?:\s*\1){4,}", re.DOTALL)
+
+
+class Cancelled(Exception):
+    """Raised when ``should_cancel`` returned True during model inference."""
+
+
+def _collapse_repetitions(text: str) -> str:
+    """Collapse decoder loops such as a phrase repeated dozens of times.
+
+    A unit (1-24 characters, which covers short word sequences) repeated five or
+    more times in a row is reduced to two copies when it is at most two
+    characters long ("哈哈", "OK OK") and to one copy otherwise. Units without
+    any letter or CJK character (digits, punctuation) are left alone so that
+    numbers such as 100000 are never changed. Shorter runs are untouched.
+    """
+    if not text:
+        return text
+
+    def collapse(match):
+        unit = match.group(1)
+        if not any(ch.isalpha() for ch in unit):
+            return match.group(0)
+        if len(unit) > 2:
+            return unit
+        separator = " " if re.search(r"\s", match.group(0)) else ""
+        return unit + separator + unit
+
+    for _ in range(3):  # a collapsed inner loop can expose an outer one
+        collapsed = _REPEAT_RE.sub(collapse, text)
+        if collapsed == text:
+            break
+        text = collapsed
+    return text
+
+
+def _asr_budget(seconds: float) -> int:
+    return min(_MAX_TOKENS_CAP, _ASR_TOKENS_BASE + math.ceil(_ASR_TOKENS_PER_SECOND * max(0.0, seconds)))
+
+
+def _check_cancel(should_cancel) -> None:
+    if should_cancel is not None and should_cancel():
+        raise Cancelled("Inference cancelled")
 
 
 def _checked_text(value, name, limit, *, allow_empty=True):
@@ -213,6 +274,12 @@ class LocalModels:
         self._translator = None
         self._tokenizer = None
         self._converter = None
+        # Set once the token-streaming ASR path fails; later calls then use the
+        # library's one-shot generate() and cannot be cancelled mid-decode.
+        self.streaming_fallback_reason: str | None = None
+        # Set when meeting_assistant.levels cannot be imported; audio is then
+        # decoded at its recorded level.
+        self.normalization_unavailable_reason: str | None = None
 
     def _status(self, message: str) -> None:
         if self._status_callback is not None:
@@ -263,22 +330,139 @@ class LocalModels:
             self._tokenizer, self._converter = tokenizer, converter
             self._status("Local models ready")
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, *,
-                   context: str = "", vocabulary=None, max_tokens=None) -> dict:
-        """Return untouched ASR text and an OpenCC Taiwan Traditional rendering.
+    def _normalize(self, samples: np.ndarray, speech_db) -> tuple[np.ndarray, float]:
+        try:
+            from .levels import normalize_for_asr
+        except ImportError:
+            self.normalization_unavailable_reason = "meeting_assistant.levels is not available"
+            return samples, 0.0
+        normalized, gain_db = normalize_for_asr(samples, speech_db=speech_db)
+        normalized = np.asarray(normalized)
+        if (normalized.shape != samples.shape or normalized.dtype.kind != "f"
+                or not np.isfinite(normalized).all()):
+            raise RuntimeError("Level normalization returned an invalid waveform")
+        gain_db = float(gain_db)
+        if not math.isfinite(gain_db):
+            raise RuntimeError("Level normalization returned an invalid gain")
+        return np.ascontiguousarray(normalized, dtype=np.float32), gain_db
 
-        ``audio`` is a mono, normalized floating-point waveform; sample rates
-        other than 16 kHz are resampled. An almost-zero energy guard suppresses
-        pure silence; it is not a substitute for upstream VAD.
+    def _decode_streaming(self, samples, language, context, hotwords, budget, should_cancel):
+        """Token-by-token decode reproducing mlx-audio's _generate_single_chunk.
+
+        ``generate(stream=True)`` is not used: its StreamingResult text is each
+        token decoded on its own (split UTF-8 characters become U+FFFD), and in
+        auto mode it hides the first three tokens from text and counts. Model
+        ``stream_generate`` yields raw token ids instead, so the whole sequence
+        is decoded once, exactly as the non-streaming path does.
         """
+        from mlx_audio.lm.sample_utils import make_sampler
+        from mlx_audio.stt.utils import merge_hotwords
+
+        model = self._asr
+        system_prompt = merge_hotwords(context or None, hotwords or None)
+        # split_audio_into_chunks pads clips shorter than 1 s with zeros; our
+        # clips never exceed one 1200 s chunk.
+        if samples.size < 16000:
+            samples = np.pad(samples, (0, 16000 - samples.size))
+        sampler = make_sampler(0.0, 1.0, 0.0, min_tokens_to_keep=1, top_k=0)
+        token_ids = []
+        stream = model.stream_generate(
+            samples, max_tokens=budget, sampler=sampler, language=language,
+            verbose=False, system_prompt=system_prompt,
+        )
+        try:
+            for item in stream:
+                token, _ = item
+                token_ids.append(int(token))
+                if len(token_ids) > budget:
+                    raise RuntimeError("streaming ASR exceeded its token budget")
+                _check_cancel(should_cancel)
+        finally:
+            close = getattr(stream, "close", None)
+            if close is not None:
+                close()
+        text = model._tokenizer.decode(token_ids, skip_special_tokens=True)
+        if not isinstance(text, str):
+            raise TypeError("ASR tokenizer returned non-text")
+        detected = language
+        if language is None:
+            parsed = model.extract_language(text)
+            if (not isinstance(parsed, tuple) or len(parsed) != 2
+                    or not all(isinstance(part, str) for part in parsed)):
+                raise TypeError("unexpected extract_language result")
+            detected, text = parsed
+        prompt_tokens = 0
+        try:  # Counted as the library does; informational only.
+            _, _, audio_tokens = model._preprocess_audio(samples)
+            prompt_tokens = int(model._build_prompt(audio_tokens, language, system_prompt).shape[1])
+        except Exception:
+            prompt_tokens = 0
+        return text, detected, prompt_tokens, len(token_ids)
+
+    def _decode_generate(self, samples, language, context, hotwords, budget):
+        result = self._asr.generate(
+            audio=samples, language=language, max_tokens=budget,
+            temperature=0.0, verbose=False,
+            system_prompt=context or None, hotwords=hotwords or None,
+        )
+        # STTOutput.language is a list with one entry per audio chunk; our
+        # clips are one chunk. A missing value means "unknown", not no speech.
+        detected = getattr(result, "language", None)
+        if isinstance(detected, (list, tuple)):
+            detected = detected[0] if detected else None
+        if detected is None:
+            detected = language
+        text = result.text
+        if not isinstance(text, str):
+            raise TypeError("ASR returned non-text")
+        return (text, detected if isinstance(detected, str) else None,
+                int(getattr(result, "prompt_tokens", 0) or 0),
+                int(getattr(result, "generation_tokens", 0) or 0))
+
+    def _decode(self, samples, language, context, hotwords, budget, should_cancel):
+        """Return (text, language, prompt_tokens, generation_tokens) for one decode."""
+        _check_cancel(should_cancel)
+        if self.streaming_fallback_reason is None:
+            try:
+                return self._decode_streaming(samples, language, context, hotwords, budget, should_cancel)
+            except Cancelled:
+                raise
+            except Exception as exc:
+                # Only the exception type: messages could quote model output.
+                self.streaming_fallback_reason = f"{type(exc).__name__} in streaming ASR decode"
+        decoded = self._decode_generate(samples, language, context, hotwords, budget)
+        _check_cancel(should_cancel)
+        return decoded
+
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, *,
+                   context: str = "", vocabulary=None, max_tokens=None,
+                   language: str = "auto", normalize: bool = True, speech_db=None,
+                   should_cancel: Callable[[], bool] | None = None) -> dict:
+        """Return ASR text, an OpenCC Taiwan Traditional rendering and metadata.
+
+        ``audio`` is a mono floating-point waveform; sample rates other than
+        16 kHz are resampled. An almost-zero energy guard suppresses pure
+        silence; it is not a substitute for upstream VAD. ``language`` is
+        "auto", "zh" or "en". With ``normalize`` the waveform is brought to a
+        speech level suited to the recognizer (``speech_db`` is the caller's
+        speech-level estimate, if any). ``should_cancel`` is polled between
+        generated tokens and raises :class:`Cancelled`. Reaching the token
+        budget does not raise: the text is returned with ``truncated`` set.
+        ``raw_text`` is the model text after collapsing runaway repetitions.
+        """
+        if not isinstance(language, str) or language not in _ASR_LANGUAGES:
+            raise ValueError("language must be 'auto', 'zh' or 'en'")
+        if should_cancel is not None and not callable(should_cancel):
+            raise TypeError("should_cancel must be callable")
         with self._lock:
+            started = time.monotonic()
             if self._asr is None or self._converter is None:
                 raise RuntimeError("Local models are not loaded")
             context, hotwords, _ = _hints(context, vocabulary)
-            budget = _MAX_TOKENS if max_tokens is None else max_tokens
-            if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= _MAX_ASR_TOKENS:
+            if max_tokens is not None and (isinstance(max_tokens, bool) or not isinstance(max_tokens, int)
+                                           or not 1 <= max_tokens <= _MAX_ASR_TOKENS):
                 raise ValueError("max_tokens must be an integer between 1 and 2048")
-            if not isinstance(sample_rate, int) or sample_rate <= 0:
+            if isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or sample_rate <= 0:
                 raise ValueError("sample_rate must be a positive integer")
             samples = np.asarray(audio)
             if samples.ndim != 1 or samples.dtype.kind != "f":
@@ -287,8 +471,15 @@ class LocalModels:
                 raise ValueError("audio segment exceeds 30 seconds")
             if not np.isfinite(samples).all():
                 raise ValueError("audio contains non-finite values")
+            budget = _asr_budget(samples.size / sample_rate) if max_tokens is None else max_tokens
+            result = {
+                "raw_text": "", "traditional_text": "", "language": None,
+                "no_speech": True, "truncated": False, "redecoded": False,
+                "gain_db": 0.0, "asr_ms": 0, "prompt_tokens": 0, "generation_tokens": 0,
+            }
             if samples.size == 0 or np.max(np.abs(samples)) < 1e-5:
-                return {"raw_text": "", "traditional_text": ""}
+                result["asr_ms"] = int(round((time.monotonic() - started) * 1000))
+                return result
             if sample_rate != 16000:
                 from scipy.signal import resample_poly
                 from math import gcd
@@ -296,6 +487,8 @@ class LocalModels:
                 divisor = gcd(sample_rate, 16000)
                 samples = resample_poly(samples, 16000 // divisor, sample_rate // divisor)
             samples = np.ascontiguousarray(samples, dtype=np.float32)
+            if normalize:
+                samples, result["gain_db"] = self._normalize(samples, speech_db)
             # mlx-audio's merge_hotwords joins these exact terms into the system
             # prompt. Count them with the pinned model tokenizer; reserve more
             # than the 30-second audio encoding and the requested output budget.
@@ -304,21 +497,45 @@ class LocalModels:
                 hint_tokens = self._asr._tokenizer.encode(hint_text)
                 if len(hint_tokens) + _ASR_AUDIO_RESERVE + budget > _ASR_CONTEXT_TOKENS:
                     raise ValueError("ASR hints exceed the model context limit")
-            result = self._asr.generate(
-                audio=samples, language=None, max_tokens=budget,
-                temperature=0.0, verbose=False,
-                system_prompt=context or None, hotwords=hotwords or None,
+            forced = _ASR_LANGUAGES[language]
+            text, detected, prompt_tokens, generation_tokens = self._decode(
+                samples, forced, context, hotwords, budget, should_cancel)
+            if forced is None and isinstance(detected, str):
+                key = detected.strip().lower()
+                if key in ("", "none"):
+                    # The model's own no-speech answer: "language None<asr_text>".
+                    text, detected = "", None
+                elif key not in _EXPECTED_LANGUAGES and text.strip():
+                    text, detected, prompt_tokens, generation_tokens = self._decode(
+                        samples, "Chinese", context, hotwords, budget, should_cancel)
+                    result["redecoded"] = True
+            raw_text = _collapse_repetitions(text)
+            result.update(
+                raw_text=raw_text,
+                traditional_text=self._converter.convert(raw_text),
+                language=detected,
+                no_speech=not raw_text.strip(),
+                truncated=generation_tokens >= budget,
+                prompt_tokens=prompt_tokens,
+                generation_tokens=generation_tokens,
+                asr_ms=int(round((time.monotonic() - started) * 1000)),
             )
-            if result.generation_tokens >= budget:
-                raise RuntimeError("ASR reached its token limit; use a shorter audio segment")
-            raw_text = result.text
-            return {
-                "raw_text": raw_text,
-                "traditional_text": self._converter.convert(raw_text),
-            }
+            return result
 
-    def translate(self, text: str, *, context: str = "", vocabulary=None, history=None) -> str:
-        """Translate into English; optional history is caller-supplied, never retained."""
+    def translate(self, text: str, *, context: str = "", vocabulary=None, history=None,
+                  on_text: Callable[[str], None] | None = None,
+                  should_cancel: Callable[[], bool] | None = None) -> str:
+        """Translate into English; optional history is caller-supplied, never retained.
+
+        ``on_text`` receives the cumulative translation as it grows (at most
+        about every 80 ms) and once more with the final text; its exceptions
+        are swallowed and stop further calls. ``should_cancel`` is polled
+        between generated tokens and raises :class:`Cancelled`.
+        """
+        if on_text is not None and not callable(on_text):
+            raise TypeError("on_text must be callable")
+        if should_cancel is not None and not callable(should_cancel):
+            raise TypeError("should_cancel must be callable")
         with self._lock:
             if self._translator is None or self._tokenizer is None:
                 raise RuntimeError("Local models are not loaded")
@@ -336,20 +553,53 @@ class LocalModels:
             budget = min(1024, max(_MAX_TOKENS, len(text) * 2))
             if len(tokens) + budget > 32768:
                 raise ValueError("translation prompt exceeds the model context limit")
+            callback = on_text
+            last_sent = None
+            last_time = 0.0
+
+            def emit(value, final=False):
+                nonlocal callback, last_sent, last_time
+                if callback is None or (not final and value == last_sent):
+                    return
+                now = time.monotonic()
+                if not final and now - last_time < _ON_TEXT_INTERVAL:
+                    return
+                try:
+                    callback(value)
+                except Exception:
+                    callback = None  # A broken display must not break translation.
+                    return
+                last_sent, last_time = value, now
+
+            _check_cancel(should_cancel)
             parts = []
             finish_reason = None
-            for response in stream_generate(
+            stream = stream_generate(
                 self._translator, self._tokenizer, tokens,
                 max_tokens=budget, sampler=make_sampler(temp=0.0),
-            ):
-                parts.append(response.text)
-                if response.finish_reason is not None:
-                    finish_reason = response.finish_reason
+            )
+            try:
+                for response in stream:
+                    parts.append(response.text)
+                    if response.finish_reason is not None:
+                        finish_reason = response.finish_reason
+                    _check_cancel(should_cancel)
+                    if callback is not None and finish_reason is None:
+                        emit(_clean_translation("".join(parts)).strip())
+            finally:
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()
             if finish_reason == "length":
                 raise RuntimeError("Translation reached its token limit; split the source clause")
-            translation = "".join(parts)
-            # The two documented stops are also added as EOS above. Defensive
-            # handling in case a future detokenizer includes a stop in text.
-            for stop in ("<|plamo:tag|>", "<|plamo:bos|>"):
-                translation = translation.split(stop, 1)[0]
-            return translation.strip()
+            translation = _clean_translation("".join(parts)).strip()
+            emit(translation, final=True)
+            return translation
+
+
+def _clean_translation(translation: str) -> str:
+    # The two documented stops are also added as EOS in load(). Defensive
+    # handling in case a future detokenizer includes a stop in text.
+    for stop in ("<|plamo:tag|>", "<|plamo:bos|>"):
+        translation = translation.split(stop, 1)[0]
+    return translation

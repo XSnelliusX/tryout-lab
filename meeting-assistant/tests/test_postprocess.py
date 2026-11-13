@@ -88,6 +88,40 @@ class GatewayTests(unittest.TestCase):
             handler.https_open(None)
             connect.assert_called_once_with(("8.8.8.8", 443), 30)
 
+    def test_blank_speaker_names_are_ignored(self):
+        with patch.object(postprocess, "_transport", return_value=completion({"proposals": []})):
+            result = self.client.analyze([segment(1, "原文 測試", "S1")], task="review", speaker_names={"S1": ""})
+        self.assertEqual(result["status"], "ready")
+
+    def test_connect_falls_back_to_next_validated_address_with_split_timeout(self):
+        handler = None
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, limit): return b'{}'
+        def make_opener(*handlers):
+            nonlocal handler
+            handler = next(h for h in handlers if type(h).__name__ == "PinnedHandler")
+            return SimpleNamespace(open=lambda *a, **kw: Response())
+        with patch.object(postprocess, "_addresses", return_value=["8.8.8.8", "8.8.4.4", "1.1.1.1", "9.9.9.9"]), \
+             patch.object(postprocess.urllib.request, "build_opener", side_effect=make_opener):
+            postprocess._transport(self.client.endpoint, {}, "")
+        context = SimpleNamespace(wrap_socket=lambda sock, server_hostname: sock)
+        def do_open(connection_cls, request, **kwargs):
+            conn = connection_cls("gateway.example", timeout=30, context=context)
+            conn.connect()
+            self.assertEqual(conn.sock, "ok")
+        handler.do_open = do_open
+        attempts = []
+        def create(address, timeout):
+            attempts.append((address, timeout))
+            if len(attempts) < 3:
+                raise OSError("down")
+            return "ok"
+        with patch.object(postprocess.socket, "create_connection", side_effect=create):
+            handler.https_open(None)
+        self.assertEqual(attempts, [(("8.8.8.8", 443), 10.0), (("8.8.4.4", 443), 10.0), (("1.1.1.1", 443), 10.0)])
+
     def test_review_exact_whole_original_and_quote(self):
         items = [
             {"segment_id": 1, "original": "原文 測試", "replacement": "原文測試", "reason": "spacing", "uncertainty": "low", "quote": "測試"},

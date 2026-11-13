@@ -74,7 +74,7 @@ class InferenceTests(unittest.TestCase):
         self.assertEqual(call["max_tokens"], 1024)
         model._asr.text = "VOne"
         self.assertEqual(model.transcribe(data, vocabulary=VOCAB)["raw_text"], "VOne")
-        self.assertEqual(model._asr.calls[-1]["max_tokens"], 256)
+        self.assertEqual(model._asr.calls[-1]["max_tokens"], 48)  # duration-based default for 1 s
 
     def test_limits_and_control_tokens(self):
         model = loaded()
@@ -85,14 +85,17 @@ class InferenceTests(unittest.TestCase):
                        {"max_tokens": 0}, {"max_tokens": True}, {"max_tokens": 2049}):
             with self.subTest(kwargs=kwargs), self.assertRaises((ValueError, TypeError)):
                 model.transcribe(samples, **kwargs)
-        self.assertEqual(model.transcribe(samples), {"raw_text": "", "traditional_text": ""})
+        silent = model.transcribe(samples)
+        self.assertEqual({k: silent[k] for k in ("raw_text", "traditional_text")},
+                         {"raw_text": "", "traditional_text": ""})
         self.assertEqual(len(_hints("", [VOCAB[0]] * 128)[1]), 128)
         model._asr._tokenizer = types.SimpleNamespace(encode=lambda text: [0] * 65536)
         with self.assertRaisesRegex(ValueError, "ASR hints exceed"):
             model.transcribe(np.ones(5, dtype=np.float32), context="test")
         model._asr.tokens = 256
-        with self.assertRaises(RuntimeError):
-            model.transcribe(np.ones(5, dtype=np.float32))
+        clipped = model.transcribe(np.ones(5, dtype=np.float32))
+        self.assertIs(clipped["truncated"], True)
+        self.assertEqual(clipped["raw_text"], "content production")
 
     def test_translation_pfml_order_and_legacy_api(self):
         model = loaded()
@@ -184,6 +187,13 @@ class FakeModels:
         return "translated: " + text
 
 
+def speechlike(seconds, amplitude=8000):
+    """Harmonic tone with a 4 Hz syllable envelope: the detector hears speech, not a steady tone."""
+    t = np.arange(int(seconds * RATE)) / RATE
+    tone = sum(np.sin(2 * np.pi * 140 * k * t) / k for k in range(1, 25))
+    return (amplitude * np.abs(np.sin(np.pi * 4 * t)) * tone / np.max(np.abs(tone))).astype(np.int16)
+
+
 def write_wav(path, samples, rate=RATE, channels=1):
     with wave.open(str(path / "audio.wav"), "wb") as out:
         out.setnchannels(channels)
@@ -213,7 +223,7 @@ class RefinementTests(unittest.TestCase):
         self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).digest() for p in self.path.iterdir()})
 
     def test_long_windows_overlap_flag_and_hints(self):
-        write_wav(self.path, np.full(RATE * 50, 8000, dtype=np.int16))
+        write_wav(self.path, speechlike(50))
         model = FakeModels(["Same phrase", "same  phrase", "Last"])
         result = refine_session(self.path, model, context="software engineering", vocabulary=VOCAB)
         segments = result["segments"]
@@ -227,30 +237,51 @@ class RefinementTests(unittest.TestCase):
         self.assertEqual(model.translations[0][1]["context"], "software engineering")
         self.assertTrue(all(len(samples) <= RATE * 24 for samples, _ in model.calls))
 
+    def test_failing_window_is_skipped_and_marked_incomplete(self):
+        write_wav(self.path, speechlike(50))
+        class Flaky(FakeModels):
+            def transcribe(self, samples, **kwargs):
+                if len(self.calls) == 1:
+                    self.calls.append((samples.copy(), kwargs))
+                    raise RuntimeError("x" * 300)
+                return super().transcribe(samples, **kwargs)
+        result = refine_session(self.path, Flaky(["one", "two", "three"]))
+        self.assertEqual(len(result["segments"]), 2)
+        self.assertEqual(result["status"], "pending")
+        note = result["limitations"][-1]
+        self.assertIn("1 window failed and was skipped", note)
+        self.assertLessEqual(len(note), 260)
+        class Cancelling(FakeModels):
+            def transcribe(self, samples, **kwargs):
+                raise RefinementCancelled("stop")
+        with self.assertRaises(RefinementCancelled):
+            refine_session(self.path, Cancelling())
+
     def test_silent_tail_of_overlap_not_retranscribed(self):
         samples = np.zeros(40 * RATE, dtype=np.int16)
-        samples[:24 * RATE] = 9000
+        samples[:24 * RATE] = speechlike(24, 9000)
         write_wav(self.path, samples)
         model = FakeModels()
         self.assertEqual(len(refine_session(self.path, model)["segments"]), 1)
 
     def test_pause_and_multiple_separated_speech_regions(self):
         samples = np.zeros(54 * RATE, dtype=np.int16)
-        samples[RATE:20 * RATE] = 9000
-        samples[21 * RATE:32 * RATE] = 9000
-        samples[50 * RATE:51 * RATE] = 9000
+        samples[RATE:20 * RATE] = speechlike(19, 9000)
+        samples[21 * RATE:32 * RATE] = speechlike(11, 9000)
+        samples[50 * RATE:51 * RATE] = speechlike(1, 9000)
         write_wav(self.path, samples)
         model = FakeModels()
         segments = refine_session(self.path, model)["segments"]
         self.assertGreaterEqual(len(segments), 2)
-        self.assertAlmostEqual(segments[0]["start"], 0.8)
+        # Pre-roll reaches back before the speech that starts at 1.0 s.
+        self.assertTrue(0.7 <= segments[0]["start"] < 1.0, segments[0]["start"])
         self.assertTrue(any(s["start"] <= 50 and s["end"] >= 51 for s in segments))
 
     def test_bad_audio_and_cancellation(self):
         write_wav(self.path, np.ones(RATE, dtype=np.int16), rate=8000)
         with self.assertRaises(ValueError):
             refine_session(self.path, FakeModels())
-        write_wav(self.path, np.full(RATE * 25, 9000, dtype=np.int16))
+        write_wav(self.path, speechlike(25, 9000))
         flag = threading.Event()
         model = FakeModels()
         def progress(event):
@@ -267,13 +298,14 @@ class RefinementTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             refine_session(self.path, FakeModels())
 
-    def test_model_failure_does_not_return_partial_result(self):
-        write_wav(self.path, np.full(RATE, 9000, dtype=np.int16))
+    def test_model_failure_is_recorded_not_raised(self):
+        write_wav(self.path, speechlike(1, 9000))
         class FailsTranslation(FakeModels):
             def translate(self, text, **kwargs):
                 raise RuntimeError("translation failed")
-        with self.assertRaisesRegex(RuntimeError, "translation failed"):
-            refine_session(self.path, FailsTranslation())
+        result = refine_session(self.path, FailsTranslation())
+        self.assertEqual((result["segments"], result["status"]), ([], "pending"))
+        self.assertIn("translation failed", result["limitations"][-1])
 
 
 if __name__ == "__main__":

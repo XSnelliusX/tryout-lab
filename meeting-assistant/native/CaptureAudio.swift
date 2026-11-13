@@ -94,8 +94,15 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
     private let completion: Completion
     private let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
                                        channels: 1, interleaved: false)!
+    // Pipeline per input format: [floatConverter: any LPCM -> Float32 deinterleaved, same
+    // rate and channels, identity channel map] -> explicit channel average -> [converter:
+    // mono Float32 -> 16 kHz mono]. No gain, limiting or clamping is applied.
     private var converter: AVAudioConverter?
+    private var floatConverter: AVAudioConverter?
+    private var monoFormat: AVAudioFormat?
     private var inputFormat: AVAudioFormat?
+    private var volumeTimer: DispatchSourceTimer?
+    private var lastVolume: Float?
     private var failed = false
     private var closed = false
 
@@ -109,30 +116,46 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
     }
 
     // Nonblocking output ensures a stalled or closed reader does not silently drop audio.
+    // A full pipe is tolerated for up to 10 s without progress (no extra buffering here);
+    // a closed reader fails at once with EPIPE (SIGPIPE is ignored).
     private func writePCM(_ buffer: AVAudioPCMBuffer) throws {
         let count = Int(buffer.frameLength) * MemoryLayout<Float>.size
         guard count > 0 else { return }
         guard let samples = buffer.floatChannelData?[0] else { throw CaptureFailure(message: "Invalid converted audio buffer") }
         let bytes = UnsafeRawPointer(samples).assumingMemoryBound(to: UInt8.self)
+        let stallLimit: UInt64 = 10_000_000_000
+        var stalledSince: UInt64 = 0
         var offset = 0
         while offset < count {
             let n = Darwin.write(STDOUT_FILENO, bytes.advanced(by: offset), count - offset)
-            if n > 0 { offset += n; continue }
+            if n > 0 { offset += n; stalledSince = 0; continue }
             if n < 0 && errno == EINTR { continue }
             if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                let now = DispatchTime.now().uptimeNanoseconds
+                if stalledSince == 0 { stalledSince = now }
+                let waited = now - stalledSince
+                guard waited < stallLimit else {
+                    throw CaptureFailure(message: "Audio reader stalled or closed; capture stopped")
+                }
+                let remainingMs = (stallLimit - waited) / 1_000_000 + 1
                 var fd = pollfd(fd: STDOUT_FILENO, events: Int16(POLLOUT), revents: 0)
-                let ready = poll(&fd, 1, 2_000)
-                if ready < 0 && errno == EINTR { continue }
-                if ready > 0 && (fd.revents & Int16(POLLOUT)) != 0 { continue }
-                throw CaptureFailure(message: "Audio reader stalled or closed; capture stopped")
+                let ready = poll(&fd, 1, Int32(min(remainingMs, 1_000)))
+                if ready < 0 && errno != EINTR {
+                    throw CaptureFailure(message: "Audio output pipe closed or failed; capture stopped")
+                }
+                // Writable, hung up or timed out: retry the write, which makes progress,
+                // reports EPIPE for a closed reader, or re-checks the stall deadline.
+                continue
             }
             throw CaptureFailure(message: "Audio output pipe closed or failed; capture stopped")
         }
     }
 
+    // Resamples mono Float32 at the input rate to the 16 kHz target.
     private func convert(_ input: AVAudioPCMBuffer?, endOfStream: Bool) throws {
-        guard let converter, let inputFormat else { return }
-        let estimated = input.map { Double($0.frameLength) * target.sampleRate / inputFormat.sampleRate } ?? 0
+        guard let converter else { return }
+        let inputRate = converter.inputFormat.sampleRate
+        let estimated = input.map { Double($0.frameLength) * target.sampleRate / inputRate } ?? 0
         guard estimated.isFinite, estimated < Double(UInt32.max - 4096) else {
             throw CaptureFailure(message: "Invalid audio frame count")
         }
@@ -169,13 +192,106 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
         }
     }
 
+    // AVAudioFormat(streamDescription:) returns nil for more than 2 channels unless a
+    // channel layout is supplied (AVAudioFormat.h). The layout only labels channels here,
+    // because the downmix averages all of them, so a discrete in-order layout suffices.
+    private func makeInputFormat(_ asbd: UnsafePointer<AudioStreamBasicDescription>) -> AVAudioFormat? {
+        let channels = asbd.pointee.mChannelsPerFrame
+        if channels <= 2 { return AVAudioFormat(streamDescription: asbd) }
+        let tag = AudioChannelLayoutTag(kAudioChannelLayoutTag_DiscreteInOrder) | AudioChannelLayoutTag(channels)
+        guard let layout = AVAudioChannelLayout(layoutTag: tag) else { return nil }
+        return AVAudioFormat(streamDescription: asbd, channelLayout: layout)
+    }
+
+    private func configure(for format: AVAudioFormat) throws {
+        converter = nil
+        floatConverter = nil
+        monoFormat = nil
+        inputFormat = nil
+        let channels = format.channelCount
+        let floatFormat: AVAudioFormat
+        if format.commonFormat == .pcmFormatFloat32 && (!format.isInterleaved || channels == 1) {
+            floatFormat = format
+        } else {
+            let made: AVAudioFormat?
+            if let layout = format.channelLayout {
+                made = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate,
+                                     interleaved: false, channelLayout: layout)
+            } else {
+                made = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate,
+                                     channels: channels, interleaved: false)
+            }
+            guard let made, let next = AVAudioConverter(from: format, to: made) else {
+                throw CaptureFailure(message: "Unsupported capture audio conversion")
+            }
+            // Same channel count in and out; an explicit identity map overrides any
+            // layout-driven remapping (AVAudioConverter.h, channelMap).
+            next.channelMap = (0..<Int(channels)).map { NSNumber(value: $0) }
+            floatConverter = next
+            floatFormat = made
+        }
+        let mono: AVAudioFormat
+        if channels == 1 {
+            mono = floatFormat
+        } else {
+            guard let made = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate,
+                                           channels: 1, interleaved: false) else {
+                throw CaptureFailure(message: "Unsupported capture audio conversion")
+            }
+            mono = made
+        }
+        guard let resampler = AVAudioConverter(from: mono, to: target) else {
+            throw CaptureFailure(message: "Unsupported capture audio conversion")
+        }
+        resampler.sampleRateConverterQuality = AVAudioQuality.max.rawValue
+        resampler.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
+        converter = resampler
+        monoFormat = mono
+        inputFormat = format
+    }
+
+    // Integer or interleaved PCM -> Float32 deinterleaved at the same rate and channel count.
+    private func toFloat(_ input: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        guard let floatConverter else { return input }
+        guard let output = AVAudioPCMBuffer(pcmFormat: floatConverter.outputFormat, frameCapacity: input.frameLength) else {
+            throw CaptureFailure(message: "Could not allocate audio conversion buffer")
+        }
+        do { try floatConverter.convert(to: output, from: input) }
+        catch { throw CaptureFailure(message: "Audio sample format conversion failed") }
+        guard output.frameLength == input.frameLength else {
+            throw CaptureFailure(message: "Audio sample format conversion was incomplete")
+        }
+        return output
+    }
+
+    // Mono = arithmetic mean of all channels, sample by sample.
+    private func downmix(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        let channels = Int(buffer.format.channelCount)
+        if channels == 1 { return buffer }
+        guard let monoFormat, !buffer.format.isInterleaved, buffer.format.commonFormat == .pcmFormatFloat32,
+              let source = buffer.floatChannelData,
+              let output = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: buffer.frameLength),
+              let destination = output.floatChannelData?[0] else {
+            throw CaptureFailure(message: "Could not downmix captured audio")
+        }
+        let frames = Int(buffer.frameLength)
+        let scale = 1 / Float(channels)
+        for frame in 0..<frames {
+            var sum: Float = 0
+            for channel in 0..<channels { sum += source[channel][frame] }
+            destination[frame] = sum * scale
+        }
+        output.frameLength = buffer.frameLength
+        return output
+    }
+
     private func consume(_ sampleBuffer: CMSampleBuffer) {
         guard !closed, !failed, CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else { return }
         do {
             guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
                   let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description),
                   asbd.pointee.mFormatID == kAudioFormatLinearPCM,
-                  let format = AVAudioFormat(streamDescription: asbd),
+                  let format = makeInputFormat(asbd),
                   format.sampleRate > 0, format.channelCount > 0 else {
                 throw CaptureFailure(message: "Unsupported capture audio format")
             }
@@ -189,13 +305,10 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
             guard copyStatus == noErr else { throw CaptureFailure(message: "Could not copy captured PCM") }
             if inputFormat == nil || !inputFormat!.isEqual(format) {
                 if converter != nil { try convert(nil, endOfStream: true) }
-                guard let next = AVAudioConverter(from: format, to: target) else {
-                    throw CaptureFailure(message: "Unsupported capture audio conversion")
-                }
-                converter = next
-                inputFormat = format
+                try configure(for: format)
+                status("format", ["sample_rate": format.sampleRate, "channels": Int(format.channelCount)])
             }
-            try convert(input, endOfStream: false)
+            try convert(try downmix(try toFloat(input)), endOfStream: false)
         } catch {
             fail((error as? CaptureFailure)?.message ?? "Audio processing failed")
         }
@@ -227,10 +340,35 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
                     error: nsError, permission: nsError.code == -3801 ? "screen" : nil)
     }
 
+    // Polls the device's input volume twice a second on queue and reports changes.
+    // A timer is used rather than a CoreAudio listener block so that teardown is a
+    // plain cancel on the same queue (see flush).
+    func monitorInputVolume(deviceID: AudioDeviceID, initial: Float?) {
+        queue.async {
+            guard !self.closed, !self.failed, self.volumeTimer == nil else { return }
+            self.lastVolume = initial
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.setEventHandler { self.pollInputVolume(deviceID) }
+            timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+            self.volumeTimer = timer
+            timer.resume()
+        }
+    }
+
+    private func pollInputVolume(_ deviceID: AudioDeviceID) {
+        guard !closed, !failed else { return }
+        let volume = inputVolume(deviceID)
+        guard volume != lastVolume else { return }
+        lastVolume = volume
+        status("input", ["input_volume": jsonVolume(volume)])
+    }
+
     // Called after stopping capture, or when abandoning startup; drain queued
     // callbacks, flush the resampler, and prevent subsequent callbacks writing.
     func flush() -> Bool {
         queue.sync {
+            volumeTimer?.cancel()
+            volumeTimer = nil
             closed = true
             guard !failed else { return false }
             do { try convert(nil, endOfStream: true) }
@@ -243,32 +381,167 @@ private final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate, AVC
 private let screenDeniedMessage = "Screen & System Audio Recording permission denied. Enable Terminal if using the double-click launcher, or your terminal app (e.g. cmux) if launched there, in System Settings > Privacy & Security > Screen & System Audio Recording; fully quit and reopen that app."
 private let microphoneDeniedMessage = "Microphone permission denied or restricted. Enable Terminal if using the double-click launcher, or your terminal app (e.g. cmux) if launched there, in System Settings > Privacy & Security > Microphone; fully quit and reopen that app."
 
-private func started(_ source: String) {
-    status("started", ["source": source, "format": "f32le", "sample_rate": 16000, "channels": 1])
+private func started(_ source: String, device: [String: Any]? = nil) {
+    var fields: [String: Any] = ["source": source, "format": "f32le", "sample_rate": 16000, "channels": 1, "protocol": 2]
+    if let device { fields["device"] = device }
+    status("started", fields)
 }
 
-// Resolve the actual Sound > Input selection, not the first enumerated device.
-// The session keeps this device until capture is restarted.
-private func defaultMicrophone() throws -> AVCaptureDevice {
-    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
-                                             mScope: kAudioObjectPropertyScopeGlobal,
-                                             mElement: kAudioObjectPropertyElementMain)
+// CoreAudio property queries only: these read the HAL's device list and settings and
+// do not open an input stream, so they need no microphone permission.
+private func audioAddress(_ selector: AudioObjectPropertySelector,
+                          _ scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+                          _ element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain) -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
+}
+
+private func audioDeviceIDs() -> [AudioDeviceID]? {
+    var address = audioAddress(kAudioHardwarePropertyDevices)
+    var size: UInt32 = 0
+    let system = AudioObjectID(kAudioObjectSystemObject)
+    guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return nil }
+    let stride = MemoryLayout<AudioDeviceID>.size
+    var ids = [AudioDeviceID](repeating: kAudioObjectUnknown, count: Int(size) / stride)
+    guard !ids.isEmpty else { return [] }
+    guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return nil }
+    return Array(ids.prefix(Int(size) / stride))
+}
+
+private func defaultInputDeviceID() -> AudioDeviceID? {
+    var address = audioAddress(kAudioHardwarePropertyDefaultInputDevice)
     var deviceID: AudioDeviceID = kAudioObjectUnknown
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)
     guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID) == noErr,
-          deviceID != kAudioObjectUnknown else {
-        throw CaptureFailure(message: "No default microphone is available. Select an input in macOS System Settings > Sound > Input.")
+          deviceID != kAudioObjectUnknown else { return nil }
+    return deviceID
+}
+
+// kAudioDevicePropertyDeviceUID and kAudioObjectPropertyName return a CFString the
+// caller must release (AudioHardware.h, AudioHardwareBase.h).
+private func stringProperty(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+    var address = audioAddress(selector)
+    var pointer: UnsafeRawPointer?
+    var size = UInt32(MemoryLayout<UnsafeRawPointer?>.size)
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &pointer) == noErr, let pointer else { return nil }
+    return Unmanaged<CFString>.fromOpaque(pointer).takeRetainedValue() as String
+}
+
+private func uint32Property(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
+    var address = audioAddress(selector)
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
+    return value
+}
+
+private func nominalSampleRate(_ id: AudioDeviceID) -> Double? {
+    var address = audioAddress(kAudioDevicePropertyNominalSampleRate)
+    var value: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr, value > 0 else { return nil }
+    return value
+}
+
+// Total channels over the device's input streams; 0 for output-only devices.
+private func inputChannelCount(_ id: AudioDeviceID) -> Int {
+    var address = audioAddress(kAudioDevicePropertyStreamConfiguration, kAudioDevicePropertyScopeInput)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr,
+          Int(size) >= MemoryLayout<AudioBufferList>.size else { return 0 }
+    let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { raw.deallocate() }
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, raw) == noErr else { return 0 }
+    let buffers = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+    var channels = 0
+    for buffer in buffers { channels += Int(buffer.mNumberChannels) }
+    return channels
+}
+
+private func transportName(_ id: AudioDeviceID) -> String {
+    guard let value = uint32Property(id, kAudioDevicePropertyTransportType) else { return "other" }
+    if value == UInt32(kAudioDeviceTransportTypeBuiltIn) { return "built-in" }
+    if value == UInt32(kAudioDeviceTransportTypeUSB) { return "usb" }
+    if value == UInt32(kAudioDeviceTransportTypeBluetooth) || value == UInt32(kAudioDeviceTransportTypeBluetoothLE) { return "bluetooth" }
+    if value == UInt32(kAudioDeviceTransportTypeAggregate) { return "aggregate" }
+    if value == UInt32(kAudioDeviceTransportTypeVirtual) { return "virtual" }
+    return "other"
+}
+
+// Input volume: the main element if present, else channel 1, else channel 2.
+// Many USB and Bluetooth inputs expose none.
+private func inputVolumeAddress(_ id: AudioDeviceID) -> AudioObjectPropertyAddress? {
+    let elements: [AudioObjectPropertyElement] = [kAudioObjectPropertyElementMain, 1, 2]
+    for element in elements {
+        var address = audioAddress(kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeInput, element)
+        if AudioObjectHasProperty(id, &address) { return address }
     }
-    address.mSelector = kAudioDevicePropertyDeviceUID
-    var uidPointer: UnsafeRawPointer?
-    size = UInt32(MemoryLayout<UnsafeRawPointer?>.size)
-    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &uidPointer) == noErr,
-          let uidPointer else {
-        throw CaptureFailure(message: "The default sound input is unavailable for microphone capture. Select an input in macOS System Settings > Sound > Input and retry.")
+    return nil
+}
+
+private func inputVolume(_ id: AudioDeviceID) -> Float? {
+    guard var address = inputVolumeAddress(id) else { return nil }
+    var value: Float32 = 0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr else { return nil }
+    return value
+}
+
+private func inputVolumeSettable(_ id: AudioDeviceID) -> Bool {
+    guard var address = inputVolumeAddress(id) else { return false }
+    var settable: DarwinBoolean = false
+    return AudioObjectIsPropertySettable(id, &address, &settable) == noErr && settable.boolValue
+}
+
+private func jsonVolume(_ volume: Float?) -> Any {
+    guard let volume, volume.isFinite else { return NSNull() }
+    // Four decimals, serialized exactly (a Double would print as 0.67600000000000005).
+    return NSDecimalNumber(string: String(format: "%.4f", Double(volume)))
+}
+
+private func deviceInfo(_ id: AudioDeviceID, defaultID: AudioDeviceID?) -> [String: Any]? {
+    guard let uid = stringProperty(id, kAudioDevicePropertyDeviceUID) else { return nil }
+    let rate: Any = nominalSampleRate(id) ?? NSNull()
+    return ["uid": uid,
+            "name": stringProperty(id, kAudioObjectPropertyName) ?? uid,
+            "transport": transportName(id),
+            "sample_rate": rate,
+            "channels": inputChannelCount(id),
+            "is_default": id == defaultID,
+            "input_volume": jsonVolume(inputVolume(id)),
+            "input_volume_settable": inputVolumeSettable(id)]
+}
+
+private func listInputDevices() -> Int32 {
+    guard let ids = audioDeviceIDs() else {
+        status("error", ["message": "Could not enumerate audio devices"])
+        return 1
     }
-    let uid = Unmanaged<CFString>.fromOpaque(uidPointer).takeRetainedValue() as String
-    guard let device = AVCaptureDevice(uniqueID: uid), device.hasMediaType(.audio) else {
-        throw CaptureFailure(message: "The default sound input is unavailable for microphone capture. Select an input in macOS System Settings > Sound > Input and retry.")
+    let defaultID = defaultInputDeviceID()
+    for id in ids where inputChannelCount(id) > 0 {
+        if let info = deviceInfo(id, defaultID: defaultID) { status("device", info) }
+    }
+    return 0
+}
+
+// Without a UID, resolve the actual Sound > Input selection, not the first enumerated
+// device. The session keeps this device until capture is restarted.
+private func selectInputDevice(_ uid: String?) throws -> AudioDeviceID {
+    guard let uid else {
+        guard let id = defaultInputDeviceID() else {
+            throw CaptureFailure(message: "No default microphone is available. Select an input in macOS System Settings > Sound > Input.")
+        }
+        return id
+    }
+    for id in audioDeviceIDs() ?? [] where inputChannelCount(id) > 0 && stringProperty(id, kAudioDevicePropertyDeviceUID) == uid {
+        return id
+    }
+    throw CaptureFailure(message: "Input device not found: \(uid). Use --list-devices to see available inputs.")
+}
+
+private func captureDevice(_ id: AudioDeviceID) throws -> AVCaptureDevice {
+    guard let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
+          let device = AVCaptureDevice(uniqueID: uid), device.hasMediaType(.audio) else {
+        throw CaptureFailure(message: "The selected sound input is unavailable for microphone capture. Select an input in macOS System Settings > Sound > Input and retry.")
     }
     return device
 }
@@ -307,7 +580,8 @@ private func runScreen(source: String, listOnly: Bool, completion: Completion, o
     config.excludesCurrentProcessAudio = true
     config.sampleRate = 16_000
     config.channelCount = 1
-    config.captureMicrophone = false
+    // captureMicrophone (macOS 15+) defaults to NO per SCStream.h; it is not set, so
+    // the helper does not depend on its availability.
     let stream = SCStream(filter: filter, configuration: config, delegate: output)
     try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: output.queue)
     guard !completion.isFinished else { return await completion.wait() }
@@ -325,7 +599,10 @@ private func runScreen(source: String, listOnly: Bool, completion: Completion, o
     return code
 }
 
-private func runMicrophone(completion: Completion, output: AudioOutput) async throws -> Int32 {
+private func runMicrophone(deviceUID: String?, completion: Completion, output: AudioOutput) async throws -> Int32 {
+    // Resolve the CoreAudio device before any permission prompt, so an unknown
+    // --device fails without one.
+    let deviceID = try selectInputDevice(deviceUID)
     status("permission", ["permission": "microphone", "message": "macOS may request Microphone access for the launching app (Terminal for the double-click launcher, or your terminal app such as cmux). Select the input in macOS System Settings > Sound > Input."])
     let authorization = AVCaptureDevice.authorizationStatus(for: .audio)
     var allowed = authorization == .authorized
@@ -341,10 +618,10 @@ private func runMicrophone(completion: Completion, output: AudioOutput) async th
         return 1
     }
     guard !completion.isFinished else { return await completion.wait() }
-    let device = try defaultMicrophone()
+    let device = try captureDevice(deviceID)
     let session = AVCaptureSession()
     let input = try AVCaptureDeviceInput(device: device)
-    guard session.canAddInput(input) else { throw CaptureFailure(message: "Could not add the default microphone input") }
+    guard session.canAddInput(input) else { throw CaptureFailure(message: "Could not add the microphone input") }
     session.addInput(input)
     let audio = AVCaptureAudioDataOutput()
     guard session.canAddOutput(audio) else { throw CaptureFailure(message: "Could not add microphone audio output") }
@@ -380,9 +657,15 @@ private func runMicrophone(completion: Completion, output: AudioOutput) async th
     }) else { return await completion.wait() }
     guard running else {
         if completion.isFinished { return await completion.wait() }
-        throw CaptureFailure(message: "Could not start the default microphone")
+        throw CaptureFailure(message: "Could not start the microphone")
     }
-    if !completion.isFinished { started("microphone") }
+    if !completion.isFinished {
+        // Read the volume before the device snapshot: a change in between is then
+        // reported by the monitor rather than lost.
+        let initialVolume = inputVolume(deviceID)
+        started("microphone", device: deviceInfo(deviceID, defaultID: defaultInputDeviceID()))
+        output.monitorInputVolume(deviceID: deviceID, initial: initialVolume)
+    }
     let code = await completion.wait()
     session.stopRunning()
     return code
@@ -390,15 +673,32 @@ private func runMicrophone(completion: Completion, output: AudioOutput) async th
 
 @main
 private struct CaptureAudio {
+    // Returns (source, device UID) for a capture invocation, nil for a usage error.
+    static func parseCapture(_ args: [String]) -> (source: String, device: String?)? {
+        var source: String?
+        var device: String?
+        var index = 0
+        while index < args.count {
+            guard index + 1 < args.count else { return nil }
+            let name = args[index]
+            let value = args[index + 1]
+            if name == "--source" && source == nil && ["teams", "system", "microphone"].contains(value) {
+                source = value
+            } else if name == "--device" && device == nil && !value.isEmpty && !value.hasPrefix("--") {
+                device = value
+            } else {
+                return nil
+            }
+            index += 2
+        }
+        guard let source else { return nil }
+        if device != nil && source != "microphone" { return nil }
+        return (source, device)
+    }
+
     static func main() async {
         signal(SIGPIPE, SIG_IGN)
-        let args = Array(CommandLine.arguments.dropFirst())
-        guard args == ["--list-apps"] || (args.count == 2 && args[0] == "--source" && ["teams", "system", "microphone"].contains(args[1])) else {
-            status("error", ["message": "Usage: capture-audio --source teams|system|microphone OR capture-audio --list-apps"])
-            exit(2)
-        }
-        let listOnly = args == ["--list-apps"]
-        let source = listOnly ? "" : args[1]
+        // Install signal handling first so an early stop request is never lost.
         let completion = Completion()
         var signals: [DispatchSourceSignal] = []
         for number in [SIGINT, SIGTERM] {
@@ -408,6 +708,22 @@ private struct CaptureAudio {
             handler.resume()
             signals.append(handler)
         }
+        let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--version"] {
+            status("version", ["protocol": 2])
+            exit(0)
+        }
+        if args == ["--list-devices"] {
+            exit(listInputDevices())
+        }
+        let listOnly = args == ["--list-apps"]
+        let capture = listOnly ? nil : parseCapture(args)
+        guard listOnly || capture != nil else {
+            status("error", ["message": "Usage: capture-audio --source teams|system|microphone [--device <uid>] (--device only with microphone) OR capture-audio --list-apps|--list-devices|--version"])
+            exit(2)
+        }
+        let source = capture?.source ?? ""
+        let deviceUID = capture?.device
         let output = AudioOutput(completion: completion)
         var code: Int32 = 0
         do {
@@ -418,7 +734,7 @@ private struct CaptureAudio {
                 }
             }
             if source == "microphone" {
-                code = try await runMicrophone(completion: completion, output: output)
+                code = try await runMicrophone(deviceUID: deviceUID, completion: completion, output: output)
             } else {
                 code = try await runScreen(source: source, listOnly: listOnly, completion: completion, output: output)
             }

@@ -6,7 +6,8 @@ import wave
 
 import numpy as np
 
-from .audio import RATE, THRESHOLD
+from .levels import RATE
+from .vad import FRAME, voiced_frames
 
 _FRAME = RATE // 10
 _WINDOW = 24 * RATE
@@ -35,9 +36,13 @@ def _read_samples(audio, start, count):
 
 
 def _voiced_frames(samples):
-    # Energy is a cheap speech candidate detector, not a speech classifier.
-    return [float(np.sqrt(np.mean(np.square(samples[i:i + _FRAME], dtype=np.float64)))) >= THRESHOLD
-            for i in range(0, len(samples), _FRAME)]
+    # Energy is a cheap speech candidate detector, not a speech classifier. The
+    # adaptive detector decides per 32 ms; a 100 ms frame is voiced when
+    # detector speech covers at least half of it.
+    count = -(-len(samples) // _FRAME)
+    covered = np.repeat(np.array(voiced_frames(samples, RATE), dtype=bool), FRAME)
+    covered = np.pad(covered[:len(samples)], (0, count * _FRAME - min(len(covered), len(samples))))
+    return (covered.reshape(count, _FRAME).mean(axis=1) >= 0.5).tolist()
 
 
 def _cut_at_pause(voiced, length):
@@ -74,6 +79,8 @@ def refine_session(session_path: Path, models, *, context="", vocabulary=None,
     _check_cancel(cancelled)
     proposals = []
     skipped = 0
+    failed = 0
+    first_error = None
     with wave.open(str(Path(session_path) / "audio.wav"), "rb") as audio:
         if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getcomptype()) != (1, 2, RATE, "NONE"):
             raise ValueError("audio.wav must be uncompressed mono 16-bit PCM at 16 kHz")
@@ -116,26 +123,33 @@ def refine_session(session_path: Path, models, *, context="", vocabulary=None,
             end = start + len(samples)
             covered_until = end
             _check_cancel(cancelled)
-            asr = models.transcribe(samples, sample_rate=RATE, context=context,
-                                    vocabulary=vocabulary, max_tokens=1024)
-            _check_cancel(cancelled)
-            raw = asr["raw_text"]
-            traditional = asr["traditional_text"]
-            if not isinstance(raw, str) or not isinstance(traditional, str):
-                raise ValueError("ASR returned invalid text")
-            if raw.strip() or traditional.strip():
-                english = models.translate(traditional, context=context, vocabulary=vocabulary) if traditional.strip() else ""
+            try:
+                asr = models.transcribe(samples, sample_rate=RATE, context=context,
+                                        vocabulary=vocabulary, max_tokens=1024)
                 _check_cancel(cancelled)
-                proposal = {"id": len(proposals) + 1, "start": start / RATE, "end": end / RATE,
-                            "kind": "audio", "raw_text": raw, "traditional_text": traditional,
-                            "english": english, "origin": "offline_refinement",
-                            "timing": "coarse_audio_window", "speaker": "unknown"}
-                # Do not discard even exact duplicates: without word alignment a
-                # real repeated utterance cannot be distinguished from overlap.
-                if (proposals and start / RATE < proposals[-1]["end"] and
-                        _normalized(raw) and _normalized(raw) == _normalized(proposals[-1]["raw_text"])):
-                    proposal["possible_overlap_duplicate_of"] = proposals[-1]["id"]
-                proposals.append(proposal)
+                raw = asr["raw_text"]
+                traditional = asr["traditional_text"]
+                if not isinstance(raw, str) or not isinstance(traditional, str):
+                    raise ValueError("ASR returned invalid text")
+                if raw.strip() or traditional.strip():
+                    english = models.translate(traditional, context=context, vocabulary=vocabulary) if traditional.strip() else ""
+                    _check_cancel(cancelled)
+                    proposal = {"id": len(proposals) + 1, "start": start / RATE, "end": end / RATE,
+                                "kind": "audio", "raw_text": raw, "traditional_text": traditional,
+                                "english": english, "origin": "offline_refinement",
+                                "timing": "coarse_audio_window", "speaker": "unknown"}
+                    # Do not discard even exact duplicates: without word alignment a
+                    # real repeated utterance cannot be distinguished from overlap.
+                    if (proposals and start / RATE < proposals[-1]["end"] and
+                            _normalized(raw) and _normalized(raw) == _normalized(proposals[-1]["raw_text"])):
+                        proposal["possible_overlap_duplicate_of"] = proposals[-1]["id"]
+                    proposals.append(proposal)
+            except RefinementCancelled:
+                raise
+            except Exception as exc:
+                failed += 1
+                if first_error is None:
+                    first_error = str(exc)[:200]
             if end == total:
                 cursor = total
             elif cut is not None:
@@ -144,14 +158,21 @@ def refine_session(session_path: Path, models, *, context="", vocabulary=None,
                 cursor = end - _OVERLAP
             report(end)
         _check_cancel(cancelled)
-    return {"segments": proposals, "mapping": "no_exact_original_segment_mapping",
+    limitations = ["Times describe audio windows, not word or speaker alignment.",
+                   "Energy gating can miss quiet speech or include non-speech noise.",
+                   "Overlapping windows can repeat text; exact whole-window matches are flagged, not removed.",
+                   "Windows do not map exactly to original segments; results are review-only and do not replace original recognition."]
+    if failed:
+        limitations.append(f"{failed} window{'s' if failed != 1 else ''} failed and {'were' if failed != 1 else 'was'} skipped: {first_error}")
+    result = {"segments": proposals, "mapping": "no_exact_original_segment_mapping",
             "provenance": {"method": "local_offline_asr",
             "audio": "audio.wav", "sample_rate": RATE, "window_seconds": 24,
             "max_overlap_seconds": 1.5, "asr_max_tokens": 1024,
-            "detector": "100ms RMS >= 0.008", "pause_seconds": 0.6,
+            "detector": "adaptive 250-4000 Hz energy detector, 32 ms frames, per window", "pause_seconds": 0.6,
             "boundary": "prefer quiet in final 6 seconds; otherwise overlap"},
-            "limitations": ["Times describe audio windows, not word or speaker alignment.",
-                            "Energy gating can miss quiet speech or include non-speech noise.",
-                            "Overlapping windows can repeat text; exact whole-window matches are flagged, not removed.",
-                            "Windows do not map exactly to original segments; results are review-only and do not replace original recognition."],
+            "limitations": limitations,
             "skipped_low_energy_windows": skipped}
+    if failed:
+        result["status"] = "pending"
+        result["failed_windows"] = failed
+    return result

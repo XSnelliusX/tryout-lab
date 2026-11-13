@@ -1,0 +1,25 @@
+{
+ "supported": true,
+ "devices": [
+  {
+   "uid": "BuiltInMicrophoneDevice",
+   "name": "MacBook Pro Microphone",
+   "transport": "built-in",
+   "sample_rate": 48000,
+   "channels": 1,
+   "is_default": true,
+   "input_volume": 0.62,
+   "input_volume_settable": true
+  },
+  {
+   "uid": "usb-yeti",
+   "name": "Yeti Stereo Microphone",
+   "transport": "usb",
+   "sample_rate": 48000,
+   "channels": 2,
+   "is_default": false,
+   "input_volume": null,
+   "input_volume_settable": false
+  }
+ ]
+}

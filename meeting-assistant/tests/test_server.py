@@ -1,76 +1,27 @@
-"""Inference integration uses fake models; no capture or real model loading."""
+"""Application integration with fake models; no capture or real model loading."""
 
-import queue
-import tempfile
-import threading
 import time
 import unittest
-from pathlib import Path
 
 from meeting_assistant.audio import capture_error
-from meeting_assistant.server import Application
+
+from pipeline_fakes import AppCase, event
 
 
-class FakeModel:
-    def __init__(self):
-        self.hints = []
-        self.before_translation = None
-
-    def transcribe(self, audio, sample_rate=16000, **hints):
-        self.hints.append(hints)
-        return {"raw_text": "content production", "traditional_text": "content production"}
-
-    def translate(self, text, **hints):
-        self.hints.append(hints)
-        if self.before_translation:
-            action, self.before_translation = self.before_translation, None
-            action()
-        return "old translation"
-
-
-class ServerIntegrationTests(unittest.TestCase):
+class ServerIntegrationTests(AppCase, unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.app = Application.__new__(Application)
-        self.app.lock = threading.RLock()
-        self.app.jobs = queue.Queue(maxsize=12)
-        self.app.recording_state = "idle"
-        self.app.session_id = "fixture"
-        self.app.model_ready = True
-        self.app.model = FakeModel()
-        self.app.segments = []
-        self.app.next_id = 1
-        self.app.notice = ""
-        self.app._init_workbench(Path(self.temp.name).resolve())
-        self.app.library.register_session("fixture", "teams")
-
-    def tearDown(self):
-        self.temp.cleanup()
+        self.make_app()
+        self.begin()
 
     def test_context_and_vocabulary_reach_both_models(self):
         profile = {"context": "Container security engineering", "vocabulary": [{"term": "container protection"}]}
-        self.app._infer({"id": 1, "type": "audio", "audio": [], "session_id": "fixture", "profile": profile})
-        self.assertEqual(self.app.model.hints, [profile, profile])
-        self.assertEqual(self.app.library.get_session("fixture")["segments"][0]["revision"], 1)
-
-    def test_live_translation_cannot_overwrite_intervening_user_edit(self):
-        self.app.model.before_translation = lambda: self.app.library.edit_segment("fixture", 1, "container protection", 1)
-        self.app._infer({"id": 1, "type": "audio", "audio": [], "session_id": "fixture", "profile": {}})
-        segment = self.app.library.get_session("fixture")["segments"][0]
-        self.assertEqual(segment["raw_text"], "content production")
-        self.assertEqual(segment["traditional_text"], "container protection")
-        self.assertEqual(segment["english"], "")
-        self.assertEqual(segment["revision"], 2)
-        self.assertEqual(self.app.segments[0]["revision"], 2)
-
-    def test_retranslation_cannot_overwrite_newer_revision(self):
-        self.app.library.upsert_segment("fixture", {"id": 1, "raw_text": "wrong", "traditional_text": "wrong"})
-        self.app.library.edit_segment("fixture", 1, "first fix", 1)
-        self.app.model.before_translation = lambda: self.app.library.edit_segment("fixture", 1, "new fix", 2)
-        self.app._infer({"id": 1, "type": "retranslate", "session_id": "fixture", "revision": 2, "text": "first fix"})
-        segment = self.app.library.get_session("fixture")["segments"][0]
-        self.assertEqual(segment["traditional_text"], "new fix")
-        self.assertEqual(segment["english"], "")
+        self.app.capture_profile = profile
+        self.app._on_segment(event("final", value=0.2))
+        self.drain()
+        for kind, _, hints in self.model.calls:
+            self.assertEqual({k: hints[k] for k in profile}, profile, kind)
+        self.assertEqual(len(self.model.calls), 2)
+        self.assertEqual(self.saved()[0]["revision"], 1)
 
     def test_permission_error_is_readable_not_raw_json(self):
         error = capture_error(['{"event":"permission","message":"Check settings"}',
@@ -81,28 +32,43 @@ class ServerIntegrationTests(unittest.TestCase):
         self.assertNotIn('"event"', error)
 
     def test_starting_feed_status_does_not_claim_audio_delivery(self):
-        self.app.recording_state = "starting"
-        self.app.last_audio_at = self.app.last_signal_at = None
-        self.app.started_at = time.monotonic() - 9
-        self.app.inflight_at = None
-        self.app.model_status = "Models ready"
-        self.app.audio_seconds = self.app.level = self.app.dropped = 0
-        self.app.capture_status = "Waiting for permission"
-        state = self.app.state()
+        app = self.app
+        app.recording_state = "starting"
+        app.last_audio_at = app.last_signal_at = None
+        app.started_at = time.monotonic() - 9
+        state = app.state()
         self.assertIn("not yet confirmed", state["feed_status"])
         self.assertEqual(state["audio_seconds"], 0)
         self.assertTrue(state["no_audio"])
 
     def test_new_vocabulary_refreshes_capture_hints_for_next_chunk(self):
-        self.app.recording_state = "recording"
-        self.app.capture_profile = {"context": "Existing session context", "vocabulary": []}
-        entry = self.app.vocabulary_add({"term": "container protection"})
-        self.assertEqual(self.app.capture_profile["vocabulary"][0]["id"], entry["id"])
-        self.assertEqual(self.app.capture_profile["context"], "Existing session context")
-        self.app.update_settings({"meeting_context": "Updated context"})
-        self.assertEqual(self.app.capture_profile["context"], "Updated context")
-        self.app.vocabulary_remove(entry["id"])
-        self.assertEqual(self.app.capture_profile["vocabulary"], [])
+        app = self.app
+        app.capture_profile = {"context": "Existing session context", "vocabulary": []}
+        entry = app.vocabulary_add({"term": "container protection"})
+        self.assertEqual(app.capture_profile["vocabulary"][0]["id"], entry["id"])
+        self.assertEqual(app.capture_profile["context"], "Existing session context")
+        app.update_settings({"meeting_context": "Updated context"})
+        self.assertEqual(app.capture_profile["context"], "Updated context")
+        app.vocabulary_remove(entry["id"])
+        self.assertEqual(app.capture_profile["vocabulary"], [])
+
+    def test_state_has_contract_fields(self):
+        state = self.app.state()
+        for key in ("settings", "session", "sessions", "job", "diarization", "model_status", "model_ready",
+                    "recording_state", "session_id", "segments", "live_preview", "no_audio", "queue_length",
+                    "queue_lag_seconds", "pending_work", "dropped", "notice", "capture_status", "audio_seconds",
+                    "feed_status", "launcher_name", "archive_dir", "session_path", "audio", "latency",
+                    "capabilities"):
+            self.assertIn(key, state)
+        self.assertEqual(state["settings"]["audio"], {"device_uid": "", "language": "auto", "normalize": True})
+        self.assertIsNone(state["latency"])
+        self.assertEqual(state["capabilities"], {"helper_protocol": None, "helper_stale": False, "event_stream": True})
+        self.assertNotIn("type", state)
+
+    def test_job_start_rejects_non_string_task(self):
+        self.app.recording_state = "idle"
+        with self.assertRaises(ValueError):
+            self.app.job_start({"task": []})
 
 
 if __name__ == "__main__":

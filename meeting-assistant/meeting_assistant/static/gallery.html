@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glass components</title>
+  <link rel="stylesheet" href="/glass.css">
+  <link rel="stylesheet" href="/gallery.css">
+  <script type="module" src="/gallery.js"></script>
+</head>
+<body class="scroll-edge">
+  <div class="ambient" aria-hidden="true"></div>
+
+  <header class="glass-toolbar gallery-bar" role="toolbar" aria-label="Gallery controls">
+    <div class="glass-group">
+      <button class="glass-button glass-button--icon" aria-label="Toggle sidebar" title="Toggle sidebar" aria-pressed="true"><span data-icon="sidebar"></span></button>
+    </div>
+    <span class="glass-toolbar-title">Glass components</span>
+    <span class="glass-spacer"></span>
+    <div class="glass-group">
+      <glass-segmented id="theme" value="system" aria-label="Appearance">
+        <button value="system">System</button><button value="light">Light</button><button value="dark">Dark</button>
+      </glass-segmented>
+    </div>
+    <div class="glass-group gallery-switch">
+      <label for="reduce">Reduce transparency</label>
+      <input id="reduce" class="switch" type="checkbox" role="switch">
+    </div>
+  </header>
+
+  <main class="gallery">
+    <section class="demo">
+      <h2>Material</h2>
+      <p class="note">Glass only floats above content. Regular for most surfaces, thick for text-heavy panels, clear only over media (with the optional 35% dimming layer). Edge: hairline, top highlight, soft shadow.</p>
+      <div class="stage stage--ambient">
+        <div class="glass" data-shape="panel"><b>.glass</b><span>regular, panel</span></div>
+        <div class="glass glass--thick" data-shape="panel"><b>.glass--thick</b><span>sidebar, inspector, sheet</span></div>
+        <div class="glass" data-shape="capsule"><b>capsule</b></div>
+      </div>
+      <div class="stage stage--media">
+        <div class="glass-dim" aria-hidden="true"></div>
+        <div class="glass glass--clear" data-shape="panel"><b>.glass--clear + .glass-dim</b><span>over media only</span></div>
+        <div class="glass glass--clear" data-shape="capsule"><b>clear, no dim</b></div>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Toolbar and buttons</h2>
+      <div class="stage stage--ambient">
+        <div class="glass-toolbar stage-toolbar">
+          <div class="glass-group">
+            <button class="glass-button glass-button--icon" aria-label="Toggle sidebar" title="Toggle sidebar"><span data-icon="sidebar"></span></button>
+          </div>
+          <span class="glass-toolbar-title">Weekly sync</span>
+          <span class="glass-spacer"></span>
+          <div class="glass-group">
+            <button class="glass-button glass-button--icon" aria-label="Microphone" title="Microphone" aria-pressed="true"><span data-icon="mic"></span></button>
+            <button class="glass-button glass-button--icon" aria-label="System audio" title="System audio"><span data-icon="speaker"></span></button>
+            <span class="divider divider--vertical" role="separator"></span>
+            <button class="glass-button glass-button--icon" aria-label="Text size" title="Text size"><span data-icon="text-size"></span></button>
+          </div>
+          <div class="glass-group">
+            <button class="glass-button glass-button--prominent"><span data-icon="record"></span>Record</button>
+          </div>
+          <div class="glass-group">
+            <button class="glass-button glass-button--icon" aria-label="Inspector" title="Inspector"><span data-icon="inspector"></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="stage stage--ambient">
+        <table class="matrix">
+          <thead><tr><th></th><th>Default</th><th>Pressed</th><th>Disabled</th><th>Icon</th><th>Large</th></tr></thead>
+          <tbody>
+            <tr><th>Standalone glass</th>
+              <td><button class="glass-button glass">Export</button></td>
+              <td><button class="glass-button glass" aria-pressed="true">Export</button></td>
+              <td><button class="glass-button glass" disabled>Export</button></td>
+              <td><button class="glass-button glass glass-button--icon" aria-label="Add" title="Add"><span data-icon="plus"></span></button></td>
+              <td><button class="glass-button glass glass-button--large"><span data-icon="export"></span>Export</button></td></tr>
+            <tr><th>Prominent (one per view)</th>
+              <td><button class="glass-button glass-button--prominent"><span data-icon="record"></span>Record</button></td>
+              <td><button class="glass-button glass-button--prominent" aria-pressed="true">Record</button></td>
+              <td><button class="glass-button glass-button--prominent" disabled>Record</button></td>
+              <td><button class="glass-button glass-button--prominent glass-button--icon" aria-label="Record" title="Record"><span data-icon="record"></span></button></td>
+              <td><button class="glass-button glass-button--prominent glass-button--large"><span data-icon="record"></span>Record</button></td></tr>
+            <tr><th>Destructive</th>
+              <td><button class="glass-button glass-button--destructive"><span data-icon="stop"></span>Stop</button></td>
+              <td><button class="glass-button glass-button--destructive" aria-pressed="true">Stop</button></td>
+              <td><button class="glass-button glass-button--destructive" disabled>Stop</button></td>
+              <td><button class="glass-button glass-button--destructive glass-button--icon" aria-label="Stop" title="Stop"><span data-icon="stop"></span></button></td>
+              <td><button class="glass-button glass-button--destructive glass-button--large"><span data-icon="stop"></span>Stop</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Sidebar and scroll edge</h2>
+      <p class="note">List rows are plain fills on the thick surface. The right box scrolls under a floating toolbar with the scroll edge effect (top and bottom), no bar background.</p>
+      <div class="stage stage--ambient stage--split">
+        <nav class="glass-sidebar" aria-label="Sessions">
+          <div class="glass-list-header">Today</div>
+          <ul class="glass-list">
+            <li><button class="glass-list-item" aria-current="true"><span class="glass-list-title">Weekly sync</span><span class="glass-list-sub">10:02, 38 min</span><span class="glass-list-accessory"><span class="badge badge--red">Live</span></span></button></li>
+            <li><button class="glass-list-item"><span class="glass-list-title">Customer call, Shenzhen</span><span class="glass-list-sub">08:30, 52 min</span><span class="glass-list-accessory"><span data-icon="chevron-right"></span></span></button></li>
+          </ul>
+          <div class="glass-list-header">Earlier</div>
+          <ul class="glass-list">
+            <li><button class="glass-list-item"><span class="glass-list-title">Supplier review</span><span class="glass-list-sub">Yesterday, 1 h 04 min</span><span class="glass-list-accessory"><span data-icon="chevron-right"></span></span></button></li>
+            <li><button class="glass-list-item"><span class="glass-list-title">Roadmap offsite</span><span class="glass-list-sub">Mon, 2 h 10 min</span><span class="glass-list-accessory"><span data-icon="chevron-right"></span></span></button></li>
+            <li><button class="glass-list-item" disabled><span class="glass-list-title">Untitled</span><span class="glass-list-sub">Mon, 3 min</span></button></li>
+          </ul>
+        </nav>
+        <div class="edge-demo">
+          <div class="scroll-edge scroll-edge--bottom edge-scroller" tabindex="0" aria-label="Scrolling sample">
+            <div class="edge-content"></div>
+          </div>
+          <div class="glass-toolbar edge-bar">
+            <div class="glass-group"><button class="glass-button glass-button--icon" aria-label="Refresh" title="Refresh"><span data-icon="refresh"></span></button></div>
+            <span class="glass-toolbar-title">Captions</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Segmented control, sheets, toasts</h2>
+      <div class="stage stage--ambient stage--row">
+        <div class="glass-group"><glass-segmented id="seg" value="live" aria-label="View"><button value="live">Live</button><button value="notes">Notes</button><button value="transcript">Transcript</button></glass-segmented></div>
+        <div class="glass-group"><glass-segmented value="b" aria-label="Disabled sample" disabled><button value="a">One</button><button value="b">Two</button></glass-segmented></div>
+        <span class="note" id="seg-out" aria-live="polite">value: live</span>
+      </div>
+      <div class="stage stage--ambient stage--row">
+        <button class="glass-button glass glass-button--large" id="open-confirm">Confirm sheet</button>
+        <button class="glass-button glass glass-button--large" id="open-destructive">Destructive sheet</button>
+        <button class="glass-button glass glass-button--large" id="open-custom">Custom sheet</button>
+        <button class="glass-button glass glass-button--large" data-toast="info">Info toast</button>
+        <button class="glass-button glass glass-button--large" data-toast="success">Success</button>
+        <button class="glass-button glass glass-button--large" data-toast="warning">Warning</button>
+        <button class="glass-button glass glass-button--large" data-toast="error">Error</button>
+        <button class="glass-button glass glass-button--large" data-toast="action">With action</button>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Level meter</h2>
+      <div class="plate meters">
+        <div class="meter-row"><span class="field-label">Quiet</span><level-meter rms="-48" peak="-42" floor="-52" readout aria-label="Quiet level"></level-meter></div>
+        <div class="meter-row"><span class="field-label">Healthy</span><level-meter rms="-23" peak="-14" floor="-52" threshold="-40" readout aria-label="Healthy level"></level-meter></div>
+        <div class="meter-row"><span class="field-label">Hot</span><level-meter rms="-8" peak="-5" floor="-52" readout aria-label="Hot level"></level-meter></div>
+        <div class="meter-row"><span class="field-label">Clipping</span><level-meter rms="-2" peak="0" floor="-52" clipped readout aria-label="Clipping level"></level-meter></div>
+        <div class="meter-row"><span class="field-label">Live (10 updates/s)</span><level-meter id="live-meter" floor="-52" threshold="-40" readout aria-label="Live level"></level-meter></div>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Content-layer controls (no glass)</h2>
+      <div class="plate forms">
+        <div class="form-col">
+          <div class="field"><label for="f-name">Meeting title</label><input id="f-name" class="text-input" value="Weekly sync"><span class="field-help">Shown in the sidebar and exports.</span></div>
+          <div class="field"><label for="f-lang">Language</label><select id="f-lang" class="select"><option>Mandarin (Taiwan)</option><option>English</option></select></div>
+          <div class="field"><label for="f-bad">Output folder</label><input id="f-bad" class="text-input" aria-invalid="true" aria-describedby="f-bad-h" value="/missing"><span class="field-help" id="f-bad-h">Folder does not exist.</span></div>
+          <div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" class="text-area" placeholder="Context for the summary"></textarea></div>
+          <div class="field"><label for="f-off">Disabled</label><input id="f-off" class="text-input" disabled value="Locked while recording"></div>
+        </div>
+        <div class="form-col">
+          <div class="group-box">
+            <h3 class="group-box-title">Capture</h3>
+            <div class="group-box-row"><label for="g-mic">Microphone</label><input id="g-mic" class="switch" type="checkbox" role="switch" checked></div>
+            <div class="group-box-row"><label for="g-sys">System audio</label><input id="g-sys" class="switch" type="checkbox" role="switch"></div>
+            <div class="group-box-row"><label for="g-save">Keep audio file</label><input id="g-save" class="checkbox" type="checkbox" checked></div>
+            <div class="group-box-row"><label for="g-dis">Unavailable</label><input id="g-dis" class="switch" type="checkbox" role="switch" disabled></div>
+          </div>
+          <hr class="divider">
+          <div class="badges">
+            <span class="badge">Neutral</span><span class="badge badge--accent">Accent</span><span class="badge badge--green">Ready</span><span class="badge badge--orange">Low level</span><span class="badge badge--red">Recording</span>
+          </div>
+          <div class="banner banner--info" role="status"><span data-icon="info"></span><span>Captions are provisional until the line firms up.</span></div>
+          <div class="banner banner--warning" role="status"><span data-icon="warning"></span><span>Input is quiet. Move closer to the microphone.</span></div>
+          <div class="banner banner--error" role="alert"><span data-icon="warning"></span><span>The speech model could not be loaded.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo">
+      <h2>Type and icons</h2>
+      <div class="plate type">
+        <p class="cap-en">The budget moves to Q3 once the supplier confirms.</p>
+        <p class="cap-zh" lang="zh-Hant">供應商確認後，預算會移到第三季。</p>
+        <p>Body 13/16 · <b>Headline</b> · <span class="tnum">00:12:34 · 1,024</span></p>
+        <div class="icons" id="icons"></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

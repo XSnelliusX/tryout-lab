@@ -41,6 +41,56 @@ An oversized prompt raises an error rather than silently dropping glossary
 entries. Model file hashes, trusted-code class checks, and the existing
 unsuppressed tokenizer warning are unchanged.
 
+## Live recognition pipeline
+
+The installed Qwen `mlx-audio==0.5.9` decoder takes a **complete** audio
+array, so live captions come from decoding whole utterances, not from a
+streaming model session. `vad.Segmenter` (adaptive speech-band energy
+detector) cuts the stream into utterances: a `pause` event 0.3 s after speech
+stops, a `final` 0.6 s after it stops (or at a low-energy valley once a part
+reaches 8 s, or when capture ends). Parts of one long utterance are
+consecutive and never overlap, so there is no overlap reconciliation any
+more; each `final` becomes at most one saved segment whose `start`/`end` are
+its stream times (ending 0.15 s after the last voiced frame).
+
+One model worker runs a priority scheduler: final recognition, then
+speculative recognition, then translation (live, manual and retranslation),
+then previews. Recognition starts speculatively at the `pause` event; if the
+`final` carries the same audio the result is reused, and if speech resumes the
+speculative decode is cancelled (the decoder checks between tokens) and
+discarded. A preview decodes the open utterance only when nothing else waits;
+only the newest is kept, and a running preview is cancelled when a final or
+pause decode arrives. A preview is shown as a `provisional` caption with the
+id its final will get and is never shown for audio that is already final.
+Finals are never dropped: a backlog shows in `queue_lag_seconds` with a
+notice. A recognition result with no speech is not saved (the journal keeps a
+`no_speech` record with times only); the energy detector also fires on
+keyboard or door noise, and the recogniser's no-speech answer is the second
+gate.
+
+Translation starts as soon as the source text is saved and streams: the
+growing English is pushed to the browser (`segment` events, status
+`translating`, at most 10 per second) and saved once at the end. It uses up to
+three earlier completed source/English pairs of the session, plus the context
+and glossary. A long context slows every caption (measured: a 4000-character
+context adds about 0.7 s to each recognition and to each translation), so the
+app warns once above 600 characters. A live translation never overwrites a
+newer user edit, and an edit during the translation cancels it.
+
+Each live segment stores `timing` (`endpoint_ms`, `asr_ms`, `translate_ms`,
+`speech_end_to_source_ms`, `speech_end_to_english_ms`, measured from the
+moment the last voiced audio reached the app); `/api/state` and the event
+stream report the session's `latency` count, last, median and p90. Measured
+on an M5 with the real models (two 150 s replays of a microphone and a Teams
+recording, empty context, 50 segments): speech end to saved source text median
+0.69 s (p90 0.90 s), to final English median 0.82 s (p90 1.12 s), with the
+first partial English at a median 0.73 s; the previous pipeline needed 1.29 s
+(p90 1.52 s) on the same audio. Recognition (median 0.36 s) dominates after the
+fixed 0.3 s pause wait. Valley cuts inside long speech are measured from the
+last voiced frame before the cut, so they show larger values. A pause is
+not necessarily a sentence end, and segment times describe audio spans, not
+word timestamps. Recover or refine against the saved audio when in doubt.
+
 ## Refinement behavior and evidence
 
 `refine_session` reads only `audio.wav` as uncompressed mono 16-bit 16 kHz PCM,
