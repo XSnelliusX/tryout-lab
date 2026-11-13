@@ -291,11 +291,22 @@ const TOKEN_TYPES = [
 ]
 const UNPRICED = { key: "unpriced", label: "Priced by OpenCode", color: "var(--other)" }
 // Fixed colors per tool, so a tool keeps its color under every filter.
-const TOOL_COLORS = { opencode: "var(--s1)", "claude-code": "var(--s2)", nvim: "var(--s3)", "claude-desktop": "var(--s4)" }
+const TOOL_LABELS = { "prompt-rewriter": "Prompt Rewriter / Improver" }
+const TOOL_COLORS = {
+  opencode: "var(--s1)",
+  "claude-code": "var(--s2)",
+  nvim: "var(--s3)",
+  "claude-desktop": "var(--s4)",
+  "prompt-rewriter": "var(--s5)",
+  "Prompt Rewriter / Improver": "var(--s5)",
+}
 const toolColor = (t) => TOOL_COLORS[t] ?? "var(--other)"
 const BILLING_LABELS = { gateway: "Gateway (billed per token)", subscription: "Claude seat (API equivalent)", other: "Other provider" }
 // Lines from before `tool`/`billing` existed: Neovim logged agent "nvim", the rest is OpenCode.
-const toolOf = (r) => r.tool || (r.agent === "nvim" ? "nvim" : "opencode")
+const toolOf = (r) => {
+  const raw = r.tool || (r.agent === "nvim" ? "nvim" : "opencode")
+  return TOOL_LABELS[raw] ?? raw
+}
 const billingOf = (r) => r.billing || (r.gateway ? "gateway" : "other")
 const CONFIG = () => window.GATEWAY_CONFIG || {}
 
