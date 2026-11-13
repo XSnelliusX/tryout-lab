@@ -2,7 +2,7 @@
 # Interactive setup for a Mac. Safe to re-run: every step compares with the repo, asks before it
 # replaces a file, and copies the replaced file to ~/.setup_backup/<stamp>/ first. Nothing is deleted
 # except an old gateway folder, and only after you confirm removing it.
-# Usage: ./setup.sh              xcode and brew, then a menu of the other steps (all preselected)
+# Usage: ./setup.sh              xcode and brew, then a menu of the other steps (preselected, except aws)
 #        ./setup.sh --all        every step in order, no menu (still asks per step)
 #        ./setup.sh --only ssh   run one step (list them with --list)
 #        ./setup.sh --dry-run    any of the above, but only reports what would change
@@ -15,9 +15,16 @@ repo="$(dirname "$here")"
 . "$here/lib.sh"
 GW_ENV="$HOME/.config/ai-gateway/env"
 
-STEPS=(xcode brew packages apps shell font zshrc git github ssh claude opencode gateway cmux vorssaint neovim asdf macos)
+STEPS=(xcode brew packages apps shell font zshrc git github ssh aws claude opencode gateway cmux vorssaint neovim asdf macos)
 MENU=()   # the steps the menu offers: everything after xcode and brew, which always run first
 for s in "${STEPS[@]}"; do case "$s" in xcode|brew) ;; *) MENU+=("$s") ;; esac; done
+OPTIONAL=(aws)   # offered in the menu but not preselected: tick it to install, its own question defaults to no
+# aws step: the AWS CLI Team's PGP key fingerprint as printed in the AWS CLI install guide (the key itself is aws/awscli-public-key.asc),
+# Amazon's Apple Developer Team ID (AMZN Mobile LLC) that signs the AWS installers (install.sh pins it for its own package), and the download URLs.
+AWS_CLI_KEY_FPR="FB5DB77FD5C118B80511ADA8A6310ACC4672475C"
+AWS_TEAM_ID="94KV3E626L"
+AWS_CLI_INSTALL_URL="https://awscli.amazonaws.com/v2/install.sh"
+SSM_PLUGIN_PKG_URL="https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg"
 
 # openssl@3/readline/xz/sqlite are build deps for asdf python; fd/lazygit/tree-sitter-cli for LazyVim;
 # gum draws the menus; herdr is the terminal agent multiplexer.
@@ -57,6 +64,7 @@ describe() { # the menu text of a step
     git) echo "Git name and email" ;;
     github) echo "gh login in the browser and git credentials" ;;
     ssh) echo "SSH key in the Keychain and the public key on GitHub" ;;
+    aws) echo "Optional: AWS CLI and Session Manager plugin" ;;
     claude) echo "Claude Code (native installer) and the statusline" ;;
     opencode) echo "OpenCode CLI from the official installer" ;;
     gateway) echo "AI gateway plugin for OpenCode with its env file and API key" ;;
@@ -225,6 +233,72 @@ step_ssh() {
     gh ssh-key add "$key.pub" --title "$(scutil --get ComputerName || hostname)"
     ssh -T -o StrictHostKeyChecking=accept-new git@github.com || true   # exits 1 on success
   fi
+}
+
+aws_cli_install() { # the method the AWS CLI install guide recommends: its install script, whose signature is checked first
+  local tmp key="$here/aws/awscli-public-key.asc" fpr out
+  if ! have gpg; then
+    info "gpg is needed to check the signature (the AWS guide installs gnupg with Homebrew too)"
+    if ! ask "Install gnupg with Homebrew?"; then info "AWS CLI not installed: it is never installed without the signature check"; return 0; fi
+    run brew install gnupg
+  fi
+  if dry; then info "would check the AWS key fingerprint, download install.sh and install.sh.sig, verify the signature and run install.sh"; return 0; fi
+  tmp="$(mktemp -d)"; mkdir -m 700 "$tmp/gnupg"   # a throwaway keyring, ~/.gnupg is never touched
+  fpr="$(gpg --homedir "$tmp/gnupg" --batch --no-autostart --show-keys --with-colons "$key" 2>/dev/null | awk -F: '/^fpr/ {print $10; exit}')"
+  if [ "$fpr" != "$AWS_CLI_KEY_FPR" ]; then
+    info "AWS CLI NOT installed: $key has the fingerprint ${fpr:-none}, the AWS guide lists $AWS_CLI_KEY_FPR"; rm -rf "$tmp"; return 0
+  fi
+  if ! gpg --homedir "$tmp/gnupg" --batch --no-autostart --import "$key" >/dev/null 2>&1 \
+     || ! curl -fsSL -o "$tmp/install.sh" "$AWS_CLI_INSTALL_URL" \
+     || ! curl -fsSL -o "$tmp/install.sh.sig" "$AWS_CLI_INSTALL_URL.sig"; then
+    info "AWS CLI NOT installed: could not import the key or download the installer"; rm -rf "$tmp"; return 0
+  fi
+  out="$(gpg --homedir "$tmp/gnupg" --batch --no-autostart --status-fd 1 --verify "$tmp/install.sh.sig" "$tmp/install.sh" 2>&1)" || true
+  if ! grep -q "^\[GNUPG:\] VALIDSIG $AWS_CLI_KEY_FPR " <<< "$out"; then
+    info "SIGNATURE CHECK FAILED, AWS CLI NOT installed:"; printf '%s\n' "$out" | sed 's/^/        /'; rm -rf "$tmp"; return 0
+  fi
+  info "install.sh: good signature from the AWS CLI Team (fingerprint $AWS_CLI_KEY_FPR)"
+  # install.sh verifies the AWS CLI package itself (PGP signature and pkgutil team ID) and installs for this user only
+  bash "$tmp/install.sh" || info "the AWS CLI installer failed, see above"
+  rm -rf "$tmp"
+  if have aws; then info "installed: $(aws --version 2>&1 | head -1)"; else info "installed, but aws is not on PATH yet: open a new terminal, ~/.local/bin must be on PATH"; fi
+}
+
+ssm_plugin_install() { # the signed installer from the Session Manager plugin guide, checked before sudo touches it
+  local tmp pkg out
+  if dry; then info "would download the signed installer, check signature, notarization and developer team, and install it with sudo"; return 0; fi
+  tmp="$(mktemp -d)"; pkg="$tmp/session-manager-plugin.pkg"
+  if ! curl -fsSL -o "$pkg" "$SSM_PLUGIN_PKG_URL"; then info "Session Manager plugin NOT installed: download failed"; rm -rf "$tmp"; return 0; fi
+  info "sha256 $(shasum -a 256 "$pkg" | awk '{print $1}') (AWS publishes no hash for this file, the signature below is the check)"
+  if ! out="$(pkgutil --check-signature "$pkg" 2>&1)" \
+     || ! grep -q 'Status: signed by a developer certificate issued by Apple' <<< "$out" \
+     || ! grep -q 'Notarization: trusted by the Apple notary service' <<< "$out" \
+     || ! grep -q "Developer ID Installer: .*($AWS_TEAM_ID)" <<< "$out" \
+     || ! spctl --assess --type install "$pkg" >/dev/null 2>&1 \
+     || ! pkgutil --expand "$pkg" "$tmp/expanded" >/dev/null 2>&1; then   # --expand also fails when a payload checksum does not match
+    info "SIGNATURE CHECK FAILED, Session Manager plugin NOT installed:"; printf '%s\n' "$out" | sed 's/^/        /'; rm -rf "$tmp"; return 0
+  fi
+  info "signed and notarized, payload checksums match, Developer ID Installer team $AWS_TEAM_ID (the team the AWS CLI installer pins too)"
+  if sudo installer -pkg "$pkg" -target /; then
+    if [ ! -e /usr/local/bin/session-manager-plugin ]; then   # the link the guide creates
+      sudo mkdir -p /usr/local/bin
+      sudo ln -s /usr/local/sessionmanagerplugin/bin/session-manager-plugin /usr/local/bin/session-manager-plugin
+    fi
+  else info "the installer failed or sudo was refused, run ./setup.sh --only aws to retry"; fi
+  rm -rf "$tmp"
+  if have session-manager-plugin; then info "installed, check with: session-manager-plugin"; fi
+}
+
+step_aws() {
+  bold "AWS CLI and Session Manager plugin (optional)"
+  if have aws; then info "already installed: $(aws --version 2>&1 | head -1)"; else info "AWS CLI is missing"; fi
+  if have session-manager-plugin; then info "already installed: session-manager-plugin"; else info "Session Manager plugin is missing"; fi
+  if have aws && have session-manager-plugin; then return 0; fi
+  info "Both are installed the way the AWS guides recommend, after checking their signatures (not with Homebrew)"
+  ask "Install the missing ones?" n || return 0
+  if ! have aws; then aws_cli_install; fi
+  if ! have session-manager-plugin; then ssm_plugin_install; fi
+  info "Configure your AWS credentials or SSO profile locally (AWS docs: https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html)"
 }
 
 step_claude() {
@@ -503,7 +577,13 @@ step_macos() {
 pick_steps() { # prints the menu's picks, one per line, in STEPS order
   local items=() s line sel names=" "
   for s in "${MENU[@]}"; do items+=("$(printf '%-9s %s' "$s" "$(describe "$s")")"); done
-  sel="$(choose "Steps to run" "${MENU[*]}" "${items[@]}")"
+  local presel=() o opt
+  for s in "${MENU[@]}"; do
+    opt=0
+    for o in "${OPTIONAL[@]}"; do [ "$o" = "$s" ] && opt=1; done
+    if [ "$opt" = 0 ]; then presel+=("$s"); fi
+  done
+  sel="$(choose "Steps to run" "${presel[*]}" "${items[@]}")"
   while IFS= read -r line; do
     if [ -n "$line" ]; then names="$names${line%% *} "; fi
   done <<< "$sel"

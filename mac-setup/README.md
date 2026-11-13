@@ -16,7 +16,7 @@ cd tryout-lab/mac-setup
 ./setup.sh
 ```
 
-`xcode`, `brew` and gum always run first, in the same run. Then a menu lists the other steps, all preselected, each with a one-line description: space toggles a step, Enter runs the selection in the order of the table below. Every step asks first and skips what is already done.
+`xcode`, `brew` and gum always run first, in the same run. Then a menu lists the other steps, all preselected except the optional `aws` step, each with a one-line description: space toggles a step, Enter runs the selection in the order of the table below. Every step asks first and skips what is already done.
 
 | Flag | What it does |
 |---|---|
@@ -55,6 +55,7 @@ The last line of a run names the backup folder, if the run replaced anything.
 | `git` | asks for name and email, sets `init.defaultBranch main` |
 | `github` | `gh auth login` in the browser, then `gh auth setup-git` as credential helper; optional Enterprise host |
 | `ssh` | lists existing keys to reuse, or creates an ed25519 key with passphrase; adds it to the Keychain and `~/.ssh/config`; optionally uploads the **public** key with `gh ssh-key add` |
+| `aws` | **Optional**, not preselected in the menu. Installs the AWS CLI and the Session Manager plugin the way the AWS guides recommend, not with Homebrew, only the missing ones and only after their signatures check out ([how](#aws-cli-and-session-manager-plugin-how-they-are-verified)). Its own question defaults to no. It does not sign you in or write any profile |
 | `claude` | Claude Code via the native installer (updates itself), plus the [statusline](claude-code/README.md) and the usage hook that logs Claude Code to `~/.gateway-cost` |
 | `opencode` | OpenCode via the official installer (`~/.opencode/bin`), skipped when `opencode` is already found |
 | `gateway` | the AI gateway plugin for OpenCode, its env file and API key, see below |
@@ -65,6 +66,13 @@ The last line of a run names the backup folder, if the run replaced anything.
 | `macos` | optional defaults (file extensions, path bar, key repeat; only the ones that differ are written), and shows the FileVault status |
 
 Never stored in the repo: SSH private keys, `gh` tokens (`~/.config/gh/hosts.yml`), shell history, the gateway URL and the gateway API key. The script creates keys on the machine and only uploads `*.pub`.
+
+## AWS CLI and Session Manager plugin: how they are verified
+
+The [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) recommends its install script, and the [Session Manager plugin guide](https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-macos-overview.html) offers a signed installer. The `aws` step follows both and installs nothing that fails its checks (it prints `NOT installed` and the setup goes on).
+
+- **AWS CLI:** the AWS CLI Team's public key is kept in [aws/awscli-public-key.asc](aws/awscli-public-key.asc). The script first compares its fingerprint with the one printed in the guide (`FB5D B77F D5C1 18B8 0511 ADA8 A631 0ACC 4672 475C`), imports it into a throwaway keyring (`~/.gnupg` is not touched), downloads `install.sh` and `install.sh.sig`, and runs `gpg --verify`. Only then does it run `install.sh`, which checks the AWS CLI package itself (PGP signature and `pkgutil` team ID) and installs for your user only, into `~/.local`. This needs `gpg`; the guide installs it with Homebrew too (`brew install gnupg`), and the script asks first. Without `gpg` the CLI is not installed. The key expires in 2027, after that, copy the renewed key from the guide into the file.
+- **Session Manager plugin:** AWS publishes no checksum or signature file for it, so the script prints the SHA-256 of the download and checks the package instead: `pkgutil --check-signature` (Developer ID signed, notarized, Amazon's Apple Developer Team ID `94KV3E626L`, the team AWS pins for its own CLI package), `spctl --assess`, and `pkgutil --expand`, which fails when a payload checksum does not match. After that `sudo installer` runs and the `/usr/local/bin` link from the guide is created. The sudo password is asked by macOS, never by the script.
 
 ## AI gateway (OpenCode plugin)
 
@@ -125,6 +133,8 @@ It covers `.zshrc`, the p10k prompt, the Neovim config (every file in `~/.config
 - Sign in to the App Store, iCloud, Teams/Slack and your browser
 - Turn on FileVault and the firewall (System Settings → Privacy & Security / Network)
 - Grant permissions to cmux and Vorssaint when macOS asks
+- Session Manager plugin: its installer asks for your administrator password (sudo), so the `aws` step can only finish it in a terminal you are at
+- AWS CLI sign-in and profiles: the `aws` step installs the tools only. Configure your own credentials or [AWS CLI SSO profile](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) locally and keep them out of this repo
 - Add the new SSH key's passphrase to the Keychain once (`ssh-add --apple-use-keychain`, the script does this)
 
 ## Sources
