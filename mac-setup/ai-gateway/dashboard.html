@@ -2,240 +2,2168 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Usage</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>AI Usage · Gateway Observatory</title>
 <style>
-:root {
-  color-scheme: light;
-  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f0efec;
-  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --accent: #2a78d6;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --other: #b5b3ac;
-  --h1: #cde2fb; --h2: #9ec5f4; --h3: #6da7ec; --h4: #3987e5; --h5: #256abf; --h6: #184f95; --h7: #0d366b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
-    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --accent: #3987e5;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #5f5e5a;
-    --h1: #104281; --h2: #184f95; --h3: #256abf; --h4: #2a78d6; --h5: #5598e7; --h6: #86b6ef; --h7: #cde2fb;
+@layer reset, tokens, base, components, states;
+
+@layer reset {
+  :where(html, body, main, header, section, nav, div, span, h1, h2, h3, p, button, select, input, label, table, thead, tbody, tr, th, td, details, summary, svg, i, b, small, code, strong, dl, dt, dd) {
+    box-sizing: border-box;
   }
 }
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
-  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --accent: #3987e5;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #5f5e5a;
-  --h1: #104281; --h2: #184f95; --h3: #256abf; --h4: #2a78d6; --h5: #5598e7; --h6: #86b6ef; --h7: #cde2fb;
+
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* Layer 1: Atmospheric backdrop & crisp matte data surfaces */
+    --page: #ebf0f8;
+    --mesh-1: rgba(24, 106, 222, 0.16);
+    --mesh-2: rgba(14, 133, 88, 0.11);
+    --mesh-3: rgba(89, 70, 184, 0.10);
+    --surface: #ffffff;
+    --surface-subtle: #f5f8fc;
+    --surface-2: #e6ecf4;
+    --surface-hover: #dce4f0;
+
+    /* Typography & hierarchy (>= 4.5:1 for normal text) */
+    --ink: #0d1320;
+    --ink-2: #3b4558;
+    --muted: #515d72;
+
+    /* Structural & UI control boundaries (>= 3:1 WCAG 1.4.11) */
+    --border: rgba(13, 19, 32, 0.10);
+    --border-strong: rgba(13, 19, 32, 0.20);
+    --border-ui: #788296;
+    --grid: #dfe6f0;
+    --axis: #838ea2;
+
+    /* Accent & state tokens */
+    --accent: #0c62d1;
+    --accent-ink: #094a9f;
+    --accent-soft: rgba(12, 98, 209, 0.11);
+    --on-accent: #ffffff;
+    --focus-ring: #0c62d1;
+    --good: #096843;
+    --good-soft: rgba(9, 104, 67, 0.11);
+    --warn: #9a5b00;
+    --danger: #c42830;
+
+    /* Layer 1 matte card shadow */
+    --card-shadow: 0 1px 2px rgba(13, 19, 32, 0.04), 0 12px 30px -16px rgba(13, 19, 32, 0.12);
+
+    /* Layer 2: True Liquid Glass chrome (floating nav, popovers, drawers, tooltips) */
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-stuck: rgba(252, 253, 255, 0.85);
+    --glass-well: rgba(13, 19, 32, 0.065);
+    --glass-pill: rgba(255, 255, 255, 0.96);
+    --glass-border: rgba(255, 255, 255, 0.92);
+    --glass-edge: rgba(13, 19, 32, 0.12);
+    --glass-specular: rgba(255, 255, 255, 0.96);
+    --glass-shadow: 0 14px 38px -10px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.06);
+    --sheet-bg: rgba(255, 255, 255, 0.88);
+    --backdrop-dim: rgba(13, 19, 32, 0.28);
+
+    /* Semantic data palette + contrast-paired label inks */
+    --s1: #186ade; --on-s1: #ffffff;
+    --s2: #c84b18; --on-s2: #ffffff;
+    --s3: #0e8558; --on-s3: #ffffff;
+    --s4: #d98900; --on-s4: #0d1320;
+    --s5: #b8326a; --on-s5: #ffffff;
+    --s6: #247a1a; --on-s6: #ffffff;
+    --s7: #5946b8; --on-s7: #ffffff;
+    --s8: #c42830; --on-s8: #ffffff;
+    --other: #626b7c; --on-other: #ffffff;
+
+    /* Heatmap levels */
+    --h1: #dbeafe; --h2: #bfd9fd; --h3: #93bffb; --h4: #5c9df6; --h5: #2d7ce8; --h6: #185cc0; --h7: #0f3f8a;
+
+    /* Spatial & geometric system */
+    --r-card: 22px;
+    --r-glass: 24px;
+    --r-control: 12px;
+    --r-pill: 999px;
+    --target-min: 36px;
+    --sticky-h: 72px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #070a11;
+      --mesh-1: rgba(56, 132, 255, 0.20);
+      --mesh-2: rgba(34, 184, 130, 0.12);
+      --mesh-3: rgba(132, 108, 245, 0.13);
+      --surface: #111622;
+      --surface-subtle: #171d2c;
+      --surface-2: #1e2536;
+      --surface-hover: #273046;
+
+      --ink: #f3f6fc;
+      --ink-2: #c4cddb;
+      --muted: #939eb2;
+
+      --border: rgba(255, 255, 255, 0.11);
+      --border-strong: rgba(255, 255, 255, 0.22);
+      --border-ui: #6d788f;
+      --grid: #232b3d;
+      --axis: #606a80;
+
+      --accent: #1d6ce0;
+      --accent-ink: #76b3ff;
+      --accent-soft: rgba(118, 179, 255, 0.16);
+      --on-accent: #ffffff;
+      --focus-ring: #76b3ff;
+      --good: #34d399;
+      --good-soft: rgba(52, 211, 153, 0.15);
+      --warn: #eab308;
+      --danger: #f26161;
+
+      --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.40), 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+
+      --glass-bg: rgba(18, 24, 37, 0.72);
+      --glass-bg-stuck: rgba(16, 21, 33, 0.86);
+      --glass-well: rgba(255, 255, 255, 0.08);
+      --glass-pill: rgba(255, 255, 255, 0.18);
+      --glass-border: rgba(255, 255, 255, 0.22);
+      --glass-edge: rgba(255, 255, 255, 0.14);
+      --glass-specular: rgba(255, 255, 255, 0.26);
+      --glass-shadow: 0 18px 44px -10px rgba(0, 0, 0, 0.70), 0 2px 8px rgba(0, 0, 0, 0.45);
+      --sheet-bg: rgba(18, 24, 37, 0.90);
+      --backdrop-dim: rgba(4, 6, 12, 0.62);
+
+      --s1: #4b94f5; --on-s1: #07101d;
+      --s2: #e87040; --on-s2: #120905;
+      --s3: #28b57d; --on-s3: #05160f;
+      --s4: #e0a31c; --on-s4: #120d03;
+      --s5: #e16799; --on-s5: #17060d;
+      --s6: #41b54b; --on-s6: #061508;
+      --s7: #9d92f2; --on-s7: #0d0a1f;
+      --s8: #ed6c6c; --on-s8: #1a0606;
+      --other: #8790a0; --on-other: #0c1017;
+
+      --h1: #172b4d; --h2: #1b3d73; --h3: #20529e; --h4: #296ecc; --h5: #468ee8; --h6: #7bb4f5; --h7: #c4defc;
+    }
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #070a11;
+    --mesh-1: rgba(56, 132, 255, 0.20);
+    --mesh-2: rgba(34, 184, 130, 0.12);
+    --mesh-3: rgba(132, 108, 245, 0.13);
+    --surface: #111622;
+    --surface-subtle: #171d2c;
+    --surface-2: #1e2536;
+    --surface-hover: #273046;
+    --ink: #f3f6fc;
+    --ink-2: #c4cddb;
+    --muted: #939eb2;
+    --border: rgba(255, 255, 255, 0.11);
+    --border-strong: rgba(255, 255, 255, 0.22);
+    --border-ui: #6d788f;
+    --grid: #232b3d;
+    --axis: #606a80;
+    --accent: #1d6ce0;
+    --accent-ink: #76b3ff;
+    --accent-soft: rgba(118, 179, 255, 0.16);
+    --on-accent: #ffffff;
+    --focus-ring: #76b3ff;
+    --good: #34d399;
+    --good-soft: rgba(52, 211, 153, 0.15);
+    --warn: #eab308;
+    --danger: #f26161;
+    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.40), 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+    --glass-bg: rgba(18, 24, 37, 0.72);
+    --glass-bg-stuck: rgba(16, 21, 33, 0.86);
+    --glass-well: rgba(255, 255, 255, 0.08);
+    --glass-pill: rgba(255, 255, 255, 0.18);
+    --glass-border: rgba(255, 255, 255, 0.22);
+    --glass-edge: rgba(255, 255, 255, 0.14);
+    --glass-specular: rgba(255, 255, 255, 0.26);
+    --glass-shadow: 0 18px 44px -10px rgba(0, 0, 0, 0.70), 0 2px 8px rgba(0, 0, 0, 0.45);
+    --sheet-bg: rgba(18, 24, 37, 0.90);
+    --backdrop-dim: rgba(4, 6, 12, 0.62);
+    --s1: #4b94f5; --on-s1: #07101d;
+    --s2: #e87040; --on-s2: #120905;
+    --s3: #28b57d; --on-s3: #05160f;
+    --s4: #e0a31c; --on-s4: #120d03;
+    --s5: #e16799; --on-s5: #17060d;
+    --s6: #41b54b; --on-s6: #061508;
+    --s7: #9d92f2; --on-s7: #0d0a1f;
+    --s8: #ed6c6c; --on-s8: #1a0606;
+    --other: #8790a0; --on-other: #0c1017;
+    --h1: #172b4d; --h2: #1b3d73; --h3: #20529e; --h4: #296ecc; --h5: #468ee8; --h6: #7bb4f5; --h7: #c4defc;
+  }
+
+  @media (pointer: coarse) {
+    :root {
+      --target-min: 44px;
+    }
+  }
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
-h1 { font-size: 20px; margin: 0; }
-h2 { font-size: 14px; margin: 0 0 2px; }
-.sub, .note { color: var(--ink-2); font-size: 12px; }
-.note { margin: 0 0 12px; }
-button, select, input { font: inherit; color: inherit; }
-.btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.btn:hover { background: var(--surface-2); }
-.btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.spacer { flex: 1; }
 
-/* filter row: scopes everything below */
-.filters { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
-  background: var(--page); padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-@media (max-width: 700px) { .filters { position: static; } } /* sticky would cover half a phone screen */
-.group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.group > span { color: var(--muted); font-size: 12px; margin-right: 2px; }
-.filters select, .filters input[type=date] { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; max-width: 220px; }
-.filters select.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+@layer base {
+  html {
+    scroll-padding-top: calc(var(--sticky-h, 72px) + 1.25rem);
+  }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-.kpi .label { color: var(--ink-2); font-size: 12px; }
-.kpi .value { font-size: 26px; font-weight: 600; margin: 2px 0; }
-.kpi .sub { color: var(--muted); }
-.kpi .meter { height: 6px; border-radius: 3px; background: var(--surface-2); margin: 6px 0 4px; overflow: hidden; }
-.kpi .meter b { display: block; height: 100%; background: var(--accent); }
-.kpi .meter b.warn { background: var(--s4); }
-.kpi .meter b.over { background: var(--s8); }
+  body {
+    margin: 0;
+    min-block-size: 100dvh;
+    background-color: var(--page);
+    background-image:
+      radial-gradient(62rem 36rem at 8% -8%, var(--mesh-1), transparent 65%),
+      radial-gradient(54rem 34rem at 92% 4%, var(--mesh-2), transparent 62%),
+      radial-gradient(48rem 32rem at 52% 96%, var(--mesh-3), transparent 70%);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
 
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-.wide { grid-column: 1 / -1; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  main {
+    max-inline-size: 88rem;
+    margin-inline: auto;
+    padding-block: 1.5rem calc(4rem + env(safe-area-inset-bottom));
+    padding-inline: clamp(1rem, 3.2vw, 2.5rem);
+    overflow-wrap: break-word;
+  }
 
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  h1, h2, h3 {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
 
-svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.hit { fill: transparent; cursor: default; outline: none; }
-.hit:hover, .hit:focus { fill: var(--ink); fill-opacity: .05; }
+  h1 {
+    font-size: clamp(1.375rem, 1.2rem + 0.55vw, 1.625rem);
+    line-height: 1.2;
+  }
 
-/* horizontal bar lists */
-.bars { display: grid; gap: 2px; }
-.bar-row { display: grid; grid-template-columns: minmax(90px, 34%) 1fr 92px; align-items: center; gap: 10px;
-  background: none; border: 0; padding: 4px 6px; border-radius: 6px; text-align: left; cursor: pointer; width: 100%; }
-.bar-row:hover, .bar-row:focus-visible { background: var(--surface-2); outline: none; }
-.bar-row.selected { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
-.bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.bar-name small { color: var(--muted); margin-left: 4px; }
-.track { height: 14px; display: flex; gap: 2px; }
-.track b { display: block; height: 100%; min-width: 2px; }
-.track b:first-child { border-radius: 4px 0 0 4px; }
-.track b:last-child { border-radius: 0 4px 4px 0; }
-.track b:only-child { border-radius: 4px; }
-.bar-val { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
-.bar-val small { color: var(--muted); display: block; font-size: 11px; }
-.mix { display: flex; gap: 2px; height: 26px; margin: 4px 0 14px; }
-.mix b { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; white-space: nowrap; min-width: 2px; }
-.mix b:first-child { border-radius: 4px 0 0 4px; }
-.mix b:last-child { border-radius: 0 4px 4px 0; }
+  h2 {
+    font-size: 1.125rem;
+    line-height: 1.3;
+  }
 
-/* heatmap */
-/* columns shrink to any width; rows stretch to fill the card next to the sessions table */
-.heat-card { display: flex; flex-direction: column; }
-.heat { flex: 1; min-height: 230px; display: grid; gap: 2px; font-size: 11px; color: var(--muted);
-  grid-template-columns: 30px repeat(24, minmax(0, 1fr)) minmax(44px, auto);
-  grid-template-rows: auto repeat(7, minmax(16px, 1fr)) 30px; }
-.heat .cell { border-radius: 3px; background: var(--surface-2); outline: none; }
-.heat .cell:hover, .heat .cell:focus { box-shadow: 0 0 0 2px var(--ink); }
-.heat .hl { text-align: left; white-space: nowrap; overflow: visible; }
-.heat .wl { align-self: center; }
-.heat .on { color: var(--ink); font-weight: 600; }
-.heat .tot { align-self: center; text-align: right; font-variant-numeric: tabular-nums; padding-left: 4px; outline: none; }
-.heat .hbar { display: flex; align-items: flex-end; outline: none; padding-top: 4px; }
-.heat .hbar b { width: 100%; background: var(--h4); border-radius: 2px 2px 0 0; min-height: 0; }
-.heat .hbar:hover b, .heat .hbar:focus b { background: var(--h6); }
-.heat .corner { align-self: end; font-size: 10px; }
-@container (max-width: 420px) { .heat .hl.minor { visibility: hidden; } }
-.heat-card { container-type: inline-size; }
-.scale { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
-.scale i { width: 16px; height: 10px; border-radius: 2px; display: inline-block; }
+  h3 {
+    font-size: 0.9375rem;
+    line-height: 1.35;
+  }
 
-/* tables */
-.table-wrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; text-align: left; }
-td { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-th { color: var(--ink-2); font-weight: 500; font-size: 12px; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
-th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
-th[aria-sort="descending"]::after { content: " ↓"; }
-th[aria-sort="ascending"]::after { content: " ↑"; }
-tr.click { cursor: pointer; }
-tr.click:hover td { background: var(--surface-2); }
-td .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
-details summary { cursor: pointer; color: var(--ink-2); font-size: 12px; margin-top: 10px; }
+  p {
+    margin-block: 0 0.875rem;
+  }
 
-.empty { text-align: center; padding: 60px 16px; border: 2px dashed var(--axis); border-radius: 12px; color: var(--ink-2); }
-.empty code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
-.nodata { color: var(--muted); padding: 24px 0; text-align: center; }
-body.dragging main { opacity: .5; }
+  button, select, input {
+    font: inherit;
+    color: inherit;
+  }
 
-#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,.15); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-width: 320px; }
-#tip .tt-title { color: var(--ink-2); margin-bottom: 4px; }
-#tip .tt-row { display: flex; align-items: center; gap: 6px; }
-#tip .tt-row b { font-variant-numeric: tabular-nums; }
-#tip .tt-row span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#tip .key { width: 10px; height: 2px; flex: none; }
+  button {
+    touch-action: manipulation;
+  }
+
+  :where(button, select, input, summary, a, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .skip-link {
+    position: fixed;
+    inset-block-start: -6rem;
+    inset-inline-start: 1.25rem;
+    z-index: 80;
+    padding: 0.55rem 1rem;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--glass-shadow);
+  }
+  .skip-link:focus-visible {
+    inset-block-start: 0.875rem;
+  }
+}
+
+@layer components {
+  /* ---------- header bar ---------- */
+  .topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    margin-block-end: 1.25rem;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    min-inline-size: 0;
+  }
+
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    inline-size: 2.875rem;
+    block-size: 2.875rem;
+    flex: none;
+    border-radius: 15px;
+    background: linear-gradient(155deg, var(--glass-pill), color-mix(in srgb, var(--accent) 18%, var(--surface-2)));
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--card-shadow);
+    color: var(--accent-ink);
+  }
+
+  .brand-text {
+    display: grid;
+    gap: 0.15rem;
+    min-inline-size: 0;
+  }
+
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .eyebrow {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--accent-ink);
+  }
+
+  .sub {
+    color: var(--muted);
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-block-size: var(--target-min);
+    padding-block: 0.45rem;
+    padding-inline: 0.95rem;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border-ui);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(13, 19, 32, 0.05);
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+  .btn:disabled {
+    opacity: 0.48;
+    cursor: default;
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--on-accent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 12px -3px rgba(12, 98, 209, 0.42);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  }
+  .btn-subtle {
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+  .btn-sm {
+    min-block-size: 30px;
+    padding-block: 0.2rem;
+    padding-inline: 0.65rem;
+    font-size: 0.8125rem;
+  }
+
+  .badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.35rem;
+    block-size: 1.35rem;
+    padding-inline: 0.35rem;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  /* ---------- floating Liquid Glass Command Dock (Layer 2) ---------- */
+  #app {
+    overflow-anchor: none;
+  }
+
+  .dock-sentinel {
+    block-size: 1px;
+    margin-block-end: -1px;
+    pointer-events: none;
+  }
+
+  .dock-shell {
+    position: sticky;
+    inset-block-start: max(0.625rem, env(safe-area-inset-top));
+    z-index: 30;
+    container-type: scroll-state;
+    container-name: dock-bar;
+    margin-block-end: 1.5rem;
+    border-radius: var(--r-glass);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(28px) saturate(1.75);
+    backdrop-filter: blur(28px) saturate(1.75);
+    border: 1px solid var(--glass-edge);
+    box-shadow:
+      inset 0 1px 0 var(--glass-specular),
+      inset 0 0 0 1px color-mix(in srgb, var(--glass-border) 35%, transparent),
+      var(--glass-shadow);
+    padding: 0.55rem 0.75rem;
+  }
+
+  .dock-shell::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline: 1.25rem;
+    block-size: 18px;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--page) 78%, transparent), transparent);
+  }
+
+  .dock-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.625rem 1rem;
+  }
+
+  .dock-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-pill);
+    background: var(--glass-well);
+    border: 1px solid var(--border);
+  }
+
+  .seg-btn {
+    min-block-size: calc(var(--target-min) - 4px);
+    padding-block: 0.3rem;
+    padding-inline: 0.8rem;
+    border-radius: var(--r-pill);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-2);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .seg-btn:hover {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--glass-pill) 45%, transparent);
+  }
+  .seg-btn[aria-selected="true"],
+  .seg-btn[aria-pressed="true"] {
+    background: var(--glass-pill);
+    color: var(--ink);
+    font-weight: 600;
+    border-color: var(--border);
+    box-shadow: inset 0 1px 0 var(--glass-specular), 0 2px 6px rgba(15, 23, 42, 0.12);
+  }
+
+  /* Filter Popover anchored seamlessly beneath dock */
+  .filters-anchor {
+    position: relative;
+  }
+
+  .glass-popover {
+    position: absolute;
+    inset-block-start: calc(100% + 0.625rem);
+    inset-inline-end: 0;
+    z-index: 45;
+    inline-size: min(36rem, calc(100vw - 2rem));
+    padding: 1.25rem;
+    border-radius: 22px;
+    background: var(--sheet-bg);
+    -webkit-backdrop-filter: blur(30px) saturate(1.8);
+    backdrop-filter: blur(30px) saturate(1.8);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+  }
+  .glass-popover[hidden] {
+    display: none;
+  }
+
+  .popover-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-block-end: 1rem;
+  }
+
+  .popover-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.875rem 1rem;
+  }
+
+  .field {
+    display: grid;
+    gap: 0.35rem;
+    min-inline-size: 0;
+  }
+  .field.full {
+    grid-column: 1 / -1;
+  }
+  .field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .field select,
+  .field input[type="date"],
+  .search-input {
+    min-block-size: var(--target-min);
+    inline-size: 100%;
+    padding: 0.35rem 0.65rem;
+    border-radius: var(--r-control);
+    border: 1px solid var(--border-ui);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.875rem;
+  }
+  .field select.active,
+  .field input[type="date"].active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .date-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.625rem;
+  }
+
+  .popover-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-block-start: 1.125rem;
+    padding-block-start: 0.875rem;
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* Active filter chips strip inside dock */
+  .filter-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-block-start: 0.55rem;
+    padding-block-start: 0.55rem;
+    border-block-start: 1px solid var(--border);
+  }
+  .filter-meta[hidden] {
+    display: none;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-block-size: 32px;
+    padding-block: 0.2rem;
+    padding-inline: 0.75rem 0.55rem;
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+    color: var(--accent-ink);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chip:hover {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  /* ---------- Hero Summary Strip: strictly ONE single balanced 4-column desktop row ---------- */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.125rem;
+    margin-block-end: 1.5rem;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    padding: 1.25rem 1.375rem;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-inline-size: 0;
+  }
+
+  .kpi-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .kpi .label {
+    color: var(--ink-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .kpi .pill-stat {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: var(--r-pill);
+    background: var(--good-soft);
+    color: var(--good);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi .value {
+    font-size: clamp(1.625rem, 1.35rem + 0.9vw, 2.0625rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.12;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi-pair {
+    display: flex;
+    align-items: baseline;
+    gap: 1.125rem;
+    flex-wrap: wrap;
+  }
+  .kpi-pair .unit {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--muted);
+    margin-inline-start: 0.25rem;
+  }
+
+  .kpi .sub {
+    color: var(--muted);
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  .split-bar {
+    display: flex;
+    gap: 2px;
+    block-size: 0.45rem;
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    background: var(--surface-2);
+  }
+  .split-bar span {
+    display: block;
+    block-size: 100%;
+    min-inline-size: 4px;
+  }
+
+  .kpi .meter {
+    block-size: 0.5rem;
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .kpi .meter b {
+    display: block;
+    block-size: 100%;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+  }
+  .kpi .meter b.warn { background: var(--warn); }
+  .kpi .meter b.over { background: var(--danger); }
+
+  .budget-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-block-start: 0.25rem;
+  }
+  .budget-inline input {
+    inline-size: 5.5rem;
+    min-block-size: 30px;
+    padding: 0.15rem 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-ui);
+    background: var(--surface-subtle);
+    font-size: 0.875rem;
+  }
+
+  /* ---------- bento workspace panels ---------- */
+  .tabpanel[hidden] {
+    display: none;
+  }
+
+  .bento-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 1.25rem;
+    margin-block-end: 1.25rem;
+  }
+
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.125rem;
+    margin-block-end: 1.25rem;
+    align-items: stretch;
+  }
+  .grid-4 .card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+  }
+  .grid-4 .card-head {
+    margin-block-end: 0.75rem;
+  }
+  .grid-4 .bars {
+    gap: 0.2rem;
+  }
+  .grid-4 .bar-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 0.3rem 0.5rem;
+    align-items: baseline;
+    min-block-size: var(--target-min);
+    padding: 0.35rem 0.5rem;
+  }
+  .grid-4 .bar-name {
+    grid-column: 1;
+    grid-row: 1;
+    min-inline-size: 0;
+  }
+  .grid-4 .bar-name small {
+    display: inline;
+    margin-inline-start: 0.35rem;
+  }
+  .grid-4 .bar-val {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+  .grid-4 .bar-val small {
+    display: inline;
+  }
+  .grid-4 .track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .stack {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    padding: 1.375rem 1.5rem;
+    box-shadow: var(--card-shadow);
+    min-inline-size: 0;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.25rem;
+    flex-wrap: wrap;
+    margin-block-end: 1rem;
+  }
+
+  .card-title-group {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 1.125rem;
+    font-size: 0.8125rem;
+    color: var(--ink-2);
+    margin-block-end: 0.875rem;
+  }
+  .legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .legend i {
+    display: inline-block;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    border-radius: 4px;
+    flex: none;
+  }
+
+  .chart-box svg {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+    overflow: visible;
+  }
+
+  svg text {
+    fill: var(--muted);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hit {
+    fill: transparent;
+    cursor: default;
+    outline: none;
+  }
+  .hit:hover,
+  .hit:focus-visible {
+    fill: var(--ink);
+    fill-opacity: 0.06;
+  }
+
+  /* ---------- bar lists & spotlight ---------- */
+  .bars {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 38%) 1fr minmax(5.75rem, auto);
+    align-items: center;
+    gap: 0.75rem;
+    min-block-size: max(var(--target-min), 2.5rem);
+    padding: 0.45rem 0.65rem;
+    border-radius: var(--r-control);
+    border: 1px solid transparent;
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+    inline-size: 100%;
+  }
+  .bar-row:hover {
+    background: var(--surface-subtle);
+    border-color: var(--border);
+  }
+  .bar-row.selected {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  .bar-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .bar-name small {
+    display: block;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .track {
+    block-size: 0.75rem;
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    background: var(--surface-2);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+  }
+  .track-multi {
+    block-size: 1rem;
+    background: var(--surface-2);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .track b {
+    display: block;
+    block-size: 100%;
+    min-inline-size: 3px;
+    border-radius: var(--r-pill);
+  }
+  .track-multi b {
+    min-inline-size: 2px;
+    border-radius: 2px;
+  }
+
+  .bar-val {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  .bar-val small {
+    color: var(--muted);
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 400;
+  }
+
+  .spotlight-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .tool-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-block-start: 0.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+  .tool-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border);
+    background: var(--surface-subtle);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .tool-pill:hover {
+    background: var(--surface-2);
+  }
+  .tool-pill[aria-pressed="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .swatch {
+    inline-size: 0.625rem;
+    block-size: 0.625rem;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* Token economics / mix breakdown + aligned rows */
+  .mix-breakdown {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11.25rem, 1fr));
+    gap: 0.625rem;
+    margin-block-end: 1rem;
+  }
+  .mix-stat {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--r-control);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    min-inline-size: 0;
+  }
+  .mix-stat-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .mix-stat-head i {
+    display: inline-block;
+    inline-size: 0.7rem;
+    block-size: 0.7rem;
+    border-radius: 4px;
+    flex: none;
+  }
+  .mix-stat-val {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .mix-stat-sub {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mix-list {
+    display: grid;
+    gap: 0.3rem;
+  }
+  .mix-row {
+    display: grid;
+    grid-template-columns: 14.5rem minmax(0, 1fr) 10.75rem;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: var(--r-control);
+    border: 1px solid transparent;
+    inline-size: 100%;
+  }
+  .mix-total-row {
+    background: var(--surface-subtle);
+    border-color: var(--border);
+    margin-block-end: 0.25rem;
+  }
+
+  .mix {
+    display: flex;
+    gap: 3px;
+    min-block-size: 2rem;
+    inline-size: 100%;
+  }
+
+  .mix-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 0.45rem;
+    border: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--seg-ink, #fff);
+    background: var(--seg-bg, var(--other));
+    overflow: hidden;
+    white-space: nowrap;
+    min-inline-size: 6px;
+    cursor: default;
+    border-radius: 5px;
+  }
+  .mix-seg:first-child {
+    border-start-start-radius: 9px;
+    border-end-start-radius: 9px;
+  }
+  .mix-seg:last-child {
+    border-start-end-radius: 9px;
+    border-end-end-radius: 9px;
+  }
+  .mix-seg:only-child {
+    border-radius: 9px;
+  }
+
+  /* ---------- heatmap ---------- */
+  .heat-card {
+    container-type: inline-size;
+  }
+
+  .heat {
+    display: grid;
+    gap: 4px;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    grid-template-columns: 2.75rem repeat(24, minmax(0, 1fr)) minmax(4.25rem, auto);
+    grid-template-rows: auto repeat(7, minmax(1.625rem, 1fr)) 2.5rem;
+  }
+
+  .heat .cell {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: var(--surface-2);
+    cursor: pointer;
+  }
+  .heat .cell.zero {
+    cursor: default;
+  }
+  .heat .cell:not(.zero):hover,
+  .heat .cell:not(.zero):focus-visible {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 1px var(--ink);
+  }
+
+  .heat .hl {
+    text-align: start;
+    white-space: nowrap;
+    overflow: visible;
+    font-variant-numeric: tabular-nums;
+  }
+  .heat .wl {
+    align-self: center;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .heat .on {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .heat .tot {
+    align-self: center;
+    justify-self: stretch;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+    padding: 0.2rem 0.35rem;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-2);
+    font-size: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .heat .tot.zero {
+    color: var(--muted);
+    cursor: default;
+  }
+  .heat .tot:not(.zero):hover {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  .heat .hbar {
+    display: flex;
+    align-items: flex-end;
+    padding: 0.35rem 0 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .heat .hbar.zero {
+    cursor: default;
+  }
+  .heat .hbar b {
+    display: block;
+    inline-size: 100%;
+    background: var(--h4);
+    border-radius: 4px 4px 0 0;
+    min-block-size: 0;
+  }
+  .heat .hbar:not(.zero):hover b,
+  .heat .hbar:not(.zero):focus-visible b {
+    background: var(--h6);
+  }
+
+  .heat .corner {
+    align-self: end;
+    font-size: 0.75rem;
+  }
+
+  @container (max-width: 520px) {
+    .heat .hl.minor {
+      visibility: hidden;
+    }
+  }
+
+  .scale {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .scale i {
+    inline-size: 1rem;
+    block-size: 0.7rem;
+    border-radius: 3px;
+    display: inline-block;
+  }
+
+  /* ---------- accessible tables ---------- */
+  .table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-block-end: 1rem;
+  }
+  .search-wrap {
+    flex: 1 1 16rem;
+    max-inline-size: 28rem;
+  }
+
+  .table-wrap {
+    overflow: auto;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background:
+      linear-gradient(to right, var(--surface) 30%, transparent) left center / 24px 100% no-repeat local,
+      linear-gradient(to left, var(--surface) 30%, transparent) right center / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(13, 19, 32, 0.14), transparent) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(13, 19, 32, 0.14), transparent) right center / 12px 100% no-repeat scroll,
+      var(--surface);
+  }
+
+  .table-steps {
+    max-block-size: 36rem;
+  }
+
+  table {
+    border-collapse: collapse;
+    inline-size: 100%;
+    font-size: 0.875rem;
+  }
+
+  th, td {
+    padding: 0.625rem 0.75rem;
+    border-block-end: 1px solid var(--grid);
+    white-space: nowrap;
+    text-align: start;
+  }
+
+  td {
+    max-inline-size: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  th {
+    color: var(--ink-2);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: var(--surface-subtle);
+    border-block-end: 1px solid var(--border-strong);
+  }
+
+  th.num, td.num {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-block-size: 32px;
+    padding: 0.15rem 0.35rem;
+    margin: -0.15rem -0.35rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .sort-btn:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  th.num .sort-btn {
+    justify-content: flex-end;
+  }
+  th[aria-sort] .sort-btn {
+    color: var(--ink);
+  }
+
+  .row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.15rem 0.35rem;
+    margin: -0.15rem -0.35rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+  }
+  .row-btn:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--accent-ink);
+  }
+
+  tr.click {
+    cursor: pointer;
+  }
+  tr.click:hover td {
+    background: var(--surface-subtle);
+  }
+
+  td .dot {
+    display: inline-block;
+    inline-size: 0.5625rem;
+    block-size: 0.5625rem;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  details {
+    margin-block-start: 1rem;
+  }
+  details summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-block-size: var(--target-min);
+    padding-inline: 0.75rem;
+    margin-inline-start: -0.35rem;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+    list-style-position: inside;
+  }
+  details summary:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  details[open] .table-wrap {
+    margin-block-start: 0.75rem;
+  }
+
+  /* ---------- Session Inspector Floating Liquid Glass Drawer (Layer 2) ---------- */
+  .inspector-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    justify-content: flex-end;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) 0.75rem;
+    background: var(--backdrop-dim);
+  }
+  .inspector-backdrop[hidden] {
+    display: none;
+  }
+
+  .inspector-sheet {
+    inline-size: min(40rem, 100%);
+    block-size: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 26px;
+    background: var(--sheet-bg);
+    -webkit-backdrop-filter: blur(32px) saturate(1.8);
+    backdrop-filter: blur(32px) saturate(1.8);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+    overflow: hidden;
+  }
+
+  .insp-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.375rem 1.5rem 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .insp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem 1.5rem 1.5rem;
+    display: grid;
+    gap: 1.25rem;
+    align-content: start;
+  }
+
+  .insp-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 0.75rem;
+  }
+  .insp-stat {
+    padding: 0.75rem 0.9rem;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .insp-stat dt {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .insp-stat dd {
+    margin: 0.15rem 0 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step-feed {
+    display: grid;
+    gap: 0.625rem;
+  }
+  .step-card {
+    padding: 0.875rem 1rem;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: grid;
+    gap: 0.35rem;
+  }
+  .step-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .step-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+    font-size: 0.8125rem;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- empty state & overlays ---------- */
+  .empty {
+    text-align: center;
+    padding: clamp(3rem, 7vw, 5rem) 2rem;
+    background: var(--surface);
+    border: 1.5px dashed var(--border-ui);
+    border-radius: 26px;
+    box-shadow: var(--card-shadow);
+    color: var(--ink-2);
+    max-inline-size: 44rem;
+    margin: 3rem auto;
+  }
+  .empty-icon {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 3.75rem;
+    block-size: 3.75rem;
+    margin-block-end: 1rem;
+    border-radius: 18px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  .empty-title {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-block-end: 0.625rem;
+  }
+  .empty code {
+    background: var(--surface-2);
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    font-size: 0.875em;
+  }
+  .empty-actions {
+    margin-block-start: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .nodata {
+    color: var(--muted);
+    padding: 2rem 1rem;
+    text-align: center;
+    font-size: 0.9375rem;
+  }
+
+  #drop-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background: var(--backdrop-dim);
+    pointer-events: none;
+  }
+  #drop-sheet[hidden] {
+    display: none;
+  }
+  .drop-card {
+    max-inline-size: 28rem;
+    padding: 2.25rem 2.5rem;
+    text-align: center;
+    border-radius: 28px;
+    background: var(--sheet-bg);
+    -webkit-backdrop-filter: blur(28px) saturate(1.7);
+    backdrop-filter: blur(28px) saturate(1.7);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+    color: var(--ink);
+  }
+  .drop-card strong {
+    display: block;
+    font-size: 1.125rem;
+    margin-block-end: 0.4rem;
+  }
+  .drop-card span {
+    color: var(--ink-2);
+    font-size: 0.875rem;
+  }
+
+  #tip {
+    position: fixed;
+    z-index: 75;
+    pointer-events: none;
+    background: var(--sheet-bg);
+    -webkit-backdrop-filter: blur(24px) saturate(1.65);
+    backdrop-filter: blur(24px) saturate(1.65);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+    border-radius: 16px;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.8125rem;
+    max-inline-size: 22rem;
+    color: var(--ink);
+  }
+  #tip .tt-title {
+    color: var(--ink);
+    font-weight: 600;
+    margin-block-end: 0.4rem;
+  }
+  #tip .tt-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1.5;
+  }
+  #tip .tt-row b {
+    font-variant-numeric: tabular-nums;
+  }
+  #tip .tt-row span {
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #tip .key {
+    inline-size: 0.75rem;
+    block-size: 0.25rem;
+    border-radius: 2px;
+    flex: none;
+  }
+}
+
+@layer states {
+  @container dock-bar scroll-state(stuck: top) {
+    .dock-shell {
+      background: var(--glass-bg-stuck);
+      box-shadow: inset 0 1px 0 var(--glass-specular), 0 18px 42px -10px rgba(13, 19, 32, 0.24);
+    }
+    .dock-shell::after {
+      opacity: 1;
+    }
+  }
+
+  .dock-shell.is-stuck {
+    background: var(--glass-bg-stuck);
+    box-shadow: inset 0 1px 0 var(--glass-specular), 0 18px 42px -10px rgba(13, 19, 32, 0.24);
+  }
+  .dock-shell.is-stuck::after {
+    opacity: 1;
+  }
+
+  /* Responsive breakpoints */
+  @media (max-width: 1179px) {
+    .grid-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 1120px) {
+    .kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .bento-hero {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 920px) {
+    .mix-row {
+      grid-template-columns: 11.5rem minmax(0, 1fr) 9.25rem;
+      gap: 0.625rem;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .grid-4 {
+      grid-template-columns: 1fr;
+    }
+    .mix-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
+      gap: 0.45rem 0.65rem;
+    }
+    .mix-row .bar-name {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .mix-row .bar-val {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .mix-row .mix,
+    .mix-row .track-multi {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .dock-shell {
+      position: static;
+    }
+    .dock-shell::after {
+      display: none;
+    }
+    .kpis {
+      grid-template-columns: 1fr;
+    }
+    .popover-grid {
+      grid-template-columns: 1fr;
+    }
+    .glass-popover {
+      position: fixed;
+      inset-inline: 1rem;
+      inset-block-start: auto;
+      inset-block-end: max(1rem, env(safe-area-inset-bottom));
+      inline-size: auto;
+      max-block-size: 80dvh;
+      overflow-y: auto;
+    }
+    .segmented {
+      max-inline-size: 100%;
+      overflow-x: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .dock-shell,
+    .dock-shell::after,
+    .btn,
+    .seg-btn,
+    .bar-row,
+    .chip,
+    .tool-pill,
+    .heat .cell {
+      transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                  border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+                  opacity 180ms ease;
+    }
+
+    details {
+      interpolate-size: allow-keywords;
+    }
+    details::details-content {
+      block-size: 0;
+      opacity: 0;
+      overflow-y: clip;
+      contain: layout;
+      transition: block-size 220ms cubic-bezier(0.22, 1, 0.36, 1),
+                  opacity 180ms ease,
+                  content-visibility 220ms allow-discrete;
+    }
+    details[open]::details-content {
+      block-size: auto;
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .dock-shell,
+    .dock-shell.is-stuck,
+    .glass-popover,
+    .inspector-sheet,
+    .drop-card,
+    #tip {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: var(--surface);
+      border-color: var(--border-strong);
+    }
+    .segmented {
+      background: var(--surface-2);
+    }
+    .seg-btn[aria-selected="true"],
+    .seg-btn[aria-pressed="true"] {
+      background: var(--surface);
+    }
+    .dock-shell::after {
+      display: none;
+    }
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .dock-shell,
+    .dock-shell.is-stuck,
+    .glass-popover,
+    .inspector-sheet,
+    .drop-card,
+    #tip {
+      background: var(--surface);
+      border-color: var(--border-strong);
+    }
+  }
+
+  @media (prefers-contrast: more) {
+    :root {
+      --border: var(--border-ui);
+      --border-strong: var(--ink);
+    }
+    .dock-shell,
+    .glass-popover,
+    .inspector-sheet,
+    .drop-card,
+    #tip,
+    .kpi,
+    .card,
+    .table-wrap {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: var(--surface);
+      border-width: 1.5px;
+      border-color: var(--ink);
+    }
+    .btn,
+    .field select,
+    .field input[type="date"],
+    .search-input {
+      border-width: 1.5px;
+      border-color: var(--ink);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .dock-shell,
+    .glass-popover,
+    .inspector-sheet,
+    .kpi,
+    .card,
+    .empty,
+    #tip,
+    .drop-card,
+    .table-wrap,
+    .insp-stat,
+    .step-card,
+    .mix-stat,
+    .mix-total-row {
+      background: Canvas;
+      color: CanvasText;
+      border: 1px solid CanvasText;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    .btn,
+    .seg-btn,
+    .field select,
+    .field input[type="date"],
+    .search-input,
+    .chip,
+    .tool-pill {
+      background: ButtonFace;
+      color: ButtonText;
+      border: 1px solid ButtonText;
+    }
+    .seg-btn[aria-selected="true"],
+    .seg-btn[aria-pressed="true"],
+    .btn-primary,
+    .bar-row.selected,
+    .tool-pill[aria-pressed="true"] {
+      background: Highlight;
+      color: HighlightText;
+      border-color: Highlight;
+    }
+    :where(button, select, input, summary, a, [tabindex]):focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: 2px;
+    }
+    .heat .cell,
+    .track b,
+    .mix-seg,
+    .kpi .meter {
+      border: 1px solid CanvasText;
+    }
+  }
+}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>AI Usage</h1>
-    <span class="sub" id="source">No data loaded</span>
-    <span class="spacer"></span>
-    <button class="btn" id="export" hidden>Export CSV</button>
-    <label class="btn">Open usage.jsonl…<input type="file" id="file" accept=".jsonl,.json,.js,.txt" hidden></label>
+<a class="skip-link" href="#main-content">Skip to dashboard content</a>
+<div id="live-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<main id="main-content" tabindex="-1">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 18V9.5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 9 9.5V18"/>
+          <path d="M10.5 18V5.5A1.5 1.5 0 0 1 12 4h2a1.5 1.5 0 0 1 1.5 1.5V18"/>
+          <path d="M17 18v-5.5a1.5 1.5 0 0 1 1.5-1.5h1A1.5 1.5 0 0 1 21 12.5V18"/>
+          <path d="M3 20h18"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="title-row">
+          <h1>AI Usage</h1>
+          <span class="eyebrow">Gateway Observatory</span>
+        </div>
+        <span class="sub" id="source">No data loaded</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="btn" id="theme-toggle" aria-label="Color theme: Auto">Theme: Auto</button>
+      <button type="button" class="btn" id="reload-data" aria-label="Reload current usage data">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+          <polyline points="21 3 21 9 15 9"/>
+        </svg>
+        <span>Reload</span>
+      </button>
+      <button type="button" class="btn" id="export" hidden>Export CSV</button>
+      <button type="button" class="btn btn-primary" id="open-file">Open usage.jsonl…</button>
+      <input type="file" id="file" accept=".jsonl,.json,.js,.txt" class="visually-hidden" tabindex="-1" aria-hidden="true">
+    </div>
   </header>
 
-  <div id="empty" class="empty">
-    <p><b>No usage data found.</b></p>
+  <section id="empty" class="empty" aria-labelledby="empty-title">
+    <div class="empty-icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+        <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+        <path d="M12 11v6"/>
+        <path d="m9.5 14.5 2.5 2.5 2.5-2.5"/>
+      </svg>
+    </div>
+    <b id="empty-title" class="empty-title">No usage data found.</b>
     <p>OpenCode (gateway plugin), Neovim and the Claude Code hook write to <code>~/.gateway-cost/</code>
       (Windows: <code>%USERPROFILE%\.gateway-cost\</code>, or <code>GATEWAY_COST_DIR</code>).<br>
-      Type <code>/usage-dashboard</code> in OpenCode to open this page with the data,<br>
-      or drop <code>usage.jsonl</code> anywhere on this page.</p>
-  </div>
+      Type <code>/usage-dashboard</code> in OpenCode to open this page with your data, or drop <code>usage.jsonl</code> anywhere on this window.</p>
+    <div class="empty-actions">
+      <button type="button" class="btn" id="empty-reload">Retry loading</button>
+      <button type="button" class="btn btn-primary" id="empty-open">Choose usage.jsonl…</button>
+    </div>
+  </section>
 
   <div id="app" hidden>
-    <div class="filters" role="toolbar" aria-label="Filters">
-      <div class="group" id="presets"><span>Range</span></div>
-      <div class="group"><input type="date" id="from" aria-label="From date"><span>–</span><input type="date" id="to" aria-label="To date"></div>
-      <div class="group"><span>Tool</span><select id="f-tool"></select></div>
-      <div class="group"><span>Billing</span><select id="f-billing"></select></div>
-      <div class="group"><span>Provider</span><select id="f-provider"></select></div>
-      <div class="group"><span>Model</span><select id="f-model"></select></div>
-      <div class="group"><span>Agent</span><select id="f-agent"></select></div>
-      <div class="group"><span>Session</span><select id="f-session"></select></div>
-      <div class="group" id="metrics"><span>Measure</span></div>
-      <button class="btn" id="reset">Reset</button>
-    </div>
+    <div class="dock-sentinel" aria-hidden="true"></div>
+    <nav class="dock-shell" id="dock-shell" aria-label="Workspace and telemetry controls">
+      <div class="dock-row">
+        <div class="segmented" id="nav-tabs" role="tablist" aria-label="Dashboard views">
+          <button type="button" class="seg-btn" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview">Overview</button>
+          <button type="button" class="seg-btn" role="tab" id="tab-attribution" aria-controls="panel-attribution" aria-selected="false" tabindex="-1" data-tab="attribution">Attribution</button>
+          <button type="button" class="seg-btn" role="tab" id="tab-activity" aria-controls="panel-activity" aria-selected="false" tabindex="-1" data-tab="activity">Activity</button>
+          <button type="button" class="seg-btn" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" tabindex="-1" data-tab="steps">Step Log</button>
+        </div>
 
-    <section class="kpis" id="kpis"></section>
+        <div class="dock-controls">
+          <div class="segmented" id="presets" role="group" aria-label="Date range presets"></div>
+          <div class="segmented" id="metrics" role="group" aria-label="Primary measure"></div>
+          <div class="filters-anchor">
+            <button type="button" class="btn" id="filters-btn" aria-expanded="false" aria-controls="filters-panel">
+              <span>Filters</span>
+              <span class="badge-count" id="filters-badge" hidden>0</span>
+            </button>
+            <div class="glass-popover" id="filters-panel" role="dialog" aria-labelledby="filters-title" hidden>
+              <div class="popover-head">
+                <h2 id="filters-title">Filter Telemetry</h2>
+                <button type="button" class="btn btn-sm btn-subtle" id="filters-close" aria-label="Close filters">Done</button>
+              </div>
+              <div class="popover-grid">
+                <div class="field full">
+                  <label for="from">Custom Date Window</label>
+                  <div class="date-pair">
+                    <input type="date" id="from" aria-label="From date">
+                    <input type="date" id="to" aria-label="To date">
+                  </div>
+                </div>
+                <div class="field" id="grp-tool">
+                  <label for="f-tool">Tool</label>
+                  <select id="f-tool"></select>
+                </div>
+                <div class="field" id="grp-billing">
+                  <label for="f-billing">Billing Mode</label>
+                  <select id="f-billing"></select>
+                </div>
+                <div class="field" id="grp-provider">
+                  <label for="f-provider">Provider</label>
+                  <select id="f-provider"></select>
+                </div>
+                <div class="field" id="grp-model">
+                  <label for="f-model">Model</label>
+                  <select id="f-model"></select>
+                </div>
+                <div class="field" id="grp-agent">
+                  <label for="f-agent">Agent</label>
+                  <select id="f-agent"></select>
+                </div>
+                <div class="field" id="grp-session">
+                  <label for="f-session">Session</label>
+                  <select id="f-session"></select>
+                </div>
+              </div>
+              <div class="popover-foot">
+                <span class="sub" id="popover-summary">Showing all steps</span>
+                <button type="button" class="btn btn-sm" id="reset">Reset All</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-    <div class="grid">
-      <section class="card wide">
-        <div class="card-head"><div><h2 id="time-title">Spend over time</h2><span class="sub" id="time-sub"></span></div></div>
-        <div class="legend" id="time-legend"></div>
-        <div id="time"></div>
-        <details><summary>Show as table</summary><div class="table-wrap" id="period-table"></div></details>
-      </section>
+      <div class="filter-meta" id="filter-meta" hidden>
+        <div class="chips" id="active-filters" role="group" aria-label="Active filters"></div>
+        <div class="dock-controls">
+          <span class="sub" id="filter-count"></span>
+          <button type="button" class="btn btn-sm" id="reset-inline">Clear all</button>
+        </div>
+      </div>
+    </nav>
 
-      <section class="card">
-        <div class="card-head"><div><h2>By model</h2><span class="sub">Click a row to filter</span></div></div>
-        <div class="bars" id="by-model"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>By provider</h2><span class="sub">Click a row to filter</span></div></div>
-        <div class="bars" id="by-provider"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>By tool</h2><span class="sub">Who made the calls · click to filter</span></div></div>
-        <div class="bars" id="by-tool"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>By agent</h2><span class="sub">Agents and subagents per tool · click to filter</span></div></div>
-        <div class="bars" id="by-agent"></div>
-      </section>
+    <!-- Always-visible single-row 4-card Quick Telemetry Summary -->
+    <section class="kpis" id="kpis" aria-label="Key telemetry summary"></section>
 
-      <section class="card wide">
-        <div class="card-head"><div><h2 id="mix-title">What the money pays for</h2><span class="sub" id="mix-sub"></span></div></div>
-        <div class="legend" id="mix-legend"></div>
-        <div class="mix" id="mix-all"></div>
-        <div class="bars" id="mix-models"></div>
-      </section>
+    <!-- View 1: Overview -->
+    <section class="tabpanel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="bento-hero">
+        <article class="card" aria-labelledby="time-title">
+          <div class="card-head">
+            <div class="card-title-group">
+              <h2 id="time-title">Spend over time</h2>
+              <span class="sub" id="time-sub"></span>
+            </div>
+            <div class="segmented" id="chart-modes" role="group" aria-label="Chart style">
+              <button type="button" class="seg-btn" data-chart-mode="stacked" aria-pressed="true">Stacked</button>
+              <button type="button" class="seg-btn" data-chart-mode="cumulative" aria-pressed="false">Cumulative</button>
+            </div>
+          </div>
+          <div class="legend" id="time-legend"></div>
+          <div class="chart-box" id="time"></div>
+          <details>
+            <summary>View period breakdown table</summary>
+            <div class="table-wrap" id="period-table" role="region" tabindex="0" aria-labelledby="time-title"></div>
+          </details>
+        </article>
 
-      <section class="card heat-card">
-        <div class="card-head"><div><h2>When</h2><span class="sub">Local time, by weekday and hour</span></div><div class="scale" id="heat-scale"></div></div>
-        <div class="heat" id="heat"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>Top sessions</h2><span class="sub">Click a row to filter to one session</span></div></div>
-        <div class="table-wrap" id="sessions"></div>
-      </section>
+        <article class="card spotlight-card" aria-labelledby="h-spotlight">
+          <div>
+            <div class="card-head">
+              <div class="card-title-group">
+                <h2 id="h-spotlight">Top Models</h2>
+                <span class="sub">Click a model to cross-filter</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-subtle" data-goto-tab="attribution">All breakdown</button>
+            </div>
+            <div class="bars" id="spot-models"></div>
+          </div>
+          <div class="tool-pills" id="spot-tools" aria-label="Tools quick filter"></div>
+        </article>
+      </div>
 
-      <section class="card wide">
-        <div class="card-head"><div><h2>Models</h2><span class="sub">Click a header to sort</span></div></div>
-        <div class="table-wrap" id="models"></div>
-      </section>
-      <section class="card wide">
-        <div class="card-head"><div><h2>Steps</h2><span class="sub" id="steps-sub"></span></div></div>
-        <div class="table-wrap" id="steps" style="max-height: 480px"></div>
-      </section>
-    </div>
+      <article class="card" aria-labelledby="mix-title">
+        <div class="card-head">
+          <div class="card-title-group">
+            <h2 id="mix-title">Token Economics</h2>
+            <span class="sub" id="mix-sub"></span>
+          </div>
+          <span class="sub" id="mix-basis"></span>
+        </div>
+        <div class="mix-breakdown" id="mix-breakdown"></div>
+        <div class="mix-list">
+          <div id="mix-all"></div>
+          <div class="bars" id="mix-models"></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- View 2: Attribution -->
+    <section class="tabpanel" id="panel-attribution" role="tabpanel" aria-labelledby="tab-attribution" hidden>
+      <div class="grid-4">
+        <article class="card" aria-labelledby="h-by-model">
+          <div class="card-head">
+            <div class="card-title-group"><h2 id="h-by-model">By Model</h2><span class="sub">Click row to filter</span></div>
+          </div>
+          <div class="bars" id="by-model"></div>
+        </article>
+        <article class="card" aria-labelledby="h-by-provider">
+          <div class="card-head">
+            <div class="card-title-group"><h2 id="h-by-provider">By Provider</h2><span class="sub">Click row to filter</span></div>
+          </div>
+          <div class="bars" id="by-provider"></div>
+        </article>
+        <article class="card" aria-labelledby="h-by-tool">
+          <div class="card-head">
+            <div class="card-title-group"><h2 id="h-by-tool">By Tool</h2><span class="sub">Gateway vs seat</span></div>
+          </div>
+          <div class="bars" id="by-tool"></div>
+        </article>
+        <article class="card" aria-labelledby="h-by-agent">
+          <div class="card-head">
+            <div class="card-title-group"><h2 id="h-by-agent">By Agent</h2><span class="sub">Primary & subagents</span></div>
+          </div>
+          <div class="bars" id="by-agent"></div>
+        </article>
+      </div>
+
+      <article class="card" aria-labelledby="h-models">
+        <div class="card-head">
+          <div class="card-title-group"><h2 id="h-models">Models Performance Ledger</h2><span class="sub">Click a column header to sort · click a model to filter</span></div>
+        </div>
+        <div class="table-wrap" id="models" role="region" tabindex="0" aria-labelledby="h-models"></div>
+      </article>
+    </section>
+
+    <!-- View 3: Activity & Sessions -->
+    <section class="tabpanel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+      <div class="stack">
+        <article class="card heat-card" aria-labelledby="h-when">
+          <div class="card-head">
+            <div class="card-title-group">
+              <h2 id="h-when">Usage Rhythm</h2>
+              <span class="sub" id="heat-sub">Local time, by weekday and hour</span>
+            </div>
+            <div class="scale" id="heat-scale"></div>
+          </div>
+          <div class="heat" id="heat"></div>
+        </article>
+
+        <article class="card" aria-labelledby="h-sessions">
+          <div class="card-head">
+            <div class="card-title-group">
+              <h2 id="h-sessions">Sessions Explorer</h2>
+              <span class="sub">Click any session to open step-by-step Liquid Glass Inspector</span>
+            </div>
+          </div>
+          <div class="table-wrap" id="sessions" role="region" tabindex="0" aria-labelledby="h-sessions"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- View 4: Step Log -->
+    <section class="tabpanel" id="panel-steps" role="tabpanel" aria-labelledby="tab-steps" hidden>
+      <article class="card" aria-labelledby="h-steps">
+        <div class="card-head">
+          <div class="card-title-group">
+            <h2 id="h-steps">Steps Ledger</h2>
+            <span class="sub" id="steps-sub"></span>
+          </div>
+        </div>
+        <div class="table-toolbar">
+          <div class="search-wrap">
+            <label for="step-search" class="visually-hidden">Search steps</label>
+            <input type="search" id="step-search" class="search-input" placeholder="Search model, tool, agent, session, finish…">
+          </div>
+          <div class="chips" id="finish-pills" role="group" aria-label="Filter by finish reason"></div>
+        </div>
+        <div class="table-wrap table-steps" id="steps" role="region" tabindex="0" aria-labelledby="h-steps"></div>
+      </article>
+    </section>
   </div>
 </main>
-<div id="tip" hidden></div>
+
+<!-- Floating Liquid Glass Session Inspector Drawer -->
+<div class="inspector-backdrop" id="inspector" role="dialog" aria-modal="true" aria-labelledby="insp-title" hidden>
+  <aside class="inspector-sheet">
+    <div class="insp-head">
+      <div class="card-title-group">
+        <h2 id="insp-title">Session Inspector</h2>
+        <span class="sub" id="insp-sub"></span>
+      </div>
+      <div class="dock-controls">
+        <button type="button" class="btn btn-sm" id="insp-filter">Filter dashboard</button>
+        <button type="button" class="btn btn-sm btn-primary" id="insp-close">Close</button>
+      </div>
+    </div>
+    <div class="insp-body" id="insp-body"></div>
+  </aside>
+</div>
+
+<div id="drop-sheet" hidden aria-hidden="true">
+  <div class="drop-card">
+    <strong>Drop log file to inspect</strong>
+    <span>Supports <code>usage.jsonl</code>, <code>usage-log.js</code>, and JSON snapshots</span>
+  </div>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
 
 <script>
 "use strict"
@@ -248,11 +2176,48 @@ function h(tag, attrs = {}, ...kids) {
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue
     if (k.startsWith("on")) e.addEventListener(k.slice(2), v)
-    else if (k === "style" && typeof v === "object") Object.assign(e.style, v)
+    else if (k === "style" && typeof v === "object") {
+      for (const [sk, sv] of Object.entries(v)) {
+        if (sv == null) continue
+        if (sk.startsWith("--")) e.style.setProperty(sk, String(sv))
+        else e.style[sk] = sv
+      }
+    }
     else e.setAttribute(k, v === true ? "" : v)
   }
   for (const c of kids.flat()) if (c != null && c !== false) e.append(c instanceof Node ? c : String(c))
   return e
+}
+
+let announceTimer = 0
+function announce(msg) {
+  const el = $("#live-status")
+  if (!el) return
+  clearTimeout(announceTimer)
+  el.textContent = ""
+  announceTimer = setTimeout(() => { el.textContent = msg }, 30)
+}
+
+// ---------- theme ----------
+const THEMES = ["", "light", "dark"]
+const THEME_LABELS = { "": "Auto", light: "Light", dark: "Dark" }
+let currentTheme = ""
+try { currentTheme = THEMES.includes(localStorage.getItem("gw-theme")) ? localStorage.getItem("gw-theme") : "" } catch {}
+
+function applyTheme(next) {
+  currentTheme = next
+  if (next) document.documentElement.setAttribute("data-theme", next)
+  else document.documentElement.removeAttribute("data-theme")
+  const btn = $("#theme-toggle")
+  if (btn) {
+    const label = THEME_LABELS[next]
+    btn.textContent = `Theme: ${label}`
+    btn.setAttribute("aria-label", `Color theme: ${label}. Click to switch.`)
+  }
+  try {
+    if (next) localStorage.setItem("gw-theme", next)
+    else localStorage.removeItem("gw-theme")
+  } catch {}
 }
 
 // ---------- formatting ----------
@@ -282,15 +2247,13 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 // ---------- data ----------
 const TOKEN_TYPES = [
-  // reasoning is billed at the output price (same rule as the plugin)
-  { key: "input", label: "Input", color: "var(--s1)" },
-  { key: "output", label: "Output", color: "var(--s2)" },
-  { key: "reasoning", label: "Reasoning", color: "var(--s5)" },
-  { key: "cache_read", label: "Cache read", color: "var(--s3)" },
-  { key: "cache_write", label: "Cache write", color: "var(--s4)" },
+  { key: "input", label: "Input", color: "var(--s1)", ink: "var(--on-s1)" },
+  { key: "output", label: "Output", color: "var(--s2)", ink: "var(--on-s2)" },
+  { key: "reasoning", label: "Reasoning", color: "var(--s5)", ink: "var(--on-s5)" },
+  { key: "cache_read", label: "Cache read", color: "var(--s3)", ink: "var(--on-s3)" },
+  { key: "cache_write", label: "Cache write", color: "var(--s4)", ink: "var(--on-s4)" },
 ]
-const UNPRICED = { key: "unpriced", label: "Priced by OpenCode", color: "var(--other)" }
-// Fixed colors per tool, so a tool keeps its color under every filter.
+const UNPRICED = { key: "unpriced", label: "Priced by OpenCode", color: "var(--other)", ink: "var(--on-other)" }
 const TOOL_LABELS = { "prompt-rewriter": "Prompt Rewriter / Improver" }
 const TOOL_COLORS = {
   opencode: "var(--s1)",
@@ -301,8 +2264,8 @@ const TOOL_COLORS = {
   "Prompt Rewriter / Improver": "var(--s5)",
 }
 const toolColor = (t) => TOOL_COLORS[t] ?? "var(--other)"
-const BILLING_LABELS = { gateway: "Gateway (billed per token)", subscription: "Claude seat (API equivalent)", other: "Other provider" }
-// Lines from before `tool`/`billing` existed: Neovim logged agent "nvim", the rest is OpenCode.
+const BILLING_LABELS = { gateway: "Gateway (metered)", subscription: "Claude seat (equiv.)", other: "Other provider" }
+const BILLING_COLORS = { gateway: "var(--s1)", subscription: "var(--s3)", other: "var(--other)" }
 const toolOf = (r) => {
   const raw = r.tool || (r.agent === "nvim" ? "nvim" : "opencode")
   return TOOL_LABELS[raw] ?? raw
@@ -310,9 +2273,17 @@ const toolOf = (r) => {
 const billingOf = (r) => r.billing || (r.gateway ? "gateway" : "other")
 const CONFIG = () => window.GATEWAY_CONFIG || {}
 
+let customBudgetUSD = null
+try {
+  const savedBudget = localStorage.getItem("gw-budget-usd")
+  if (savedBudget != null && Number(savedBudget) > 0) customBudgetUSD = Number(savedBudget)
+} catch {}
+
+const monthlyBudgetLimit = () => customBudgetUSD ?? (Number(CONFIG().monthlyLimitUSD) || 0)
+
 let ROWS = []
-const colorOf = new Map() // model key -> color; follows the model, never its filtered rank
-const providerOf = new Map() // model key -> provider id
+const colorOf = new Map()
+const providerOf = new Map()
 
 function enrich(r) {
   const n = (k) => Number(r[k]) || 0
@@ -321,16 +2292,18 @@ function enrich(r) {
     input: n("input_tokens"), output: n("output_tokens"), reasoning: n("reasoning_tokens"),
     cache_read: n("cache_read_tokens"), cache_write: n("cache_write_tokens"),
   }
+  const inRate = n("input_per_1M"), crRate = n("cache_read_per_1M")
   const parts = {
-    input: (tok.input * n("input_per_1M")) / 1e6,
+    input: (tok.input * inRate) / 1e6,
     output: (tok.output * n("output_per_1M")) / 1e6,
     reasoning: (tok.reasoning * n("output_per_1M")) / 1e6,
-    cache_read: (tok.cache_read * n("cache_read_per_1M")) / 1e6,
+    cache_read: (tok.cache_read * crRate) / 1e6,
     cache_write: (tok.cache_write * n("cache_write_per_1M")) / 1e6,
   }
   const cost = n("cost")
   const priced = Object.values(parts).reduce((a, b) => a + b, 0)
-  parts.unpriced = cost - priced > 1e-9 ? cost - priced : 0 // non-gateway models: OpenCode's own figure
+  parts.unpriced = cost - priced > 1e-9 ? cost - priced : 0
+  const cacheSaved = inRate > crRate ? (tok.cache_read * (inRate - crRate)) / 1e6 : 0
   return {
     raw: r, t: d.getTime(), day: ymd(d), hour: d.getHours(), wd: (d.getDay() + 6) % 7,
     key: `${r.provider_id}/${r.model_id}`, label: r.model_name || r.model_id, provider: r.provider_id || "unknown",
@@ -338,13 +2311,13 @@ function enrich(r) {
     agent: `${toolOf(r)} · ${r.agent === "nvim" ? "prediction" : r.agent || "(none)"}`, agentName: r.agent || "(none)",
     session: r.session_id || "(none)", finish: r.finish || "",
     tok, tokens: tok.input + tok.output + tok.reasoning + tok.cache_read + tok.cache_write,
-    cost, reported: n("reported_cost"), parts,
+    cost, reported: n("reported_cost"), parts, cacheSaved,
   }
 }
 
 function parseLog(text) {
   const t = text.trimStart()
-  if (t.startsWith("window.")) text = JSON.parse(t.slice(t.indexOf("=") + 1).trim().replace(/;\s*$/, "")) // a usage-log.js file
+  if (t.startsWith("window.")) text = JSON.parse(t.slice(t.indexOf("=") + 1).trim().replace(/;\s*$/, ""))
   const seen = new Set()
   const rows = []
   for (const line of text.split("\n")) {
@@ -362,15 +2335,22 @@ function parseLog(text) {
 function load(text, sourceLabel) {
   ROWS = parseLog(text)
   colorOf.clear()
+  providerOf.clear()
   const byModel = group(ROWS, (r) => r.key).sort((a, b) => b.cost - a.cost || b.tokens - a.tokens)
   byModel.forEach((g, i) => { colorOf.set(g.key, i < 8 ? `var(--s${i + 1})` : "var(--other)"); providerOf.set(g.key, g.rows[0].provider) })
   const span = ROWS.length ? `${fmtTime(ROWS[0].t)} → ${fmtTime(ROWS.at(-1).t)}` : ""
-  $("#source").textContent = `${ROWS.length.toLocaleString()} steps from ${sourceLabel}${span ? " · " + span : ""} · reload the page for new data`
+  $("#source").textContent = `${ROWS.length.toLocaleString()} steps from ${sourceLabel}${span ? " · " + span : ""}`
   $("#empty").hidden = ROWS.length > 0
   $("#app").hidden = ROWS.length === 0
   $("#export").hidden = ROWS.length === 0
-  if (!ROWS.length) $("#empty").querySelector("b").textContent = `No usage steps in ${sourceLabel}.`
+  if (!ROWS.length) {
+    $("#empty-title").textContent = `No usage steps in ${sourceLabel}.`
+    announce(`No usage steps found in ${sourceLabel}.`)
+  } else {
+    announce(`Loaded ${ROWS.length.toLocaleString()} usage steps from ${sourceLabel}.`)
+  }
   render()
+  syncStickyMetrics()
 }
 
 // ---------- aggregation ----------
@@ -380,13 +2360,13 @@ function group(rows, keyFn) {
     const k = keyFn(r)
     let g = m.get(k)
     if (!g) {
-      g = { key: k, rows: [], steps: 0, cost: 0, reported: 0, tokens: 0, first: r.t, last: r.t, sessions: new Set(), models: new Set(),
+      g = { key: k, rows: [], steps: 0, cost: 0, reported: 0, tokens: 0, cacheSaved: 0, first: r.t, last: r.t, sessions: new Set(), models: new Set(),
         tok: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 },
         parts: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, unpriced: 0 } }
       m.set(k, g)
     }
     g.rows.push(r)
-    g.steps++; g.cost += r.cost; g.reported += r.reported; g.tokens += r.tokens
+    g.steps++; g.cost += r.cost; g.reported += r.reported; g.tokens += r.tokens; g.cacheSaved += r.cacheSaved
     if (r.t < g.first) g.first = r.t
     if (r.t > g.last) g.last = r.t
     g.sessions.add(r.session); g.models.add(r.key)
@@ -396,8 +2376,35 @@ function group(rows, keyFn) {
   return [...m.values()]
 }
 
-// ---------- filters ----------
+// ---------- workspace navigation (Tabs) ----------
+const TABS = ["overview", "attribution", "activity", "steps"]
+let activeTab = "overview"
+
+function setTab(tab, focusTab = false) {
+  if (!TABS.includes(tab)) return
+  activeTab = tab
+  for (const id of TABS) {
+    const btn = $(`#tab-${id}`)
+    const panel = $(`#panel-${id}`)
+    const on = id === tab
+    btn.setAttribute("aria-selected", String(on))
+    btn.setAttribute("tabindex", on ? "0" : "-1")
+    panel.hidden = !on
+    if (on && focusTab) btn.focus()
+  }
+  try { history.replaceState(null, "", `#${tab}`) } catch {}
+  if (ROWS.length && tab === "overview") renderTime(filtered())
+  syncStickyMetrics()
+}
+
+// ---------- filters & UI state ----------
 const F = { from: "", to: "", tool: "", billing: "", provider: "", model: "", agent: "", session: "", metric: "cost" }
+let chartMode = "stacked" // stacked | cumulative
+let stepQuery = ""
+let stepFinish = ""
+let inspectedSession = null
+let budgetEditing = false
+
 const DIMS = {
   tool: (r) => r.tool,
   billing: (r) => r.billing,
@@ -405,6 +2412,10 @@ const DIMS = {
   model: (r) => r.key,
   agent: (r) => r.agent,
   session: (r) => r.session,
+}
+const DIM_LABELS = {
+  tool: "Tool", billing: "Billing", provider: "Provider",
+  model: "Model", agent: "Agent", session: "Session",
 }
 const METRICS = {
   cost: { label: "Cost", of: (g) => g.cost, fmt: fmtUSD },
@@ -414,39 +2425,155 @@ const METRICS = {
 const metric = () => METRICS[F.metric]
 const rowValue = (r) => (F.metric === "cost" ? r.cost : F.metric === "tokens" ? r.tokens : 1)
 
-// `except` lets each dropdown list the values still reachable under the other filters.
 function filtered(except, { dates = true } = {}) {
   return ROWS.filter((r) =>
     (!dates || ((!F.from || r.day >= F.from) && (!F.to || r.day <= F.to))) &&
     Object.entries(DIMS).every(([d, fn]) => d === except || !F[d] || fn(r) === F[d]))
 }
 
-function setFilter(patch) { Object.assign(F, patch); render() }
-const toggle = (dim, value) => setFilter({ [dim]: F[dim] === value ? "" : value })
+function setFilter(patch, note) {
+  Object.assign(F, patch)
+  render()
+  if (note) announce(note)
+}
+const toggle = (dim, value) => {
+  const clearing = F[dim] === value
+  setFilter({ [dim]: clearing ? "" : value }, clearing ? `Cleared ${dim} filter` : `Filtered by ${dim}: ${value}`)
+}
 
 const PRESETS = [
-  { label: "All", days: null },
-  { label: "Today", days: 0 },
-  { label: "7d", days: 6 },
-  { label: "30d", days: 29 },
-  { label: "90d", days: 89 },
+  { label: "All", kind: "all" },
+  { label: "Today", kind: "today" },
+  { label: "Week", kind: "week" },
+  { label: "Month", kind: "month" },
+  { label: "Year", kind: "year" },
 ]
 function presetRange(p) {
-  if (p.days == null) return { from: "", to: "" }
-  const from = new Date(); from.setDate(from.getDate() - p.days)
-  return { from: ymd(from), to: ymd(new Date()) }
+  if (!p || p.kind === "all") return { from: "", to: "" }
+  const now = new Date()
+  const to = ymd(now)
+  if (p.kind === "today") return { from: to, to }
+  if (p.kind === "week") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+    return { from: ymd(start), to }
+  }
+  if (p.kind === "month") return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to }
+  if (p.kind === "year") return { from: ymd(new Date(now.getFullYear(), 0, 1)), to }
+  return { from: "", to: "" }
+}
+
+function resetFilters() {
+  stepQuery = ""
+  stepFinish = ""
+  if ($("#step-search")) $("#step-search").value = ""
+  setFilter(
+    { from: "", to: "", ...Object.fromEntries(Object.keys(DIMS).map((d) => [d, ""])) },
+    "All filters reset."
+  )
+}
+
+function setFiltersOpen(open) {
+  const btn = $("#filters-btn")
+  const panel = $("#filters-panel")
+  if (!btn || !panel) return
+  panel.hidden = !open
+  btn.setAttribute("aria-expanded", String(open))
+  if (open) {
+    const firstCtrl = panel.querySelector("input, select")
+    if (firstCtrl) firstCtrl.focus({ preventScroll: true })
+  } else {
+    btn.focus({ preventScroll: true })
+  }
 }
 
 function buildControls() {
+  // Workspace tabs + Left/Right keyboard support
+  $("#nav-tabs").addEventListener("keydown", (e) => {
+    const idx = TABS.indexOf(activeTab)
+    if (e.key === "ArrowRight") { e.preventDefault(); setTab(TABS[(idx + 1) % TABS.length], true) }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); setTab(TABS[(idx - 1 + TABS.length) % TABS.length], true) }
+    else if (e.key === "Home") { e.preventDefault(); setTab(TABS[0], true) }
+    else if (e.key === "End") { e.preventDefault(); setTab(TABS.at(-1), true) }
+  })
+  for (const id of TABS) {
+    $(`#tab-${id}`).addEventListener("click", () => setTab(id))
+  }
+  for (const el of document.querySelectorAll("[data-goto-tab]")) {
+    el.addEventListener("click", () => setTab(el.dataset.gotoTab, true))
+  }
+
   const presets = $("#presets")
-  for (const p of PRESETS) presets.append(h("button", { class: "btn", "data-preset": p.label, onclick: () => setFilter(presetRange(p)) }, p.label))
+  for (const p of PRESETS) {
+    presets.append(h("button", {
+      type: "button", class: "seg-btn", "data-preset": p.label,
+      onclick: () => setFilter(presetRange(p), `Date range set to ${p.label}`),
+    }, p.label))
+  }
   const metrics = $("#metrics")
-  for (const [k, m] of Object.entries(METRICS)) metrics.append(h("button", { class: "btn", "data-metric": k, onclick: () => setFilter({ metric: k }) }, m.label))
-  $("#from").addEventListener("change", (e) => setFilter({ from: e.target.value }))
-  $("#to").addEventListener("change", (e) => setFilter({ to: e.target.value }))
-  for (const d of Object.keys(DIMS)) $(`#f-${d}`).addEventListener("change", (e) => setFilter({ [d]: e.target.value }))
-  $("#reset").addEventListener("click", () => setFilter({ from: "", to: "", ...Object.fromEntries(Object.keys(DIMS).map((d) => [d, ""])) }))
+  for (const [k, m] of Object.entries(METRICS)) {
+    metrics.append(h("button", {
+      type: "button", class: "seg-btn", "data-metric": k,
+      onclick: () => setFilter({ metric: k }, `Measure switched to ${m.label}`),
+    }, m.label))
+  }
+  for (const b of document.querySelectorAll("[data-chart-mode]")) {
+    b.addEventListener("click", () => {
+      chartMode = b.dataset.chartMode
+      for (const x of document.querySelectorAll("[data-chart-mode]")) x.setAttribute("aria-pressed", String(x === b))
+      if (ROWS.length) renderTime(filtered())
+    })
+  }
+
+  $("#from").addEventListener("change", (e) => setFilter({ from: e.target.value }, e.target.value ? `From date ${e.target.value}` : "From date cleared"))
+  $("#to").addEventListener("change", (e) => setFilter({ to: e.target.value }, e.target.value ? `To date ${e.target.value}` : "To date cleared"))
+  for (const d of Object.keys(DIMS)) {
+    $(`#f-${d}`).addEventListener("change", (e) => setFilter({ [d]: e.target.value }, e.target.value ? `Filtered by ${d}` : `Cleared ${d} filter`))
+  }
+  $("#reset").addEventListener("click", resetFilters)
+  $("#reset-inline").addEventListener("click", resetFilters)
+
+  $("#filters-btn").addEventListener("click", () => setFiltersOpen($("#filters-panel").hidden))
+  $("#filters-close").addEventListener("click", () => setFiltersOpen(false))
+
+  $("#step-search").addEventListener("input", (e) => {
+    stepQuery = e.target.value.trim().toLowerCase()
+    if (ROWS.length) renderStepsTable(filtered())
+  })
+
+  $("#insp-close").addEventListener("click", closeInspector)
+  $("#insp-filter").addEventListener("click", () => {
+    if (!inspectedSession) return
+    toggle("session", inspectedSession)
+    renderInspectorBody()
+  })
+  $("#inspector").addEventListener("click", (e) => {
+    if (e.target === $("#inspector")) closeInspector()
+  })
+
   $("#export").addEventListener("click", exportCSV)
+  $("#open-file").addEventListener("click", () => $("#file").click())
+  $("#empty-open").addEventListener("click", () => $("#file").click())
+  $("#reload-data").addEventListener("click", reloadData)
+  $("#empty-reload").addEventListener("click", reloadData)
+  $("#theme-toggle").addEventListener("click", () => {
+    const next = THEMES[(THEMES.indexOf(currentTheme) + 1) % THEMES.length]
+    applyTheme(next)
+    announce(`Theme switched to ${THEME_LABELS[next]}`)
+  })
+
+  // Close Filters popover when clicking outside
+  document.addEventListener("pointerdown", (e) => {
+    const panel = $("#filters-panel")
+    if (!panel.hidden && !e.target.closest(".filters-anchor")) {
+      panel.hidden = true
+      $("#filters-btn").setAttribute("aria-expanded", "false")
+    }
+  })
+
+  // Initial URL hash routing
+  const hashTab = (location.hash || "").replace("#", "")
+  if (TABS.includes(hashTab)) setTab(hashTab)
 }
 
 function optionLabel(dim, g) {
@@ -457,6 +2584,33 @@ function optionLabel(dim, g) {
   return g.key
 }
 
+function renderActiveFilters(matchCount) {
+  const chips = []
+  if (F.from) chips.push({ key: "from", text: `From ${F.from}` })
+  if (F.to) chips.push({ key: "to", text: `To ${F.to}` })
+  for (const d of Object.keys(DIMS)) {
+    if (!F[d]) continue
+    let val = F[d]
+    if (d === "billing") val = BILLING_LABELS[val] ?? val
+    if (d === "model") {
+      const hit = ROWS.find((r) => r.key === val)
+      if (hit) val = `${hit.label} · ${hit.provider}`
+    }
+    chips.push({ key: d, text: `${DIM_LABELS[d]}: ${val}` })
+  }
+  const hasFilter = chips.length > 0
+  $("#reset").disabled = !hasFilter
+  $("#filters-badge").hidden = !hasFilter
+  $("#filters-badge").textContent = String(chips.length)
+  $("#popover-summary").textContent = `${matchCount.toLocaleString()} of ${ROWS.length.toLocaleString()} steps`
+  $("#filter-meta").hidden = !hasFilter
+  $("#filter-count").textContent = hasFilter ? `${matchCount.toLocaleString()} matching steps` : ""
+  $("#active-filters").replaceChildren(...chips.map((c) => h("button", {
+    type: "button", class: "chip", "aria-label": `Remove filter ${c.text}`,
+    onclick: () => setFilter({ [c.key]: "" }, `Removed ${c.text} filter`),
+  }, h("span", {}, c.text), h("span", { "aria-hidden": "true" }, "×"))))
+}
+
 function syncControls() {
   for (const b of document.querySelectorAll("[data-preset]")) {
     const r = presetRange(PRESETS.find((p) => p.label === b.dataset.preset))
@@ -465,6 +2619,8 @@ function syncControls() {
   for (const b of document.querySelectorAll("[data-metric]")) b.setAttribute("aria-pressed", String(b.dataset.metric === F.metric))
   $("#from").value = F.from
   $("#to").value = F.to
+  $("#from").classList.toggle("active", !!F.from)
+  $("#to").classList.toggle("active", !!F.to)
   for (const [d, fn] of Object.entries(DIMS)) {
     const sel = $(`#f-${d}`)
     const groups = group(filtered(d), fn).sort(d === "session" ? (a, b) => b.first - a.first : (a, b) => b.cost - a.cost || b.steps - a.steps)
@@ -474,7 +2630,7 @@ function syncControls() {
     sel.replaceChildren(...opts)
     sel.value = F[d]
     sel.classList.toggle("active", !!F[d])
-    sel.closest(".group").hidden = d !== "session" && !F[d] && groups.length < 2 // nothing to choose
+    $(`#grp-${d}`).hidden = d !== "session" && !F[d] && groups.length < 2
   }
 }
 
@@ -488,10 +2644,9 @@ function showTip(x, y, title, lines) {
   )
   tip.hidden = false
   const w = tip.offsetWidth, ht = tip.offsetHeight
-  tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px"
-  tip.style.top = (y + ht + 20 > innerHeight ? y - ht - 10 : y + 14) + "px"
+  tip.style.left = Math.max(8, Math.min(x + 14, innerWidth - w - 8)) + "px"
+  tip.style.top = Math.max(8, (y + ht + 20 > innerHeight ? y - ht - 10 : y + 14)) + "px"
 }
-// Same tooltip on pointer hover and keyboard focus.
 function hover(el, content) {
   el.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, ...content()))
   el.addEventListener("pointerleave", () => (tip.hidden = true))
@@ -499,46 +2654,125 @@ function hover(el, content) {
   el.addEventListener("blur", () => (tip.hidden = true))
 }
 
-// ---------- KPIs ----------
-// Spend of the current calendar month under the tool/billing/... filters (not the date range).
+// ---------- 4-Card Hero Summary Strip (always fits on 1 desktop row) ----------
 function monthTile() {
   const now = new Date()
   const first = ymd(new Date(now.getFullYear(), now.getMonth(), 1))
   const spent = filtered(undefined, { dates: false }).filter((r) => r.day >= first).reduce((a, r) => a + r.cost, 0)
   const daysIn = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const projected = (spent / now.getDate()) * daysIn
-  const limit = Number(CONFIG().monthlyLimitUSD) || 0
-  if (!limit) return ["This month", fmtUSD(spent), `projected ${fmtUSD(projected)} · set monthlyLimitUSD in config.js`]
-  const share = spent / limit
-  return ["This month", fmtUSD(spent),
-    h("div", { class: "meter", title: `${fmtPct(share)} of the monthly limit` }, h("b", { class: share >= 1 ? "over" : share >= 0.8 ? "warn" : null, style: { width: `${Math.min(share, 1) * 100}%` } })),
-    `${fmtPct(share)} of ${fmtUSD(limit)} · projected ${fmtUSD(projected)}`]
+  const limit = monthlyBudgetLimit()
+
+  const goalBtn = h("button", {
+    type: "button", class: "btn btn-sm btn-subtle",
+    onclick: () => { budgetEditing = !budgetEditing; renderKPIs(filtered()) },
+  }, budgetEditing ? "Cancel" : limit ? "Edit goal" : "Set goal")
+
+  const kids = [
+    h("div", { class: "kpi-top" }, h("span", { class: "label" }, "Monthly pace"), goalBtn),
+    h("div", { class: "value" }, fmtUSD(spent)),
+  ]
+  if (budgetEditing) {
+    const inp = h("input", {
+      type: "number", min: "1", step: "5", value: limit ? String(limit) : "50",
+      "aria-label": "Monthly budget USD",
+    })
+    const save = () => {
+      const val = Number(inp.value)
+      customBudgetUSD = val > 0 ? val : null
+      try {
+        if (customBudgetUSD) localStorage.setItem("gw-budget-usd", String(customBudgetUSD))
+        else localStorage.removeItem("gw-budget-usd")
+      } catch {}
+      budgetEditing = false
+      renderKPIs(filtered())
+    }
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") save() })
+    kids.push(h("div", { class: "budget-inline" },
+      inp,
+      h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: save }, "Save"),
+      customBudgetUSD ? h("button", {
+        type: "button", class: "btn btn-sm",
+        onclick: () => {
+          customBudgetUSD = null
+          try { localStorage.removeItem("gw-budget-usd") } catch {}
+          budgetEditing = false
+          renderKPIs(filtered())
+        },
+      }, "Reset") : null))
+  } else if (limit) {
+    const share = spent / limit
+    kids.push(
+      h("div", {
+        class: "meter", role: "progressbar",
+        "aria-label": "Monthly budget usage",
+        "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(share * 100)),
+      }, h("b", { class: share >= 1 ? "over" : share >= 0.8 ? "warn" : null, style: { width: `${Math.min(share, 1) * 100}%` } })),
+      h("div", { class: "sub" }, `${fmtPct(share)} of ${fmtUSD(limit)} · proj. ${fmtUSD(projected)}`)
+    )
+  } else {
+    kids.push(h("div", { class: "sub" }, `Projected ${fmtUSD(projected)} by month-end`))
+  }
+  return h("div", { class: "kpi" }, ...kids)
 }
 
 function renderKPIs(rows) {
   const g = group(rows, () => "all")[0]
+  if (!g) {
+    $("#kpis").replaceChildren(
+      h("div", { class: "kpi" },
+        h("div", { class: "kpi-top" }, h("span", { class: "label" }, "Total spend")),
+        h("div", { class: "value" }, "$0"),
+        h("div", { class: "sub" }, "No steps match current filters")),
+      monthTile(),
+      h("div", { class: "kpi" }, h("span", { class: "label" }, "Calls & sessions"), h("div", { class: "value" }, "0"), h("div", { class: "sub" }, "Adjust filters to view")),
+      h("div", { class: "kpi" }, h("span", { class: "label" }, "Cache & efficiency"), h("div", { class: "value" }, "–"), h("div", { class: "sub" }, "No token data")),
+    )
+    return
+  }
+
   const days = new Set(rows.map((r) => r.day)).size
-  const promptTok = g ? g.tok.input + g.tok.cache_read + g.tok.cache_write : 0
-  // OpenCode's own cost figure only exists for OpenCode steps.
-  const oc = group(rows.filter((r) => r.tool === "opencode"), () => "oc")[0]
+  const promptTok = g.tok.input + g.tok.cache_read + g.tok.cache_write
   const bills = group(rows, (r) => r.billing).sort((a, b) => b.cost - a.cost)
-  const costSub = bills.length > 1 ? bills.map((b) => `${b.key} ${fmtUSD(b.cost)}`).join(" · ")
-    : oc && Math.abs(oc.reported - oc.cost) > 1e-6 ? `OpenCode reports ${fmtUSD(oc.reported)} for its steps`
-    : `${days} active day${days === 1 ? "" : "s"} · ${fmtUSD(g?.cost / days || 0)}/day`
-  const tiles = g ? [
-    ["Total cost", fmtUSD(g.cost), costSub],
-    monthTile(),
-    ["Steps", fmtNum(g.steps), `${fmtUSD(g.cost / g.steps)} per step`],
-    ["Sessions", fmtNum(g.sessions.size), `${fmtUSD(g.cost / g.sessions.size)} per session`],
-    ["Tokens", fmtNum(g.tokens), `${fmtNum(promptTok)} prompt · ${fmtNum(g.tok.output + g.tok.reasoning)} completion`],
-    ["Cache hit rate", promptTok ? fmtPct(g.tok.cache_read / promptTok) : "–", "prompt tokens served from cache"],
-    ["Effective price", g.tokens ? fmtUSD((g.cost / g.tokens) * 1e6) : "–", "per 1M tokens, all types"],
-  ] : [["Total cost", "$0", "no steps match the filters"], monthTile()]
-  $("#kpis").replaceChildren(...tiles.map(([l, v, ...extra]) => h("div", { class: "kpi" }, h("div", { class: "label" }, l), h("div", { class: "value" }, v),
-    ...extra.map((x) => (x instanceof Node ? x : h("div", { class: "sub" }, x))))))
+  const splitBar = g.cost > 0 && bills.length > 1
+    ? h("div", { class: "split-bar", "aria-hidden": "true" }, ...bills.filter((b) => b.cost > 0).map((b) =>
+      h("span", { style: { flex: `${b.cost} 1 0`, background: BILLING_COLORS[b.key] ?? "var(--other)" } })))
+    : null
+  const spendSub = bills.length > 1
+    ? bills.map((b) => `${b.key} ${fmtUSD(b.cost)}`).join(" · ")
+    : `${days} active day${days === 1 ? "" : "s"} · ${fmtUSD(g.cost / (days || 1))}/day`
+
+  const spendCard = h("div", { class: "kpi" },
+    h("div", { class: "kpi-top" }, h("span", { class: "label" }, "Total spend")),
+    h("div", { class: "value" }, fmtUSD(g.cost)),
+    splitBar,
+    h("div", { class: "sub" }, spendSub),
+  )
+
+  const volumeCard = h("div", { class: "kpi" },
+    h("div", { class: "kpi-top" }, h("span", { class: "label" }, "Calls & sessions")),
+    h("div", { class: "kpi-pair" },
+      h("div", { class: "value" }, fmtNum(g.steps), h("span", { class: "unit" }, "steps")),
+      h("div", { class: "value" }, fmtNum(g.sessions.size), h("span", { class: "unit" }, "sessions")),
+    ),
+    h("div", { class: "sub" }, `${fmtUSD(g.cost / g.steps)}/step · ${fmtUSD(g.cost / g.sessions.size)}/session`),
+  )
+
+  const hitRate = promptTok ? fmtPct(g.tok.cache_read / promptTok) : "–"
+  const cachePill = g.cacheSaved > 0.005 ? h("span", { class: "pill-stat" }, `Saved ${fmtUSD(g.cacheSaved)}`) : null
+  const effCard = h("div", { class: "kpi" },
+    h("div", { class: "kpi-top" }, h("span", { class: "label" }, "Cache & efficiency"), cachePill),
+    h("div", { class: "kpi-pair" },
+      h("div", { class: "value" }, hitRate, h("span", { class: "unit" }, "cache")),
+      h("div", { class: "value" }, fmtNum(g.tokens), h("span", { class: "unit" }, "tok")),
+    ),
+    h("div", { class: "sub" }, g.tokens ? `${fmtUSD((g.cost / g.tokens) * 1e6)} per 1M tok · ${fmtNum(promptTok)} prompt` : "No tokens"),
+  )
+
+  $("#kpis").replaceChildren(spendCard, monthTile(), volumeCard, effCard)
 }
 
-// ---------- time chart (stacked columns per model) ----------
+// ---------- time chart (stacked columns + cumulative area curve) ----------
 function bucketing(rows) {
   const lo = F.from ? parseDay(F.from).getTime() : rows[0].t
   const hi = F.to ? parseDay(F.to).getTime() + 864e5 - 1 : rows.at(-1).t
@@ -573,7 +2807,6 @@ function niceTicks(max, n = 4) {
   return ticks
 }
 
-// Column path with rounded top (4px) and square base.
 function colPath(x, y, w, hgt, r) {
   r = Math.min(r, w / 2, hgt)
   return `M${x},${y + hgt}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + hgt}Z`
@@ -583,11 +2816,16 @@ function renderTime(rows) {
   const box = $("#time")
   const m = metric()
   $("#time-title").textContent = { cost: "Spend over time", tokens: "Tokens over time", steps: "Steps over time" }[F.metric]
-  if (!rows.length) { box.replaceChildren(h("div", { class: "nodata" }, "No steps match the filters")); $("#time-legend").replaceChildren(); $("#period-table").replaceChildren(); return }
+  if (!rows.length) {
+    $("#time-sub").textContent = ""
+    box.replaceChildren(h("div", { class: "nodata" }, "No steps match the filters"))
+    $("#time-legend").replaceChildren()
+    $("#period-table").replaceChildren(h("div", { class: "nodata" }, "No periods to display"))
+    return
+  }
   const { unit, keys, keyOf } = bucketing(rows)
-  $("#time-sub").textContent = `per ${unit}, stacked by model`
+  $("#time-sub").textContent = chartMode === "cumulative" ? `cumulative per ${unit}` : `per ${unit}, stacked by model`
 
-  // Series: models with a color slot; the long tail folds into "Other".
   const series = new Map()
   for (const r of rows) {
     const c = colorOf.get(r.key)
@@ -599,44 +2837,87 @@ function renderTime(rows) {
     s.by.set(k, (s.by.get(k) ?? 0) + v)
   }
   const list = [...series.values()].sort((a, b) => (a.key === "__other") - (b.key === "__other") || b.total - a.total)
-  $("#time-legend").replaceChildren(...(list.length > 1 ? list.map((s) => h("span", {}, h("i", { style: { background: s.color } }), s.label)) : []))
+  $("#time-legend").replaceChildren(...(chartMode === "stacked" && list.length > 1
+    ? list.map((s) => h("span", {}, h("i", { style: { background: s.color } }), s.label))
+    : []))
 
   const totals = keys.map((k) => list.reduce((a, s) => a + (s.by.get(k) ?? 0), 0))
-  const ticks = niceTicks(Math.max(...totals))
+  const cumTotals = []
+  totals.reduce((acc, v, i) => (cumTotals[i] = acc + v), 0)
+
+  const activeMax = chartMode === "cumulative" ? Math.max(...cumTotals) : Math.max(...totals)
+  const ticks = niceTicks(activeMax)
   const yMax = ticks.at(-1)
-  const W = Math.max(320, box.clientWidth), H = 260, ml = 58, mr = 8, mt = 8, mb = 26
+  const W = Math.max(340, box.clientWidth || 680), H = 280, ml = 64, mr = 12, mt = 10, mb = 30
   const pw = W - ml - mr, ph = H - mt - mb
   const step = pw / keys.length
-  const bw = Math.max(1, Math.min(48, step * 0.72))
+  const bw = Math.max(2, Math.min(48, step * 0.7))
   const y = (v) => mt + ph - (v / yMax) * ph
-  const svg = h("svg:svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": `${m.label} per ${unit}` })
+  const svg = h("svg:svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": `${m.label} per ${unit} ${chartMode} chart` })
 
   for (const t of ticks) {
     svg.append(h("svg:line", { x1: ml, x2: W - mr, y1: y(t), y2: y(t), stroke: t === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }))
-    svg.append(h("svg:text", { x: ml - 6, y: y(t) + 4, "text-anchor": "end" }, m.fmt(t)))
+    svg.append(h("svg:text", { x: ml - 8, y: y(t) + 4, "text-anchor": "end" }, m.fmt(t)))
   }
-  const every = Math.ceil(keys.length / Math.max(2, Math.floor(pw / 72)))
-  keys.forEach((k, i) => {
-    const cx = ml + step * i + step / 2
-    if (i % every === 0) svg.append(h("svg:text", { x: cx, y: H - 8, "text-anchor": "middle" }, unit === "hour" ? k.slice(11) : k.slice(5)))
-    let acc = 0
-    const segs = list.map((s) => ({ s, v: s.by.get(k) ?? 0 })).filter((x) => x.v > 0)
-    segs.forEach(({ s, v }, j) => {
-      const y0 = y(acc), y1 = y(acc + v)
-      acc += v
-      const top = j === segs.length - 1
-      const hgt = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0)) // 2px surface gap between stacked segments
-      if (hgt <= 0) return
-      svg.append(top ? h("svg:path", { d: colPath(cx - bw / 2, y1, bw, hgt, 4), fill: s.color })
-        : h("svg:rect", { x: cx - bw / 2, y: y1, width: bw, height: hgt, fill: s.color }))
+
+  const every = Math.ceil(keys.length / Math.max(2, Math.floor(pw / 82)))
+
+  if (chartMode === "cumulative") {
+    const grad = h("svg:linearGradient", { id: "cum-fill", x1: "0", y1: "0", x2: "0", y2: "1" },
+      h("svg:stop", { offset: "0%", "stop-color": "var(--accent)", "stop-opacity": "0.28" }),
+      h("svg:stop", { offset: "100%", "stop-color": "var(--accent)", "stop-opacity": "0.01" }))
+    svg.append(h("svg:defs", {}, grad))
+
+    const pts = keys.map((_, i) => [ml + step * i + step / 2, y(cumTotals[i])])
+    const lineD = pts.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ")
+    const areaD = `${lineD} L${pts.at(-1)[0].toFixed(1)},${y(0).toFixed(1)} L${pts[0][0].toFixed(1)},${y(0).toFixed(1)} Z`
+    svg.append(h("svg:path", { d: areaD, fill: "url(#cum-fill)" }))
+    svg.append(h("svg:path", { d: lineD, fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-linecap": "round" }))
+
+    keys.forEach((k, i) => {
+      const [cx, cy] = pts[i]
+      if (i % every === 0) svg.append(h("svg:text", { x: cx, y: H - 8, "text-anchor": "middle" }, unit === "hour" ? k.slice(11) : k.slice(5)))
+      if (totals[i] > 0) svg.append(h("svg:circle", { cx, cy, r: 4, fill: "var(--surface)", stroke: "var(--accent)", "stroke-width": 2 }))
+      const periodTitle = `${unit === "week" ? "Week of " : ""}${k}`
+      const hit = h("svg:rect", {
+        class: "hit", x: ml + step * i, y: mt, width: step, height: ph, tabindex: 0,
+        role: "graphics-symbol", "aria-label": `${periodTitle}: cumulative ${m.fmt(cumTotals[i])}, period ${m.fmt(totals[i])}`,
+      })
+      hover(hit, () => [
+        periodTitle,
+        [["var(--accent)", m.fmt(cumTotals[i]), "cumulative"], [null, m.fmt(totals[i]), `this ${unit}`]],
+      ])
+      svg.append(hit)
     })
-    const hit = h("svg:rect", { class: "hit", x: ml + step * i, y: mt, width: step, height: ph, tabindex: totals[i] ? 0 : -1 })
-    hover(hit, () => [
-      `${unit === "week" ? "Week of " : ""}${k} · total ${m.fmt(totals[i])}`,
-      segs.length ? segs.slice().reverse().map(({ s, v }) => [s.color, m.fmt(v), s.label]) : [[null, "–", "no usage"]],
-    ])
-    svg.append(hit)
-  })
+  } else {
+    keys.forEach((k, i) => {
+      const cx = ml + step * i + step / 2
+      if (i % every === 0) svg.append(h("svg:text", { x: cx, y: H - 8, "text-anchor": "middle" }, unit === "hour" ? k.slice(11) : k.slice(5)))
+      let acc = 0
+      const segs = list.map((s) => ({ s, v: s.by.get(k) ?? 0 })).filter((x) => x.v > 0)
+      segs.forEach(({ s, v }, j) => {
+        const y0 = y(acc), y1 = y(acc + v)
+        acc += v
+        const top = j === segs.length - 1
+        const hgt = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0))
+        if (hgt <= 0) return
+        svg.append(top ? h("svg:path", { d: colPath(cx - bw / 2, y1, bw, hgt, 5), fill: s.color })
+          : h("svg:rect", { x: cx - bw / 2, y: y1, width: bw, height: hgt, fill: s.color }))
+      })
+      const periodTitle = `${unit === "week" ? "Week of " : ""}${k}`
+      const hit = h("svg:rect", {
+        class: "hit", x: ml + step * i, y: mt, width: step, height: ph,
+        tabindex: totals[i] ? 0 : -1,
+        role: totals[i] ? "graphics-symbol" : null,
+        "aria-label": totals[i] ? `${periodTitle}: ${m.fmt(totals[i])}` : null,
+      })
+      hover(hit, () => [
+        `${periodTitle} · total ${m.fmt(totals[i])}`,
+        segs.length ? segs.slice().reverse().map(({ s, v }) => [s.color, m.fmt(v), s.label]) : [[null, "–", "no usage"]],
+      ])
+      svg.append(hit)
+    })
+  }
   box.replaceChildren(svg)
 
   const periods = group(rows, (r) => keyOf(r.t)).sort((a, b) => b.key.localeCompare(a.key))
@@ -646,10 +2927,10 @@ function renderTime(rows) {
     { label: "Sessions", get: (g) => g.sessions.size, num: true },
     { label: "Tokens", get: (g) => g.tokens, fmt: fmtNum, num: true },
     { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
-  ], periods, { sort: 0, dir: -1 })
+  ], periods, { sort: 0, dir: -1, caption: "Usage summary by period" })
 }
 
-// ---------- horizontal bar lists ----------
+// ---------- horizontal bar lists & spotlight ----------
 function renderBars(box, groups, { label, sub, color, dim, limit = 12 }) {
   const m = metric()
   const total = groups.reduce((a, g) => a + m.of(g), 0)
@@ -658,9 +2939,14 @@ function renderBars(box, groups, { label, sub, color, dim, limit = 12 }) {
   const shown = groups.slice(0, limit)
   box.replaceChildren(...(shown.length ? shown.map((g) => {
     const v = m.of(g)
-    const row = h("button", { class: "bar-row" + (F[dim] === g.key ? " selected" : ""), onclick: () => toggle(dim, g.key), "aria-pressed": String(F[dim] === g.key) },
+    const row = h("button", {
+      type: "button",
+      class: "bar-row" + (F[dim] === g.key ? " selected" : ""),
+      onclick: () => toggle(dim, g.key),
+      "aria-pressed": String(F[dim] === g.key),
+    },
       h("span", { class: "bar-name" }, label(g), sub ? h("small", {}, sub(g)) : null),
-      h("span", { class: "track" }, h("b", { style: { width: `${(v / max) * 100}%`, background: color(g) } })),
+      h("span", { class: "track", "aria-hidden": "true" }, h("b", { style: { width: `${(v / max) * 100}%`, background: color(g) } })),
       h("span", { class: "bar-val" }, m.fmt(v), h("small", {}, total ? fmtPct(v / total) : "")))
     hover(row, () => [label(g), [
       [null, fmtUSD(g.cost), "cost"], [null, fmtNum(g.tokens), "tokens"], [null, fmtNum(g.steps), "steps"],
@@ -668,52 +2954,138 @@ function renderBars(box, groups, { label, sub, color, dim, limit = 12 }) {
     ]])
     return row
   }) : [h("div", { class: "nodata" }, "No data")]),
-  ...(groups.length > limit ? [h("div", { class: "sub" }, `+ ${groups.length - limit} more in the Models table`)] : []))
+  ...(groups.length > limit ? [h("div", { class: "sub" }, `+ ${groups.length - limit} more in Attribution`)] : []))
 }
 
-// ---------- cost composition by token type ----------
+function renderSpotlight(rows) {
+  const models = group(rows, (r) => r.key)
+  renderBars($("#spot-models"), models, {
+    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => colorOf.get(g.key), dim: "model", limit: 5,
+  })
+  const m = metric()
+  const tools = group(rows, (r) => r.tool).sort((a, b) => m.of(b) - m.of(a))
+  $("#spot-tools").replaceChildren(...tools.map((g) => h("button", {
+    type: "button", class: "tool-pill",
+    "aria-pressed": String(F.tool === g.key),
+    onclick: () => toggle("tool", g.key),
+  }, h("span", { class: "swatch", style: { background: toolColor(g.key) } }), g.key, h("span", { class: "sub" }, m.fmt(m.of(g))))))
+}
+
+// ---------- token economics ----------
 function renderMix(rows) {
   const byCost = F.metric === "cost"
   const types = byCost ? [...TOKEN_TYPES, UNPRICED] : TOKEN_TYPES
   const val = (g, k) => (byCost ? g.parts[k] : g.tok[k] ?? 0)
-  const fmt = byCost ? fmtUSD : fmtNum
-  $("#mix-title").textContent = byCost ? "What the money pays for" : "Token mix"
-  $("#mix-sub").textContent = byCost ? "Cost split by token type (reasoning is billed at the output price)" : "Tokens by type"
+  $("#mix-title").textContent = byCost ? "Token Economics" : "Token Mix"
+  $("#mix-sub").textContent = "Spend and token volume across input, output, reasoning & prompt cache"
+  $("#mix-basis").textContent = byCost ? "Bars sized by cost ($)" : "Bars sized by tokens"
   const all = group(rows, () => "all")[0]
   const present = all ? types.filter((t) => val(all, t.key) > 0) : []
-  $("#mix-legend").replaceChildren(...present.map((t) => h("span", {}, h("i", { style: { background: t.color } }), t.label)))
   const sum = (g) => present.reduce((a, t) => a + val(g, t.key), 0)
-  if (!all || !sum(all)) {
-    $("#mix-all").replaceChildren(); $("#mix-models").replaceChildren(h("div", { class: "nodata" }, byCost ? "No cost in this selection (only free models?) — switch Measure to Tokens" : "No data"))
+  const total = all ? sum(all) : 0
+  if (!all || !total) {
+    $("#mix-breakdown").replaceChildren()
+    $("#mix-all").replaceChildren()
+    $("#mix-models").replaceChildren(h("div", { class: "nodata" }, byCost ? "No metered spend in this selection — switch Measure to Tokens" : "No data"))
     return
   }
-  const total = sum(all)
-  const tipFor = (g, name) => () => [`${name} · ${fmt(sum(g))}`, present.filter((t) => val(g, t.key) > 0).map((t) => [t.color, fmt(val(g, t.key)), `${t.label} · ${fmtPct(val(g, t.key) / sum(g))}`])]
-  $("#mix-all").replaceChildren(...present.map((t) => {
-    const share = val(all, t.key) / total
-    const seg = h("b", { style: { flex: `${share} 1 0`, background: t.color }, tabindex: 0 }, share > 0.08 ? `${t.label} ${fmtPct(share)}` : "")
-    hover(seg, tipFor(all, "All models"))
-    return seg
+
+  const totalCost = all.cost || 0
+  const totalTok = all.tokens || 0
+  $("#mix-breakdown").replaceChildren(...present.map((t) => {
+    const costV = all.parts[t.key] ?? 0
+    const costPct = totalCost > 0 ? fmtPct(costV / totalCost) : "0%"
+    if (t.key === "unpriced") {
+      return h("div", { class: "mix-stat" },
+        h("div", { class: "mix-stat-head" }, h("i", { style: { background: t.color } }), t.label),
+        h("div", { class: "mix-stat-val" }, `${fmtUSD(costV)} · ${costPct}`),
+        h("div", { class: "mix-stat-sub" }, "Direct provider cost"))
+    }
+    const tokV = all.tok[t.key] ?? 0
+    const tokPct = totalTok > 0 ? fmtPct(tokV / totalTok) : "0%"
+    const primary = byCost ? `${fmtUSD(costV)} · ${costPct}` : `${fmtNum(tokV)} tok · ${tokPct}`
+    const secondary = byCost ? `${fmtNum(tokV)} tok · ${tokPct}` : `${fmtUSD(costV)} · ${costPct}`
+    return h("div", { class: "mix-stat" },
+      h("div", { class: "mix-stat-head" }, h("i", { style: { background: t.color } }), t.label),
+      h("div", { class: "mix-stat-val" }, primary),
+      h("div", { class: "mix-stat-sub" }, secondary))
   }))
+
+  const tipFor = (g, name) => () => [
+    `${name} · ${fmtUSD(g.cost)} · ${fmtNum(g.tokens)} tok`,
+    present.filter((t) => val(g, t.key) > 0).map((t) => {
+      const sG = sum(g) || 1
+      const cV = g.parts[t.key] ?? 0
+      const label = t.key === "unpriced"
+        ? t.label
+        : `${t.label} · ${fmtUSD(cV)} · ${fmtNum(g.tok[t.key] ?? 0)} tok`
+      return [t.color, fmtPct(val(g, t.key) / sG), label]
+    }),
+  ]
+
+  const mixStrip = h("div", { class: "mix", role: "group", "aria-label": "All models breakdown" },
+    ...present.map((t) => {
+      const share = val(all, t.key) / total
+      const costStr = fmtUSD(all.parts[t.key] ?? 0)
+      const tokStr = t.key === "unpriced" ? "" : ` · ${fmtNum(all.tok[t.key] ?? 0)} tok`
+      const seg = h("button", {
+        type: "button",
+        class: "mix-seg",
+        style: { flex: `${share} 1 0`, "--seg-bg": t.color, "--seg-ink": t.ink },
+        "aria-label": `${t.label}: ${fmtPct(share)} (${costStr}${tokStr})`,
+      }, share > 0.08 ? `${t.label} ${fmtPct(share)}` : "")
+      hover(seg, tipFor(all, "All models"))
+      return seg
+    }))
+
+  $("#mix-all").replaceChildren(
+    h("div", { class: "mix-row mix-total-row" },
+      h("span", { class: "bar-name" }, "All models", h("small", {}, `${all.models.size} model${all.models.size === 1 ? "" : "s"} · ${fmtNum(all.steps)} step${all.steps === 1 ? "" : "s"}`)),
+      mixStrip,
+      h("span", { class: "bar-val" },
+        byCost ? fmtUSD(all.cost) : `${fmtNum(all.tokens)} tok`,
+        h("small", {}, byCost ? `100% · ${fmtNum(all.tokens)} tok` : `100% · ${fmtUSD(all.cost)}`))))
+
   const models = group(rows, (r) => r.key).filter((g) => sum(g) > 0).sort((a, b) => sum(b) - sum(a))
   const max = sum(models[0])
-  $("#mix-models").replaceChildren(...models.slice(0, 10).map((g) => {
+  $("#mix-models").replaceChildren(...models.slice(0, 6).map((g) => {
     const s = sum(g)
-    const row = h("button", { class: "bar-row" + (F.model === g.key ? " selected" : ""), onclick: () => toggle("model", g.key) },
-      h("span", { class: "bar-name" }, g.rows[0].label),
-      h("span", { class: "track" }, h("span", { style: { display: "flex", gap: "2px", width: `${(s / max) * 100}%` } },
-        ...present.filter((t) => val(g, t.key) > 0).map((t) => h("b", { style: { flex: `${val(g, t.key)} 1 0`, background: t.color } })))),
-      h("span", { class: "bar-val" }, fmt(s), h("small", {}, fmtPct(s / total))))
+    const row = h("button", {
+      type: "button",
+      class: "bar-row mix-row" + (F.model === g.key ? " selected" : ""),
+      onclick: () => toggle("model", g.key),
+      "aria-pressed": String(F.model === g.key),
+    },
+      h("span", { class: "bar-name" }, g.rows[0].label, h("small", {}, `${g.rows[0].provider} · ${fmtNum(g.steps)} step${g.steps === 1 ? "" : "s"}`)),
+      h("span", { class: "track track-multi", "aria-hidden": "true" },
+        h("span", { style: { display: "flex", gap: "2px", height: "100%", width: `${(s / max) * 100}%`, borderRadius: "5px", overflow: "hidden" } },
+          ...present.filter((t) => val(g, t.key) > 0).map((t) => h("b", { style: { flex: `${val(g, t.key)} 1 0`, background: t.color } })))),
+      h("span", { class: "bar-val" },
+        byCost ? fmtUSD(s) : `${fmtNum(s)} tok`,
+        h("small", {}, byCost ? `${fmtPct(s / total)} · ${fmtNum(g.tokens)} tok` : `${fmtPct(s / total)} · ${fmtUSD(g.cost)}`)))
     hover(row, tipFor(g, g.rows[0].label))
     return row
   }))
 }
 
-// ---------- weekday x hour heatmap ----------
+// ---------- heatmap ----------
 function renderHeat(rows) {
+  $("#heat-scale").replaceChildren("less", ...[1, 2, 3, 4, 5, 6, 7].map((i) => h("i", { style: { background: `var(--h${i})` } })), "more")
+  if (!rows.length) {
+    $("#heat-sub").textContent = "Local time, by weekday and hour"
+    $("#heat").replaceChildren(h("div", { class: "nodata", style: { gridColumn: "1 / -1" } }, "No activity in this selection"))
+    return
+  }
   const m = metric()
   const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ v: 0, steps: 0, cost: 0 })))
-  for (const r of rows) { const c = cells[r.wd][r.hour]; c.v += rowValue(r); c.steps++; c.cost += r.cost }
+  let peak = { v: 0, wd: 0, hr: 0 }
+  for (const r of rows) {
+    const c = cells[r.wd][r.hour]
+    c.v += rowValue(r); c.steps++; c.cost += r.cost
+    if (c.v > peak.v) peak = { v: c.v, wd: r.wd, hr: r.hour }
+  }
+  $("#heat-sub").textContent = `Local time · peak on ${WEEKDAYS[peak.wd]} at ${pad(peak.hr)}:00 (${m.fmt(peak.v)})`
+
   const max = Math.max(...cells.flat().map((c) => c.v))
   const level = (v) => (v > 0 && max > 0 ? Math.max(1, Math.ceil((v / max) * 7)) : 0)
   const sumOf = (list) => list.reduce((a, c) => ({ v: a.v + c.v, steps: a.steps + c.steps, cost: a.cost + c.cost }), { v: 0, steps: 0, cost: 0 })
@@ -729,7 +3101,6 @@ function renderHeat(rows) {
 
   const hourLabels = Array.from({ length: 24 }, (_, hr) => h("span", { class: "hl" + (hr % 6 ? " minor" : "") }, hr % 3 === 0 ? pad(hr) : ""))
   const dayLabels = WEEKDAYS.map((d) => h("span", { class: "wl" }, d))
-  // Crosshair: the hovered cell lights up its weekday and hour labels.
   const mark = (wd, hr, on) => { if (wd != null) dayLabels[wd].classList.toggle("on", on); if (hr != null) hourLabels[hr - (hr % 3)].classList.toggle("on", on) }
   const cross = (el, wd, hr) => {
     el.addEventListener("pointerenter", () => mark(wd, hr, true)); el.addEventListener("pointerleave", () => mark(wd, hr, false))
@@ -741,84 +3112,214 @@ function renderHeat(rows) {
     kids.push(dayLabels[wd])
     row.forEach((c, hr) => {
       const lv = level(c.v)
-      const cell = h("span", { class: "cell", tabindex: c.steps ? 0 : -1, style: lv ? { background: `var(--h${lv})` } : {} })
-      hover(cell, () => [`${WEEKDAYS[wd]} ${pad(hr)}:00–${pad(hr)}:59`, lines(c)])
+      if (!c.steps) {
+        kids.push(h("span", { class: "cell zero", "aria-hidden": "true" }))
+        return
+      }
+      const title = `${WEEKDAYS[wd]} ${pad(hr)}:00–${pad(hr)}:59`
+      const cell = h("button", {
+        type: "button", class: "cell",
+        style: lv ? { background: `var(--h${lv})` } : {},
+        "aria-label": `${title}: ${m.fmt(c.v)}, ${fmtNum(c.steps)} steps`,
+      })
+      hover(cell, () => [title, lines(c)])
       cross(cell, wd, hr)
       kids.push(cell)
     })
-    const tot = h("span", { class: "tot", tabindex: dayTot[wd].steps ? 0 : -1 }, dayTot[wd].v ? m.fmt(dayTot[wd].v) : "–")
-    hover(tot, () => [`All ${WEEKDAYS[wd]}s`, lines(dayTot[wd])])
-    cross(tot, wd, null)
-    kids.push(tot)
+    if (!dayTot[wd].steps) {
+      kids.push(h("span", { class: "tot zero" }, "–"))
+    } else {
+      const tot = h("button", {
+        type: "button", class: "tot",
+        "aria-label": `All ${WEEKDAYS[wd]}s: ${m.fmt(dayTot[wd].v)}, ${fmtNum(dayTot[wd].steps)} steps`,
+      }, dayTot[wd].v ? m.fmt(dayTot[wd].v) : "–")
+      hover(tot, () => [`All ${WEEKDAYS[wd]}s`, lines(dayTot[wd])])
+      cross(tot, wd, null)
+      kids.push(tot)
+    }
   })
   kids.push(h("span", { class: "corner" }, "hour"))
   hourTot.forEach((c, hr) => {
-    const bar = h("span", { class: "hbar", tabindex: c.steps ? 0 : -1 }, h("b", { style: { height: `${(c.v / hourMax) * 100}%` } }))
-    hover(bar, () => [`${pad(hr)}:00–${pad(hr)}:59, all days`, lines(c)])
+    if (!c.steps) {
+      kids.push(h("span", { class: "hbar zero", "aria-hidden": "true" }))
+      return
+    }
+    const title = `${pad(hr)}:00–${pad(hr)}:59, all days`
+    const bar = h("button", {
+      type: "button", class: "hbar",
+      "aria-label": `${title}: ${m.fmt(c.v)}, ${fmtNum(c.steps)} steps`,
+    }, h("b", { style: { height: `${(c.v / hourMax) * 100}%` } }))
+    hover(bar, () => [title, lines(c)])
     cross(bar, null, hr)
     kids.push(bar)
   })
   kids.push(h("span"))
   $("#heat").replaceChildren(...kids)
-  $("#heat-scale").replaceChildren("less", ...[1, 2, 3, 4, 5, 6, 7].map((i) => h("i", { style: { background: `var(--h${i})` } })), "more")
+}
+
+// ---------- Session Inspector Drawer ----------
+let lastFocusedBeforeInspector = null
+
+function openInspector(sessionKey, triggerEl) {
+  inspectedSession = sessionKey
+  lastFocusedBeforeInspector = triggerEl || document.activeElement
+  renderInspectorBody()
+  $("#inspector").hidden = false
+  if ("inert" in $("main")) $("main").inert = true
+  $("#insp-close").focus({ preventScroll: true })
+  announce(`Opened inspector for session ${sessionKey}`)
+}
+
+function closeInspector() {
+  if ($("#inspector").hidden) return
+  $("#inspector").hidden = true
+  if ("inert" in $("main")) $("main").inert = false
+  inspectedSession = null
+  if (lastFocusedBeforeInspector && typeof lastFocusedBeforeInspector.focus === "function") {
+    lastFocusedBeforeInspector.focus({ preventScroll: true })
+  }
+}
+
+function renderInspectorBody() {
+  if (!inspectedSession) return
+  const sRows = ROWS.filter((r) => r.session === inspectedSession)
+  const g = group(sRows, () => inspectedSession)[0]
+  if (!g) { closeInspector(); return }
+
+  $("#insp-title").textContent = `Session · ${inspectedSession}`
+  $("#insp-sub").textContent = `${fmtTime(g.first)} → ${fmtTime(g.last)} (${fmtDur(g.last - g.first)}) · ${g.rows[0].tool}`
+  $("#insp-filter").textContent = F.session === inspectedSession ? "Clear session filter" : "Filter dashboard to session"
+  $("#insp-filter").classList.toggle("btn-primary", F.session === inspectedSession)
+
+  const promptTok = g.tok.input + g.tok.cache_read + g.tok.cache_write
+  const summary = h("dl", { class: "insp-metrics" },
+    h("div", { class: "insp-stat" }, h("dt", {}, "Session Cost"), h("dd", {}, fmtUSD(g.cost))),
+    h("div", { class: "insp-stat" }, h("dt", {}, "Steps"), h("dd", {}, fmtNum(g.steps))),
+    h("div", { class: "insp-stat" }, h("dt", {}, "Tokens"), h("dd", {}, fmtNum(g.tokens))),
+    h("div", { class: "insp-stat" }, h("dt", {}, "Cache Hit"), h("dd", {}, promptTok ? fmtPct(g.tok.cache_read / promptTok) : "–")),
+  )
+
+  const feed = h("div", { class: "step-feed" }, ...sRows.map((r, i) =>
+    h("article", { class: "step-card" },
+      h("div", { class: "step-top" },
+        h("div", { class: "step-meta" },
+          h("strong", {}, `#${i + 1} · ${r.label}`),
+          h("span", {}, r.agentName),
+          r.finish ? h("span", {}, `finish: ${r.finish}`) : null,
+        ),
+        h("strong", {}, fmtUSD(r.cost)),
+      ),
+      h("div", { class: "step-meta" },
+        h("span", {}, fmtTime(r.t)),
+        h("span", {}, `in ${fmtNum(r.tok.input)}`),
+        h("span", {}, `out ${fmtNum(r.tok.output)}`),
+        r.tok.reasoning ? h("span", {}, `reason ${fmtNum(r.tok.reasoning)}`) : null,
+        r.tok.cache_read ? h("span", {}, `cache read ${fmtNum(r.tok.cache_read)}`) : null,
+      ),
+    )))
+
+  $("#insp-body").replaceChildren(summary, h("h3", {}, "Chronological Turns"), feed)
 }
 
 // ---------- sortable tables ----------
 const sortState = {}
-function table(box, id, cols, data, { sort = 0, dir = -1, limit, onRow, rowTitle } = {}) {
+let pendingSortFocus = null
+
+function table(box, id, cols, data, { sort = 0, dir = -1, limit, onRow, rowTitle, caption } = {}) {
+  if (!data.length) {
+    box.replaceChildren(h("div", { class: "nodata" }, "No rows match the current filters"))
+    return
+  }
   const st = (sortState[id] ??= { col: sort, dir })
   const c = cols[st.col]
   const sorted = data.slice().sort((a, b) => {
     const x = c.get(a), y = c.get(b)
     return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * st.dir
   })
-  const head = h("tr", {}, ...cols.map((col, i) => h("th", {
-    class: col.num ? "num" : null, scope: "col", tabindex: 0,
-    "aria-sort": i === st.col ? (st.dir < 0 ? "descending" : "ascending") : null,
-    onclick: () => { st.dir = st.col === i ? -st.dir : col.num ? -1 : 1; st.col = i; render() },
-    onkeydown: (e) => { if (e.key === "Enter") e.target.click() },
-  }, col.label)))
+  const sortButtons = []
+  const head = h("tr", {}, ...cols.map((col, i) => {
+    const active = i === st.col
+    const dirName = st.dir < 0 ? "descending" : "ascending"
+    const arrow = active ? (st.dir < 0 ? " ↓" : " ↑") : ""
+    const btn = h("button", {
+      type: "button", class: "sort-btn",
+      "aria-label": `Sort by ${col.label}${active ? `, currently ${dirName}` : ""}`,
+      onclick: () => {
+        st.dir = st.col === i ? -st.dir : col.num ? -1 : 1
+        st.col = i
+        pendingSortFocus = { id, col: i }
+        render()
+        announce(`Sorted ${id} by ${col.label} ${st.dir < 0 ? "descending" : "ascending"}.`)
+      },
+    }, col.label, arrow ? h("span", { "aria-hidden": "true" }, arrow) : null)
+    sortButtons.push(btn)
+    return h("th", {
+      class: col.num ? "num" : null, scope: "col",
+      "aria-sort": active ? dirName : null,
+    }, btn)
+  }))
+
   const body = (limit ? sorted.slice(0, limit) : sorted).map((d) => h("tr", {
-    class: onRow ? "click" : null, onclick: onRow ? () => onRow(d) : null, title: rowTitle?.(d),
-  }, ...cols.map((col) => h("td", { class: col.num ? "num" : null }, col.cell ? col.cell(d) : col.fmt ? col.fmt(col.get(d)) : col.get(d)))))
-  box.replaceChildren(h("table", {}, h("thead", {}, head), h("tbody", {}, ...body)))
+    class: onRow ? "click" : null,
+    title: rowTitle?.(d),
+    onclick: onRow ? (e) => {
+      if (e.target.closest("button") || window.getSelection()?.toString()) return
+      onRow(d, e.currentTarget)
+    } : null,
+  }, ...cols.map((col, ci) => {
+    const content = col.cell ? col.cell(d) : col.fmt ? col.fmt(col.get(d)) : col.get(d)
+    if (onRow && ci === 0) {
+      return h("td", { class: col.num ? "num" : null }, h("button", {
+        type: "button", class: "row-btn",
+        "aria-label": rowTitle ? rowTitle(d) : `Select ${col.get(d)}`,
+        onclick: (e) => onRow(d, e.currentTarget),
+      }, content))
+    }
+    return h("td", { class: col.num ? "num" : null }, content)
+  })))
+
+  box.replaceChildren(h("table", {}, caption ? h("caption", { class: "visually-hidden" }, caption) : null, h("thead", {}, head), h("tbody", {}, ...body)))
+  if (pendingSortFocus && pendingSortFocus.id === id) {
+    const btn = sortButtons[pendingSortFocus.col]
+    pendingSortFocus = null
+    if (btn) btn.focus({ preventScroll: true })
+  }
 }
 
 const modelCell = (key, label) => [h("span", { class: "dot", style: { background: colorOf.get(key) } }), label]
 
-function renderTables(rows) {
-  const sessions = group(rows, (r) => r.session)
-  table($("#sessions"), "sessions", [
-    { label: "Started", get: (g) => g.first, fmt: fmtTime },
-    { label: "Tool", get: (g) => g.rows[0].tool },
-    { label: "Duration", get: (g) => g.last - g.first, fmt: fmtDur, num: true },
-    { label: "Steps", get: (g) => g.steps, num: true },
-    { label: "Models", get: (g) => [...g.models].map((k) => ROWS.find((r) => r.key === k)?.label ?? k).join(", ") },
-    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
-  ], sessions, { sort: 5, limit: 12, onRow: (g) => toggle("session", g.key), rowTitle: (g) => g.key })
+function renderStepsTable(baseRows) {
+  const finishes = [...new Set(baseRows.map((r) => r.finish).filter(Boolean))].sort()
+  if (stepFinish && !finishes.includes(stepFinish)) stepFinish = ""
+  $("#finish-pills").replaceChildren(
+    ...(finishes.length > 1 ? [
+      h("button", {
+        type: "button", class: "chip", "aria-pressed": String(!stepFinish),
+        onclick: () => { stepFinish = ""; renderStepsTable(baseRows) },
+      }, "All finishes"),
+      ...finishes.map((f) => h("button", {
+        type: "button", class: "chip", "aria-pressed": String(stepFinish === f),
+        onclick: () => { stepFinish = stepFinish === f ? "" : f; renderStepsTable(baseRows) },
+      }, f)),
+    ] : [])
+  )
 
-  const models = group(rows, (r) => r.key)
-  const total = models.reduce((a, g) => a + g.cost, 0)
-  const pct = (v) => (v ? fmtPct(v) : "–")
-  table($("#models"), "models", [
-    { label: "Model", get: (g) => g.rows[0].label, cell: (g) => modelCell(g.key, g.rows[0].label) },
-    { label: "Provider", get: (g) => g.rows[0].provider },
-    { label: "Steps", get: (g) => g.steps, fmt: fmtNum, num: true },
-    { label: "Sessions", get: (g) => g.sessions.size, num: true },
-    { label: "Input", get: (g) => g.tok.input, fmt: fmtNum, num: true },
-    { label: "Output", get: (g) => g.tok.output, fmt: fmtNum, num: true },
-    { label: "Reasoning", get: (g) => g.tok.reasoning, fmt: fmtNum, num: true },
-    { label: "Cache read", get: (g) => g.tok.cache_read, fmt: fmtNum, num: true },
-    { label: "Cache write", get: (g) => g.tok.cache_write, fmt: fmtNum, num: true },
-    { label: "Cache hit", get: (g) => g.tok.cache_read / (g.tok.input + g.tok.cache_read + g.tok.cache_write || 1), fmt: pct, num: true },
-    { label: "$ / step", get: (g) => g.cost / g.steps, fmt: fmtUSD, num: true },
-    { label: "$ / 1M tok", get: (g) => (g.tokens ? (g.cost / g.tokens) * 1e6 : 0), fmt: fmtUSD, num: true },
-    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
-    { label: "Share", get: (g) => (total ? g.cost / total : 0), fmt: pct, num: true },
-  ], models, { sort: 12, onRow: (g) => toggle("model", g.key) })
+  const rows = baseRows.filter((r) =>
+    (!stepFinish || r.finish === stepFinish) &&
+    (!stepQuery ||
+      r.label.toLowerCase().includes(stepQuery) ||
+      r.provider.toLowerCase().includes(stepQuery) ||
+      r.tool.toLowerCase().includes(stepQuery) ||
+      r.agentName.toLowerCase().includes(stepQuery) ||
+      r.session.toLowerCase().includes(stepQuery) ||
+      r.finish.toLowerCase().includes(stepQuery))
+  )
 
-  const LIMIT = 300
-  $("#steps-sub").textContent = rows.length > LIMIT ? `Showing ${LIMIT} of ${rows.length.toLocaleString()} — Export CSV for all` : `${rows.length.toLocaleString()} steps`
+  const LIMIT = 500
+  $("#steps-sub").textContent = rows.length > LIMIT
+    ? `Showing ${LIMIT} of ${rows.length.toLocaleString()} matching steps — Export CSV for full history`
+    : `${rows.length.toLocaleString()} steps`
+
   table($("#steps"), "steps", [
     { label: "Time", get: (r) => r.t, fmt: fmtTime },
     { label: "Model", get: (r) => r.label, cell: (r) => modelCell(r.key, r.label) },
@@ -831,7 +3332,43 @@ function renderTables(rows) {
     { label: "Cache read", get: (r) => r.tok.cache_read, fmt: fmtNum, num: true },
     { label: "Cache write", get: (r) => r.tok.cache_write, fmt: fmtNum, num: true },
     { label: "Cost", get: (r) => r.cost, fmt: fmtUSD, num: true },
-  ], rows, { sort: 0, limit: LIMIT, onRow: (r) => toggle("session", r.session), rowTitle: (r) => `session ${r.session} — click to filter` })
+  ], rows, { sort: 0, limit: LIMIT, onRow: (r, el) => openInspector(r.session, el), rowTitle: (r) => `Inspect session ${r.session}`, caption: "Individual AI gateway steps" })
+}
+
+function renderTables(rows) {
+  const sessions = group(rows, (r) => r.session)
+  const pct = (v) => (v ? fmtPct(v) : "–")
+  table($("#sessions"), "sessions", [
+    { label: "Started", get: (g) => g.first, fmt: fmtTime },
+    { label: "Tool", get: (g) => g.rows[0].tool },
+    { label: "Duration", get: (g) => g.last - g.first, fmt: fmtDur, num: true },
+    { label: "Steps", get: (g) => g.steps, num: true },
+    { label: "Cache hit", get: (g) => g.tok.cache_read / (g.tok.input + g.tok.cache_read + g.tok.cache_write || 1), fmt: pct, num: true },
+    { label: "Models", get: (g) => [...g.models].map((k) => ROWS.find((r) => r.key === k)?.label ?? k).join(", ") },
+    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
+  ], sessions, { sort: 6, limit: 50, onRow: (g, el) => openInspector(g.key, el), rowTitle: (g) => `Inspect session ${g.key}`, caption: "Sessions explorer" })
+
+  const models = group(rows, (r) => r.key)
+  const total = models.reduce((a, g) => a + g.cost, 0)
+  table($("#models"), "models", [
+    { label: "Model", get: (g) => g.rows[0].label, cell: (g) => modelCell(g.key, g.rows[0].label) },
+    { label: "Provider", get: (g) => g.rows[0].provider },
+    { label: "Steps", get: (g) => g.steps, fmt: fmtNum, num: true },
+    { label: "Sessions", get: (g) => g.sessions.size, num: true },
+    { label: "Input", get: (g) => g.tok.input, fmt: fmtNum, num: true },
+    { label: "Output", get: (g) => g.tok.output, fmt: fmtNum, num: true },
+    { label: "Reasoning", get: (g) => g.tok.reasoning, fmt: fmtNum, num: true },
+    { label: "Cache read", get: (g) => g.tok.cache_read, fmt: fmtNum, num: true },
+    { label: "Cache write", get: (g) => g.tok.cache_write, fmt: fmtNum, num: true },
+    { label: "Cache hit", get: (g) => g.tok.cache_read / (g.tok.input + g.tok.cache_read + g.tok.cache_write || 1), fmt: pct, num: true },
+    { label: "Cache saved", get: (g) => g.cacheSaved, fmt: fmtUSD, num: true },
+    { label: "$ / step", get: (g) => g.cost / g.steps, fmt: fmtUSD, num: true },
+    { label: "$ / 1M tok", get: (g) => (g.tokens ? (g.cost / g.tokens) * 1e6 : 0), fmt: fmtUSD, num: true },
+    { label: "Cost", get: (g) => g.cost, fmt: fmtUSD, num: true },
+    { label: "Share", get: (g) => (total ? g.cost / total : 0), fmt: pct, num: true },
+  ], models, { sort: 13, onRow: (g) => toggle("model", g.key), rowTitle: (g) => `Filter by model ${g.rows[0].label}`, caption: "Models performance ledger" })
+
+  renderStepsTable(rows)
 }
 
 // ---------- export ----------
@@ -843,6 +3380,7 @@ function exportCSV() {
   const a = h("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `gateway-usage-${F.from || "all"}-${F.to || "now"}.csv` })
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  announce(`Exported ${rows.length.toLocaleString()} steps to CSV.`)
 }
 
 // ---------- render ----------
@@ -851,8 +3389,10 @@ function render() {
   tip.hidden = true
   syncControls()
   const rows = filtered()
+  renderActiveFilters(rows.length)
   renderKPIs(rows)
   renderTime(rows)
+  renderSpotlight(rows)
   renderBars($("#by-model"), group(rows, (r) => r.key), {
     label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => colorOf.get(g.key), dim: "model",
   })
@@ -870,38 +3410,137 @@ function render() {
   renderTables(rows)
 }
 
+// ---------- sticky state & observers ----------
+function syncStickyMetrics() {
+  const shell = $("#dock-shell")
+  if (!shell) return
+  document.documentElement.style.setProperty("--sticky-h", `${shell.offsetHeight}px`)
+}
+
+function setupStickyWatcher() {
+  const sentinel = $(".dock-sentinel")
+  const shell = $("#dock-shell")
+  if (!sentinel || !shell || typeof IntersectionObserver === "undefined") return
+  new IntersectionObserver(
+    ([entry]) => shell.classList.toggle("is-stuck", !entry.isIntersecting && entry.boundingClientRect.top < 12),
+    { threshold: [0, 1], rootMargin: "-10px 0px 0px 0px" }
+  ).observe(sentinel)
+  new ResizeObserver(() => syncStickyMetrics()).observe(shell)
+}
+
 // ---------- boot ----------
+applyTheme(currentTheme)
 buildControls()
+setupStickyWatcher()
+
 let resizeTimer
-new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => ROWS.length && renderTime(filtered()), 100) }).observe($("main"))
+new ResizeObserver(() => {
+  clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => ROWS.length && activeTab === "overview" && renderTime(filtered()), 100)
+}).observe($("main"))
+
+let lastLoadedFile = null
+let isReloading = false
 
 async function loadFile(file) {
-  if (file) load(await file.text(), file.name)
+  if (!file) return
+  lastLoadedFile = file
+  load(await file.text(), file.name)
 }
-$("#file").addEventListener("change", (e) => loadFile(e.target.files[0]))
-addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging") })
-addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.body.classList.remove("dragging") })
-addEventListener("drop", (e) => { e.preventDefault(); document.body.classList.remove("dragging"); loadFile(e.dataTransfer.files[0]) })
+$("#file").addEventListener("change", (e) => {
+  const f = e.target.files[0]
+  e.target.value = ""
+  loadFile(f)
+})
 
-// The writers keep window.GATEWAY_USAGE_LOG = "<usage.jsonl text>" in ~/.gateway-cost/usage-log.js,
-// and config.js there holds window.GATEWAY_CONFIG. <script> tags may read local files (fetch
-// may not). Try next to this page (the copy in ~/.gateway-cost), then the default folder seen
-// from ~/.config/opencode/plugins/ai-gateway/.
+function setDragging(on) {
+  document.body.classList.toggle("dragging", on)
+  $("#drop-sheet").hidden = !on
+}
+addEventListener("dragover", (e) => { e.preventDefault(); setDragging(true) })
+addEventListener("dragleave", (e) => { if (!e.relatedTarget) setDragging(false) })
+addEventListener("drop", (e) => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]) })
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    tip.hidden = true
+    setDragging(false)
+    if (!$("#inspector").hidden) closeInspector()
+    else if (!$("#filters-panel").hidden) setFiltersOpen(false)
+  }
+})
+
 const DATA_DIRS = ["", "../../../../.gateway-cost/"]
-function loadData(i = 0) {
-  if (i >= DATA_DIRS.length) return
+function loadData(i = 0, bustCache = false, onDone = null, backup = null) {
+  if (i === 0) {
+    backup = { log: window.GATEWAY_USAGE_LOG, cfg: window.GATEWAY_CONFIG }
+    for (const el of document.querySelectorAll("[data-gw-loader]")) el.remove?.()
+    window.GATEWAY_USAGE_LOG = undefined
+    window.GATEWAY_CONFIG = undefined
+  }
+  if (i >= DATA_DIRS.length) {
+    if (ROWS.length && backup) {
+      window.GATEWAY_USAGE_LOG = backup.log
+      window.GATEWAY_CONFIG = backup.cfg
+    }
+    if (bustCache) {
+      announce(ROWS.length ? "Could not refetch usage-log.js; keeping loaded data." : "No usage data found.")
+      if (!ROWS.length) $("#source").textContent = "No usage-log.js found yet"
+    }
+    onDone?.(false)
+    return
+  }
   const dir = DATA_DIRS[i]
+  const q = bustCache ? `?t=${Date.now()}` : ""
   document.body.append(h("script", {
-    src: dir + "usage-log.js",
+    "data-gw-loader": "1",
+    src: dir + "usage-log.js" + q,
     onload: () => {
-      if (typeof window.GATEWAY_USAGE_LOG !== "string") return loadData(i + 1)
-      // Optional settings; the page works without them.
-      const show = () => load(window.GATEWAY_USAGE_LOG, dir + "usage-log.js")
-      document.body.append(h("script", { src: dir + "config.js", onload: show, onerror: show }))
+      if (typeof window.GATEWAY_USAGE_LOG !== "string") return loadData(i + 1, bustCache, onDone, backup)
+      lastLoadedFile = null
+      const show = () => {
+        load(window.GATEWAY_USAGE_LOG, dir + "usage-log.js")
+        onDone?.(true)
+      }
+      document.body.append(h("script", { "data-gw-loader": "1", src: dir + "config.js" + q, onload: show, onerror: show }))
     },
-    onerror: () => loadData(i + 1),
+    onerror: () => loadData(i + 1, bustCache, onDone, backup),
   }))
 }
+
+async function reloadData() {
+  if (isReloading) return
+  isReloading = true
+  const btn = $("#reload-data")
+  const emptyBtn = $("#empty-reload")
+  const label = btn?.querySelector("span")
+  if (btn) btn.disabled = true
+  if (emptyBtn) emptyBtn.disabled = true
+  if (label) label.textContent = "Reloading…"
+  announce("Reloading usage data…")
+
+  const finish = (ok = true) => {
+    isReloading = false
+    if (btn) btn.disabled = false
+    if (emptyBtn) emptyBtn.disabled = false
+    if (label) {
+      label.textContent = ok ? "Reloaded" : "Reload"
+      if (ok) setTimeout(() => { if (!isReloading && label) label.textContent = "Reload" }, 1400)
+    }
+  }
+
+  if (lastLoadedFile) {
+    try {
+      const text = await lastLoadedFile.text()
+      load(text, lastLoadedFile.name)
+      finish(true)
+      return
+    } catch {
+      lastLoadedFile = null
+    }
+  }
+  loadData(0, true, finish)
+}
+
 loadData()
 </script>
 </body>
