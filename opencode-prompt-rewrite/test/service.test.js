@@ -1,143 +1,449 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { createService } from "../service.js"
+import { resolveGatewaySettings } from "../usage.js"
 
-const first = { providerID: "example", id: "alpha", variant: "medium" }
-const second = { providerID: "other", id: "beta" }
-const input = { sessionID: "ses_test", text: "fix only failing tests", requestID: "test-request-0001" }
-
-async function fixture(t, options = {}) {
-  const calls = []
-  let session = { id: "ses_test", model: { ...first }, time: { busy: 0, idle: 1 } }
-  const models = [{ ...first, variants: [{ id: "medium" }] }, { ...second, variants: [] }]
-  let reply = { text: JSON.stringify({ rewritten_prompt: "Fix only the failing tests.", recommendation: { route_id: "r2", reason: "Another available model." }, warnings: [] }) }
-  const ctx = {
-    options: options.pluginOptions ?? {}, location: { directory: "/project" },
-    session: {
-      get: async () => structuredClone(session), context: async () => [],
-      create: async (v) => { calls.push(["create", v]); session = { ...session, id: "ses_created", model: v.model }; return structuredClone(session) },
-      switchModel: async (v) => { calls.push(["switch", v]); session.model = v.model },
-      prompt: async (v) => { calls.push(["prompt", v]) },
+const GRILL_JSON = JSON.stringify({
+  diagnosis: "Auth flow and test expectations are ambiguous.",
+  missing_angles: ["Auth mechanism", "Regression test expectation"],
+  ready_without_questions: false,
+  questions: [
+    {
+      id: "q1",
+      question: "Which auth path is broken?",
+      why: "OAuth vs session cookies require different fixes.",
+      options: [
+        { id: "a", label: "OAuth callback", detail: "Token exchange and redirect" },
+        { id: "b", label: "Session middleware", detail: "Cookie verification" },
+      ],
     },
-    model: { list: async () => models, default: async () => first },
-    experimental: { generate: { text: async (request, requestOptions) => {
-      calls.push(["generate", request, requestOptions])
-      return reply
-    } } },
+  ],
+})
+
+const REWRITE_JSON = JSON.stringify({
+  rewritten_prompt: "Diagnose the 401 failure in OAuth callback handling and add an integration test.",
+  improvements: ["Pinned OAuth callback scope", "Added integration test requirement"],
+  recommendation: {
+    route_id: "r1",
+    variant: "high",
+    task_tier: "deep_reasoning",
+    reason: "High reasoning effort fits multi-file auth debugging.",
+    alternative: {
+      route_id: "r2",
+      reason: "Faster option if only checking logs.",
+    },
+  },
+  warnings: [],
+})
+
+function fixture({ busy = false, sessionModel, modelsList, gatewaySettings, generate, onProgress } = {}) {
+  let activeModel = sessionModel ?? { providerID: "openai", id: "gpt-4o-mini" }
+  const prompts = []
+  const switches = []
+  const created = []
+  const calls = []
+  const progressEvents = []
+  const sessions = new Map([["ses_test", { id: "ses_test", title: "Auth bug", model: activeModel, time: busy ? { busy: 2, idle: 1 } : { busy: 1, idle: 2 } }]])
+  sessions.set("ses_other", { id: "ses_other", title: "Other window", model: activeModel, time: { busy: 1, idle: 2 } })
+
+  const ctx = {
+    options: {},
+    location: { directory: "/repo" },
+    session: {
+      get: async ({ sessionID }) => {
+        const s = sessions.get(sessionID)
+        if (!s) throw new Error("missing session")
+        return { ...s, model: activeModel }
+      },
+      context: async () => [{ type: "user", text: "login returns 401 after OAuth redirect" }],
+      create: async ({ location, model }) => {
+        const next = { id: "ses_home_1", location, model, time: { busy: 1, idle: 2 } }
+        created.push(next)
+        activeModel = model
+        sessions.set(next.id, next)
+        return next
+      },
+      switchModel: async ({ model }) => {
+        switches.push(model)
+        activeModel = model
+      },
+      prompt: async (args) => prompts.push(args),
+    },
+    model: {
+      default: async () => ({ providerID: "openai", id: "gpt-4o-mini" }),
+      list: async () =>
+        modelsList ?? [
+          { providerID: "anthropic", id: "claude-opus-4", name: "Claude Opus", variants: ["medium", "high"], capabilities: { reasoning: true } },
+          { providerID: "openai", id: "gpt-4o-mini", name: "GPT-4o mini" },
+          { providerID: "disabled", id: "old", enabled: false, name: "Disabled" },
+        ],
+    },
+    experimental: {
+      generate: {
+        text: async (args, opts) => {
+          calls.push(args)
+          return generate ? generate(args, opts) : { text: REWRITE_JSON }
+        },
+      },
+    },
   }
-  const service = await createService(ctx, options.serviceOptions)
-  t.after(() => service.dispose())
-  return { service, calls, ctx, models, session, setReply: (value) => { reply = value } }
+
+  return createService(ctx, {
+    timeoutMs: 2000,
+    gatewaySettings,
+    onProgress: (ev) => {
+      progressEvents.push(ev)
+      onProgress?.(ev)
+    },
+  }).then((service) => ({
+    service,
+    ctx,
+    prompts,
+    switches,
+    created,
+    calls,
+    progressEvents,
+    sessions,
+    setModel: (m) => { activeModel = m },
+    setBusy: (b) => {
+      const s = sessions.get("ses_test")
+      sessions.set("ses_test", { ...s, time: b ? { busy: 5, idle: 1 } : { busy: 1, idle: 5 } })
+    },
+  }))
 }
 
-test("proposal uses the current model without adding a chat turn", async (t) => {
-  const f = await fixture(t)
-  const result = await f.service.propose(input)
-  assert.equal(result.model, "example/alpha#medium")
-  assert.deepEqual(f.calls[0][1].model, first)
-  assert.match(f.calls[0][1].prompt, /fix only failing tests/)
-  assert.deepEqual(f.calls.map(([type]) => type), ["generate"])
-  await assert.rejects(f.service.propose(input), /already used/)
-  await f.service.submit({ resultID: result.id, text: result.text, applyRoute: false })
-  assert.equal(f.calls[1][0], "prompt")
-  await assert.rejects(f.service.submit({ resultID: result.id, text: result.text, applyRoute: false }), /expired/)
-})
-
-test("configured default and request override select independently from the working model", async (t) => {
-  const f = await fixture(t, { pluginOptions: { model: "other/beta" } })
-  const result = await f.service.propose(input)
-  assert.deepEqual(f.calls[0][1].model, second)
-  assert.equal(result.model, "other/beta")
-  const override = await f.service.propose({ ...input, requestID: "test-request-0002", model: "example/alpha#medium" })
-  assert.equal(override.model, "example/alpha#medium")
-  assert.deepEqual(f.session.model, first)
-})
-
-test("invalid or unavailable models fail without generation", async (t) => {
-  await assert.rejects(createService({ options: { model: "broken" } }), /provider\/model/)
-  const f = await fixture(t)
-  await assert.rejects(f.service.propose({ ...input, model: "broken" }), /provider\/model/)
-  await assert.rejects(f.service.propose({ ...input, model: "other/missing" }), /unavailable/)
-  assert.deepEqual(f.calls, [])
-})
-
-test("explicit recommendation switches before sending", async (t) => {
-  const f = await fixture(t)
-  const result = await f.service.propose(input)
-  assert.deepEqual(result.route, second)
-  await f.service.submit({ resultID: result.id, text: result.text, applyRoute: true })
-  assert.deepEqual(f.calls.map(([kind]) => kind), ["generate", "switch", "prompt"])
-})
-
-test("changed model, busy session, and edited text prevent model mutation", async (t) => {
-  const f = await fixture(t)
-  const result = await f.service.propose(input)
-  await assert.rejects(f.service.submit({ resultID: result.id, text: "different", applyRoute: true }), /fresh/)
-  f.session.model = second
-  await assert.rejects(f.service.submit({ resultID: result.id, text: result.text, applyRoute: true }), /changed/)
-  f.session.model = first
-  f.session.time.busy = 2
-  await assert.rejects(f.service.submit({ resultID: result.id, text: result.text, applyRoute: true }), /busy/)
-  const sent = await f.service.submit({ resultID: result.id, text: result.text, applyRoute: false })
-  assert.equal(sent.queued, true)
-  assert.equal(f.calls.at(-1)[1].delivery, "queue")
-})
-
-test("bad output and provider errors do not submit or expose details", async (t) => {
-  const f = await fixture(t)
-  f.setReply({ text: "not json" })
-  await assert.rejects(f.service.propose(input), /invalid JSON/)
-  f.ctx.experimental.generate.text = async () => { throw new Error("private credential") }
-  await assert.rejects(f.service.propose({ ...input, requestID: "test-request-0002" }), (error) => !error.message.includes("private credential") && /failed/.test(error.message))
-  assert.deepEqual(f.calls.map(([kind]) => kind), ["generate"])
-})
-
-test("cancellation passes an abort signal and never admits a prompt", async (t) => {
-  const f = await fixture(t)
-  let started
-  const ready = new Promise((resolve) => { started = resolve })
-  f.ctx.experimental.generate.text = async (_request, { signal }) => new Promise((_resolve, reject) => {
-    started(); signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+test("grill -> rewrite with answers -> refine flow builds context and emits progress events", async () => {
+  let step = 0
+  const f = await fixture({
+    generate: async () => ({ text: step++ === 0 ? GRILL_JSON : REWRITE_JSON }),
   })
-  const job = f.service.propose(input)
-  await ready
-  assert.equal(f.service.cancel({ requestID: input.requestID }).cancelled, true)
-  await assert.rejects(job, /cancelled or timed out/)
-  assert.deepEqual(f.calls, [])
+
+  const grillResult = await f.service.grill({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "fix auth",
+    requestID: "req_grill_1",
+  })
+  assert.equal(grillResult.questions.length, 1)
+  assert.equal(grillResult.diagnosis, "Auth flow and test expectations are ambiguous.")
+  assert.equal(grillResult.availableModels.length, 2)
+
+  const rewriteResult = await f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "fix auth",
+    grillID: "req_grill_1",
+    answers: [{ questionID: "q1", question: "Which auth path is broken?", selectedLabels: ["OAuth callback"], customText: "Keep JWT untouched" }],
+    requestID: "req_rew_1",
+  })
+  assert.deepEqual(rewriteResult.route, { providerID: "anthropic", id: "claude-opus-4", variant: "high" })
+  assert.ok(f.calls[1].prompt.includes("OAuth callback"))
+  assert.ok(f.calls[1].prompt.includes("Keep JWT untouched"))
+
+  await f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "fix auth",
+    previousRewrite: rewriteResult.text,
+    refineInstruction: "Add negative test cases for expired tokens",
+    requestID: "req_ref_1",
+  })
+  assert.ok(f.calls[2].prompt.includes("Add negative test cases for expired tokens"))
+
+  const phases = f.progressEvents.map((e) => `${e.status}:${e.phase}`)
+  assert.ok(phases.includes("running:grilling"))
+  assert.ok(phases.includes("questions:awaiting_answers"))
+  assert.ok(phases.includes("running:rewriting"))
+  assert.ok(phases.includes("running:refining"))
+  assert.ok(phases.includes("ready:ready"))
 })
 
-test("home screen creates no session until explicit acceptance", async (t) => {
-  const f = await fixture(t)
-  f.ctx.session.get = async () => { throw new Error("No session exists") }
-  f.ctx.session.context = async () => { throw new Error("No context exists") }
-  const result = await f.service.propose({ text: input.text, requestID: input.requestID, currentModel: first })
-  assert.equal(result.sessionID, null)
-  assert.deepEqual(f.calls.map(([type]) => type), ["generate"])
-  const sent = await f.service.submit({ resultID: result.id, text: result.text, applyRoute: true })
-  assert.equal(sent.sessionID, "ses_created")
-  assert.deepEqual(f.calls.map(([type]) => type), ["generate", "create", "prompt"])
-  assert.deepEqual(f.calls[1][1].model, second)
+test("runs concurrently across different target windows while guarding same window", async () => {
+  let releaseFirst
+  const firstBarrier = new Promise((r) => { releaseFirst = r })
+  const f = await fixture({
+    generate: async (args) => {
+      if (args.prompt.includes("first window")) await firstBarrier
+      return { text: REWRITE_JSON }
+    },
+  })
+
+  const first = f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "first window prompt",
+    requestID: "req_win_1",
+  })
+  await new Promise((r) => setTimeout(r, 15))
+
+  const snap = f.service.jobs()
+  assert.equal(snap.active.length, 1)
+  assert.equal(snap.active[0].targetKey, "session:ses_test")
+
+  await assert.rejects(
+    f.service.rewrite({ targetKey: "session:ses_test", sessionID: "ses_test", text: "dup", requestID: "req_win_dup" }),
+    /already running for this window/,
+  )
+
+  const second = await f.service.rewrite({
+    targetKey: "session:ses_other",
+    sessionID: "ses_other",
+    text: "second window prompt",
+    requestID: "req_win_2",
+  })
+  assert.equal(second.targetKey, "session:ses_other")
+
+  releaseFirst()
+  const finished = await first
+  assert.equal(finished.targetKey, "session:ses_test")
+  assert.equal(f.service.jobs().active.length, 0)
 })
 
-test("failed first prompt reuses the created session on retry", async (t) => {
-  const f = await fixture(t)
-  const result = await f.service.propose({ text: input.text, requestID: input.requestID, currentModel: first })
-  let attempts = 0
-  const prompt = f.ctx.session.prompt
-  f.ctx.session.prompt = async (v) => { if (++attempts === 1) throw new Error("offline"); return prompt(v) }
-  await assert.rejects(f.service.submit({ resultID: result.id, text: result.text, applyRoute: false }), /ses_created/)
-  await f.service.submit({ resultID: result.id, text: result.text, applyRoute: false })
-  assert.equal(f.calls.filter(([type]) => type === "create").length, 1)
+test("cancel aborts in-flight generation by targetKey or requestID", async () => {
+  const f = await fixture({
+    generate: async (_args, { signal }) => new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+    }),
+  })
+
+  const promise = f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "slow prompt",
+    requestID: "req_cancel_1",
+  })
+  await new Promise((r) => setTimeout(r, 10))
+  assert.deepEqual(f.service.cancel({ targetKey: "session:ses_test" }), { cancelled: true })
+  assert.deepEqual(f.service.cancel({ requestID: "unknown" }), { cancelled: false })
+  await assert.rejects(promise, /cancelled or timed out/)
+  assert.ok(f.progressEvents.some((e) => e.status === "cancelled" && e.requestID === "req_cancel_1"))
 })
 
-test("concurrent acceptance is single-use", async (t) => {
-  const f = await fixture(t)
-  const result = await f.service.propose(input)
-  let release
-  f.ctx.session.get = () => new Promise((resolve) => { release = () => resolve(f.session) })
-  const accepted = f.service.submit({ resultID: result.id, text: result.text, applyRoute: false })
-  await assert.rejects(f.service.submit({ resultID: result.id, text: result.text, applyRoute: false }), /already being/)
-  release()
-  await accepted
-  assert.equal(f.calls.filter(([kind]) => kind === "prompt").length, 1)
+test("submit allows edited prompt text and explicit selectedModel override, enforces safety guards", async () => {
+  const f = await fixture()
+  const proposal = await f.service.propose({
+    sessionID: "ses_test",
+    text: "fix auth",
+    requestID: "req_sub_1",
+  })
+
+  const edited = "Edited prompt with extra constraint."
+  const chosen = { providerID: "anthropic", id: "claude-opus-4", variant: "medium" }
+  const submitted = await f.service.submit({
+    resultID: proposal.id,
+    text: edited,
+    applyRoute: true,
+    selectedModel: chosen,
+  })
+  assert.deepEqual(submitted, { sessionID: "ses_test", queued: false, switched: true })
+  assert.deepEqual(f.switches[0], chosen)
+  assert.equal(f.prompts[0].text, edited)
+
+  await assert.rejects(
+    f.service.submit({ resultID: proposal.id, text: edited, applyRoute: false }),
+    /expired/,
+  )
+})
+
+test("submit guards against busy session or model change when applying route", async () => {
+  const f = await fixture()
+  const p1 = await f.service.rewrite({ sessionID: "ses_test", text: "fix", requestID: "req_busy_1" })
+  f.setBusy(true)
+  await assert.rejects(
+    f.service.submit({ resultID: p1.id, text: p1.text, applyRoute: true }),
+    /session is busy/i,
+  )
+  const queuedOk = await f.service.submit({ resultID: p1.id, text: p1.text, applyRoute: false })
+  assert.equal(queuedOk.queued, true)
+  assert.equal(queuedOk.switched, false)
+
+  f.setBusy(false)
+  const p2 = await f.service.rewrite({ sessionID: "ses_test", text: "fix 2", requestID: "req_mut_1" })
+  f.setModel({ providerID: "anthropic", id: "claude-opus-4" })
+  await assert.rejects(
+    f.service.submit({ resultID: p2.id, text: p2.text, applyRoute: true }),
+    /session model changed/,
+  )
+})
+
+test("start screen stays stateless until submit and retry reuses created session on failure", async () => {
+  const f = await fixture()
+  const proposal = await f.service.rewrite({
+    text: "build feature x",
+    requestID: "req_home_1",
+  })
+  assert.equal(f.created.length, 0)
+  assert.equal(proposal.sessionID, null)
+
+  let failOnce = true
+  f.ctx.session.prompt = async (args) => {
+    if (failOnce) {
+      failOnce = false
+      throw new Error("rpc hiccup")
+    }
+    f.prompts.push(args)
+  }
+
+  await assert.rejects(
+    f.service.submit({ resultID: proposal.id, text: proposal.text, applyRoute: true }),
+    /New session: ses_home_1; retrying this proposal reuses it/,
+  )
+  assert.equal(f.created.length, 1)
+
+  const retried = await f.service.submit({ resultID: proposal.id, text: proposal.text, applyRoute: true })
+  assert.equal(retried.sessionID, "ses_home_1")
+  assert.equal(f.created.length, 1)
+  assert.equal(f.prompts.length, 1)
+})
+
+function assertStrictJson(value, path = "$") {
+  assert.notEqual(value, undefined, `Unexpected undefined at ${path}`)
+  if (value === null) return
+  if (typeof value === "string" || typeof value === "boolean") return
+  if (typeof value === "number") {
+    assert.ok(Number.isFinite(value), `Non-finite number at ${path}`)
+    return
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => assertStrictJson(item, `${path}[${i}]`))
+    return
+  }
+  if (typeof value === "object") {
+    for (const [k, v] of Object.entries(value)) {
+      assert.notEqual(v, undefined, `Unexpected undefined key at ${path}.${k}`)
+      assertStrictJson(v, `${path}.${k}`)
+    }
+    return
+  }
+  assert.fail(`Invalid JSON type ${typeof value} at ${path}`)
+}
+
+test("models, grill, rewrite, jobs and progress payloads contain only strict JSON values (no undefined)", async () => {
+  let step = 0
+  const f = await fixture({
+    sessionModel: { providerID: "openai", id: "gpt-4o-mini", variant: undefined, extra: undefined },
+    generate: async () => ({ text: step++ === 0 ? GRILL_JSON : REWRITE_JSON }),
+  })
+  assertStrictJson(await f.service.models(), "models")
+  assertStrictJson(
+    await f.service.grill({ targetKey: "session:ses_test", sessionID: "ses_test", text: "fix auth", requestID: "req_json_1" }),
+    "grill",
+  )
+  assertStrictJson(
+    await f.service.rewrite({ targetKey: "session:ses_test", sessionID: "ses_test", text: "fix auth", requestID: "req_json_2" }),
+    "rewrite",
+  )
+  assertStrictJson(f.service.jobs(), "jobs")
+  assertStrictJson(f.progressEvents, "progressEvents")
+})
+
+test("models RPC lists normalized UI models and provider failures never leak secrets", async () => {
+  const f = await fixture({
+    generate: async () => {
+      throw new Error("Bearer sk-secret-token failed")
+    },
+  })
+  const list = await f.service.models()
+  assert.deepEqual(list.models.map((m) => m.id), ["claude-opus-4", "gpt-4o-mini"])
+
+  await assert.rejects(
+    async () => {
+      try {
+        await f.service.rewrite({ sessionID: "ses_test", text: "hi", requestID: "req_sec_1" })
+      } catch (err) {
+        assert.doesNotMatch(err.message, /sk-secret/)
+        throw err
+      }
+    },
+    /Rewrite generation failed/,
+  )
+})
+
+test("service defaults base rewrite model to terra on low and logs gateway usage.jsonl", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rw-svc-"))
+  try {
+    const gatewaySettings = resolveGatewaySettings({
+      GATEWAY_COST_DIR: dir,
+      GATEWAY_ENV_FILE: join(dir, "missing.env"),
+    })
+    let step = 0
+    const f = await fixture({
+      sessionModel: { providerID: "acc-anthropic", id: "claude-5.5-opus-anthropic" },
+      modelsList: [
+        {
+          providerID: "acc-openai",
+          id: "gpt-6.1-terra-openai",
+          name: "GPT 6.1 Terra",
+          variants: ["none", "low", "medium", "high", "xhigh", "max"],
+          cost: { input: 1, output: 5 },
+        },
+        {
+          providerID: "acc-anthropic",
+          id: "claude-5.5-haiku-anthropic",
+          name: "Claude 5.5 Haiku",
+          cost: { input: 0.1, output: 0.5 },
+        },
+        {
+          providerID: "acc-anthropic",
+          id: "claude-5.5-opus-anthropic",
+          name: "Claude 5.5 Opus",
+          cost: { input: 5, output: 17 },
+        },
+      ],
+      gatewaySettings,
+      generate: async () => ({
+        text: step++ === 0
+          ? GRILL_JSON
+          : JSON.stringify({
+              rewritten_prompt: "Add unit test coverage for auth callback.",
+              improvements: ["Added unit test scope"],
+              recommendation: {
+                route_id: "r1",
+                task_tier: "quick",
+                reason: "Best performance-cost value for a focused task.",
+              },
+              warnings: [],
+            }),
+      }),
+    })
+
+    const modelsResp = await f.service.models()
+    assert.equal(modelsResp.defaultRewriteModel, "acc-openai/gpt-6.1-terra-openai#low")
+    assertStrictJson(modelsResp, "terraModels")
+
+    const grillRes = await f.service.grill({
+      targetKey: "session:ses_test",
+      sessionID: "ses_test",
+      text: "add tests",
+      requestID: "req_terra_grill_1",
+    })
+    assert.equal(grillRes.model, "acc-openai/gpt-6.1-terra-openai#low")
+    assert.deepEqual(f.calls[0].model, { providerID: "acc-openai", id: "gpt-6.1-terra-openai", variant: "low" })
+    assert.ok(grillRes.usage.costUSD > 0)
+
+    const rewriteRes = await f.service.rewrite({
+      targetKey: "session:ses_test",
+      sessionID: "ses_test",
+      text: "add tests",
+      grillID: grillRes.id,
+      requestID: "req_terra_rw_1",
+    })
+    assert.equal(rewriteRes.model, "acc-openai/gpt-6.1-terra-openai#low")
+    assert.equal(rewriteRes.route.id, "claude-5.5-haiku-anthropic")
+    assert.ok(rewriteRes.routeBenchmark?.perfScore > 30)
+    assertStrictJson(rewriteRes, "terraRewrite")
+
+    const lines = readFileSync(gatewaySettings.usageLogPath, "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    assert.equal(lines.length, 2)
+    assert.equal(lines[0].tool, "prompt-rewriter")
+    assert.equal(lines[0].agent, "grill")
+    assert.equal(lines[0].model_id, "gpt-6.1-terra-openai")
+    assert.equal(lines[1].tool, "prompt-rewriter")
+    assert.equal(lines[1].agent, "rewrite")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
