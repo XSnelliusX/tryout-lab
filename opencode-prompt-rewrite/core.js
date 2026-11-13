@@ -150,7 +150,16 @@ export function parseModelRef(value) {
 }
 
 export function variants(model) {
-  return (model?.variants ?? []).map((v) => (typeof v === "string" ? v : v?.id)).filter((v) => typeof v === "string" && v.length > 0)
+  const raw = model?.variants
+  if (Array.isArray(raw)) {
+    return raw.map((v) => (typeof v === "string" ? v : v?.id)).filter((v) => typeof v === "string" && v.length > 0)
+  }
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw)
+      .filter(([k, v]) => typeof k === "string" && k.length > 0 && v !== false && v?.disabled !== true)
+      .map(([k]) => k)
+  }
+  return []
 }
 
 export function findModel(models, ref) {

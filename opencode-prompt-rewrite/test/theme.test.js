@@ -17,8 +17,9 @@ test("resolvePalette resolves OpenCode V2 nested semantic tokens and preserves t
       action: { primary: "#0d1117" },
     },
     background: {
-      raised: { base: "none", high: "#161b22" },
-      action: { primary: "#7ee787" },
+      raised: { base: "none", high: "#161b22", active: "#21262d" },
+      action: { primary: "#7ee787", hover: "#1f6feb" },
+      formField: { base: "#0d1117" },
       feedback: {
         info: "#0c2d6b",
         success: "#0f5323",
@@ -26,7 +27,8 @@ test("resolvePalette resolves OpenCode V2 nested semantic tokens and preserves t
         danger: "#67060c",
       },
     },
-    border: { base: "#30363d", active: "#58a6ff" },
+    border: { base: "#30363d", subtle: "#21262d", active: "#58a6ff" },
+    diff: { text: { added: "#56d364", removed: "#ff7b72" }, background: { added: "#033a16", removed: "#490202" } },
     accent: { base: "#a371f7" },
     syntax: { function: "#d2a8ff" },
   })
@@ -41,13 +43,20 @@ test("resolvePalette resolves OpenCode V2 nested semantic tokens and preserves t
   assert.equal(palette.warning, "#d29922")
   assert.equal(palette.error, "#f85149")
   assert.equal(palette.border, "#30363d")
+  assert.equal(palette.borderSubtle, "#21262d")
   assert.equal(palette.borderActive, "#58a6ff")
   // "none" is filtered out so transparent terminal backgrounds aren't filled solidly
   assert.equal(palette.bgPanel, undefined)
   assert.equal(palette.bgElevated, "#161b22")
+  assert.equal(palette.bgHover, "#1f6feb")
+  assert.equal(palette.bgFormField, "#0d1117")
   assert.equal(palette.bgActionPrimary, "#7ee787")
   assert.equal(palette.textActionPrimary, "#0d1117")
   assert.equal(palette.bgBadgeSuccess, "#0f5323")
+  assert.equal(palette.diffAdded, "#56d364")
+  assert.equal(palette.diffRemoved, "#ff7b72")
+  assert.equal(palette.diffBgAdded, "#033a16")
+  assert.equal(palette.diffBgRemoved, "#490202")
 })
 
 test("resolvePalette supports legacy flat tokens and provides safe defaults", () => {

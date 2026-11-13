@@ -1,6 +1,5 @@
-import { compactModelName, modelRef } from "./core.js"
-
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+export const DEFAULT_TTL_MS = 30 * 60000
 
 export function formatCostUsd(costUSD, estimated = false) {
   if (typeof costUSD !== "number" || !Number.isFinite(costUSD) || costUSD < 0) return ""
@@ -59,11 +58,12 @@ export function phaseLabel(phase) {
   }
 }
 
-export function createRewriteStore(onChange) {
+export function createRewriteStore(onChange, options = {}) {
   const windows = new Map()
   const recordedUsageIds = new Set()
   let defaultRewriteModel = null
   const maxEntries = 30
+  const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
 
   const notify = () => {
     try {
@@ -132,6 +132,7 @@ export function createRewriteStore(onChange) {
       windowTokens: 0,
       windowEstimated: false,
       error: undefined,
+      hydrated: false,
       updatedAt: Date.now(),
       ...existing,
       ...patch,
@@ -183,10 +184,11 @@ export function createRewriteStore(onChange) {
       phaseDetail: detail || "Starting…",
       requestID,
       startedAt: Date.now(),
+      hydrated: false,
       error: undefined,
       ...(!keepPrevious ? { proposal: undefined, editedText: "", applyRoute: false, selectedModelOverride: undefined } : {}),
     })
-    if (!keepPrevious && phase === "grilling" && prev?.grill?.id !== requestID) {
+    if (!keepPrevious && prev?.grill?.id !== requestID) {
       next.grill = undefined
       next.answers = {}
     }
@@ -204,18 +206,20 @@ export function createRewriteStore(onChange) {
   function applyProgress(event) {
     if (!event?.targetKey) return false
     const entry = windows.get(event.targetKey)
-    // Ignore stale events from an older superseded request.
-    if (entry?.requestID && event.requestID && entry.requestID !== event.requestID && entry.stage === "running") {
-      return false
+    // Ignore stale events from an older superseded request across all non-hydrated stages.
+    if (entry?.requestID && event.requestID && entry.requestID !== event.requestID) {
+      if (entry.stage === "running" || event.status !== "running" || (!entry.hydrated && entry.stage !== "idle")) {
+        return false
+      }
     }
     if (!entry && event.status !== "running") return false
 
     const nextStage = event.status === "running"
       ? "running"
       : event.status === "questions"
-        ? (entry?.grill ? "questions" : entry?.stage ?? "idle")
+        ? (entry?.grill ? "questions" : (entry?.hydrated ? fallbackStageFor(entry) : entry?.stage ?? "idle"))
         : event.status === "ready"
-          ? (entry?.proposal ? "review" : entry?.stage ?? "idle")
+          ? (entry?.proposal ? "review" : (entry?.hydrated ? fallbackStageFor(entry) : entry?.stage ?? "idle"))
           : event.status === "error"
             ? "error"
             : event.status === "cancelled"
@@ -252,6 +256,7 @@ export function createRewriteStore(onChange) {
       grill: result,
       answers,
       rewriteModel: result.model || entry?.rewriteModel,
+      hydrated: false,
       error: undefined,
       requestID: result.id,
     })
@@ -318,6 +323,7 @@ export function createRewriteStore(onChange) {
       applyRoute: Boolean(proposal.route),
       selectedModelOverride: undefined,
       rewriteModel: proposal.model || entry?.rewriteModel,
+      hydrated: false,
       error: undefined,
       requestID: proposal.id,
     })
@@ -413,24 +419,112 @@ export function createRewriteStore(onChange) {
     notify()
   }
 
-  function hydrateServerJobs(snapshot) {
+  function removeWindow(targetKey) {
+    if (!targetKey || !windows.has(targetKey)) return false
+    windows.delete(targetKey)
+    notify()
+    return true
+  }
+
+  function isWindowActive(entry) {
+    if (!entry) return false
+    if (entry.stage === "running") return true
+    if (entry.stage === "review" && entry.proposal) return true
+    if (entry.stage === "questions" && entry.grill) return true
+    if (entry.stage === "error" && entry.error) return true
+    if (entry.stage === "draft" && Boolean(entry.draftText?.trim())) return true
+    return false
+  }
+
+  function pruneExpired(now = Date.now(), silent = false) {
     let changed = false
-    for (const active of snapshot?.active ?? []) {
+    for (const [k, entry] of windows) {
+      if (entry.stage === "idle" || entry.stage === "running") continue
+      const ts = entry.updatedAt ?? entry.startedAt ?? now
+      if (now - ts > ttlMs) {
+        windows.delete(k)
+        changed = true
+      }
+    }
+    if (changed && !silent) notify()
+    return changed
+  }
+
+  function reconcileServerJobs(snapshot, excludeRequestIds) {
+    let changed = false
+    const activeList = snapshot?.active ?? []
+    const activeByTarget = new Map()
+    for (const item of activeList) {
+      if (item?.targetKey) activeByTarget.set(item.targetKey, item)
+    }
+
+    for (const [targetKey, entry] of [...windows.entries()]) {
+      if (entry.stage !== "running") continue
+      if (entry.requestID && excludeRequestIds?.has?.(entry.requestID)) continue
+      const live = activeByTarget.get(targetKey)
+      if (!live || (entry.requestID && live.requestID && entry.requestID !== live.requestID)) {
+        const recent = (snapshot?.recent ?? []).find(
+          (r) => r.targetKey === targetKey && (!entry.requestID || !r.requestID || r.requestID === entry.requestID),
+        )
+        if (recent?.status === "error") {
+          touch(targetKey, {
+            stage: "error",
+            phase: "error",
+            phaseDetail: recent.detail || "Failed",
+            error: recent.error || "The rewrite failed.",
+            hydrated: false,
+          })
+        } else if (recent?.status === "ready" || recent?.status === "questions") {
+          const fallback = fallbackStageFor(entry)
+          touch(targetKey, {
+            ...(fallback !== "idle" ? { stage: fallback } : {}),
+            phase: recent.phase || recent.status,
+            phaseDetail: recent.detail || "Loading result…",
+            hydrated: true,
+            error: undefined,
+          })
+        } else {
+          const fallback = fallbackStageFor(entry)
+          if (fallback === "idle") {
+            windows.delete(targetKey)
+          } else {
+            touch(targetKey, {
+              stage: fallback,
+              phase: recent?.phase || "cancelled",
+              phaseDetail: recent?.detail || "Stopped",
+              hydrated: false,
+              error: undefined,
+            })
+          }
+        }
+        changed = true
+      }
+    }
+
+    for (const active of activeList) {
       const existing = windows.get(active.targetKey)
-      if (!existing || existing.stage === "idle") {
+      if (!existing || existing.stage === "idle" || (existing.stage === "draft" && !existing.draftText?.trim())) {
         touch(active.targetKey, {
           sessionID: active.sessionID ?? null,
+          ...(active.label ? { label: active.label } : {}),
+          ...(active.draftText ? { draftText: active.draftText } : {}),
           requestID: active.requestID,
           stage: "running",
-          phase: "rewriting",
-          phaseDetail: "Running on server",
+          phase: active.phase || "rewriting",
+          phaseDetail: active.detail || "Running on server",
           rewriteModel: active.model || undefined,
           startedAt: active.startedAt || Date.now(),
+          hydrated: true,
         })
         changed = true
       }
     }
     if (changed) notify()
+    return changed
+  }
+
+  function hydrateServerJobs(snapshot) {
+    return reconcileServerJobs(snapshot)
   }
 
   function hasRunning() {
@@ -444,119 +538,88 @@ export function createRewriteStore(onChange) {
     return [...windows.values()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
   }
 
+  function listActiveWindows(now = Date.now()) {
+    pruneExpired(now, true)
+    return listWindows().filter(isWindowActive)
+  }
+
   function getFooterSummary(currentTargetKey, now = Date.now()) {
+    pruneExpired(now, true)
     const current = currentTargetKey ? windows.get(currentTargetKey) : undefined
     const othersRunning = []
     const othersReady = []
     const othersQuestions = []
+    const othersError = []
+    const othersDraft = []
 
     for (const entry of windows.values()) {
       if (entry.targetKey === currentTargetKey) continue
       if (entry.stage === "running") othersRunning.push(entry)
       else if (entry.stage === "review" && entry.proposal) othersReady.push(entry)
       else if (entry.stage === "questions" && entry.grill) othersQuestions.push(entry)
+      else if (entry.stage === "error" && entry.error) othersError.push(entry)
+      else if (entry.stage === "draft" && entry.draftText?.trim()) othersDraft.push(entry)
     }
 
     const spinnerIdx = Math.floor(now / 150) % SPINNER_FRAMES.length
     const spin = SPINNER_FRAMES[spinnerIdx]
+    const otherTotal =
+      othersRunning.length + othersReady.length + othersQuestions.length + othersError.length + othersDraft.length
 
-    const bgParts = []
-    if (othersRunning.length > 0) bgParts.push(`${othersRunning.length} running`)
-    if (othersQuestions.length > 0) bgParts.push(`${othersQuestions.length} grill`)
-    if (othersReady.length > 0) bgParts.push(`${othersReady.length} ready`)
-    const bgSuffix = bgParts.length > 0 ? ` · bg: ${bgParts.join(", ")}` : ""
+    const buildSummary = (tone, statusLabel, extraCount, totalActive) => {
+      const extraText = extraCount > 0 ? ` (+${extraCount})` : ""
+      const text = statusLabel ? ` ✦ rw ${statusLabel}${extraText} ` : " ✦ rw "
+      return {
+        visible: true,
+        tone,
+        statusLabel,
+        extraCount,
+        text,
+        current,
+        othersRunning,
+        othersReady,
+        othersQuestions,
+        othersError,
+        othersDraft,
+        activeCount: totalActive,
+      }
+    }
+
+    const activeElapsed = (entry) => formatElapsed(now - (entry.startedAt || now))
 
     if (current?.stage === "running") {
-      const modelTag = current.rewriteModel ? ` · ${compactModelName(current.rewriteModel)}` : ""
-      const elapsed = formatElapsed(now - (current.startedAt || now))
-      return {
-        visible: true,
-        tone: "info",
-        text: ` ✦ rw ${spin} ${phaseLabel(current.phase)}${modelTag} · ${elapsed}${bgSuffix} `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
+      return buildSummary("info", `${spin} ${activeElapsed(current)}`, otherTotal, 1 + otherTotal)
     }
-
-    if (current?.stage === "questions" && current.grill) {
-      const count = current.grill.questions?.length ?? 0
-      return {
-        visible: true,
-        tone: "warning",
-        text: ` ✦ rw ? ${count} question${count === 1 ? "" : "s"} · /rw${bgSuffix} `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
-    }
-
-    if (current?.stage === "review" && current.proposal) {
-      const route = current.selectedModelOverride ?? current.proposal.route
-      const modelHint = route ? ` · ★ ${compactModelName(modelRef(route))}` : ""
-      const costHint = current.windowCostUSD > 0 ? ` · ${formatCostUsd(current.windowCostUSD, current.windowEstimated)}` : ""
-      return {
-        visible: true,
-        tone: "success",
-        text: ` ✦ rw ✓ ready${modelHint}${costHint} · /rw${bgSuffix} `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
-    }
-
     if (current?.stage === "error" && current.error) {
-      return {
-        visible: true,
-        tone: "error",
-        text: ` ✦ rw ! failed · /rw-last${bgSuffix} `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
+      return buildSummary("error", "! failed", otherTotal, 1 + otherTotal)
+    }
+    if (current?.stage === "review" && current.proposal) {
+      return buildSummary("success", "✓ ready", otherTotal, 1 + otherTotal)
+    }
+    if (current?.stage === "questions" && current.grill) {
+      return buildSummary("warning", "? grill", otherTotal, 1 + otherTotal)
+    }
+    if (current?.stage === "draft" && current.draftText?.trim()) {
+      return buildSummary("accent", "✎ draft", otherTotal, 1 + otherTotal)
     }
 
     if (othersRunning.length > 0) {
-      const first = othersRunning[0]
-      const elapsed = formatElapsed(now - (first.startedAt || now))
-      const modelTag = first.rewriteModel ? ` · ${compactModelName(first.rewriteModel)}` : ""
-      const extra = othersRunning.length > 1 ? ` (+${othersRunning.length - 1})` : ""
-      return {
-        visible: true,
-        tone: "info",
-        text: ` ✦ rw ${spin} ${phaseLabel(first.phase)} (${first.label}${extra})${modelTag} · ${elapsed} `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
+      return buildSummary("info", `${spin} ${activeElapsed(othersRunning[0])}`, otherTotal - 1, otherTotal)
+    }
+    if (othersError.length > 0) {
+      return buildSummary("error", "! failed", otherTotal - 1, otherTotal)
+    }
+    if (othersReady.length > 0) {
+      return buildSummary("success", "✓ ready", otherTotal - 1, otherTotal)
+    }
+    if (othersQuestions.length > 0) {
+      return buildSummary("warning", "? grill", otherTotal - 1, otherTotal)
+    }
+    if (othersDraft.length > 0) {
+      return buildSummary("accent", "✎ draft", otherTotal - 1, otherTotal)
     }
 
-    if (othersQuestions.length > 0 || othersReady.length > 0) {
-      return {
-        visible: true,
-        tone: othersReady.length > 0 ? "success" : "warning",
-        text: ` ✦ rw [${bgParts.join(", ")} in other window] `,
-        current,
-        othersRunning,
-        othersReady,
-        othersQuestions,
-      }
-    }
-
-    return {
-      visible: false,
-      tone: "muted",
-      text: "",
-      current,
-      othersRunning,
-      othersReady,
-      othersQuestions,
-    }
+    return buildSummary("muted", "", 0, 0)
   }
 
   function setDefaultRewriteModel(refString) {
@@ -587,10 +650,14 @@ export function createRewriteStore(onChange) {
     applyError,
     applyCancelled,
     clearProposal,
+    removeWindow,
     resetToDraft,
+    pruneExpired,
+    reconcileServerJobs,
     hydrateServerJobs,
     hasRunning,
     listWindows,
+    listActiveWindows,
     getFooterSummary,
   }
 }

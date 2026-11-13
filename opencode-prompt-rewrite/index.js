@@ -18,6 +18,8 @@ export default {
       grill: (input, context) => service.grill(input, context),
       rewrite: (input, context) => service.rewrite(input, context),
       cancel: (input) => service.cancel(input),
+      dismiss: (input) => service.dismiss(input),
+      inspect: (input) => service.inspect(input),
       submit: (input) => service.submit(input),
       jobs: (input) => service.jobs(input),
       models: () => service.models(),

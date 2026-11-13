@@ -447,3 +447,64 @@ test("service defaults base rewrite model to terra on low and logs gateway usage
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("inspect and dismiss manage completed and in-flight jobs across targets", async () => {
+  let rejectInFlight
+  let callIdx = 0
+  const f = await fixture({
+    generate: (_args, opts) => {
+      callIdx += 1
+      if (callIdx <= 2) return Promise.resolve({ text: REWRITE_JSON })
+      return new Promise((_, reject) => {
+        rejectInFlight = reject
+        opts?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("Aborted"), { name: "AbortError" })))
+      })
+    },
+  })
+
+  // 1. Finished proposal can be inspected and dismissed cleanly
+  const rw = await f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "improve tests",
+    requestID: "req_fin_1",
+  })
+  const inspected = await f.service.inspect({ targetKey: "session:ses_test" })
+  assert.equal(inspected.kind, "proposal")
+  assert.equal(inspected.proposal.id, rw.id)
+
+  const dismissed = await f.service.dismiss({ targetKey: "session:ses_test", requestID: "req_fin_1" })
+  assert.equal(dismissed.dismissed, true)
+  const afterDismiss = await f.service.inspect({ targetKey: "session:ses_test" })
+  assert.equal(afterDismiss.kind, "none")
+
+  // 2. Submitting cleans up inspectable state
+  const rw2 = await f.service.rewrite({
+    targetKey: "session:ses_test",
+    sessionID: "ses_test",
+    text: "improve tests again",
+    requestID: "req_fin_2",
+  })
+  await f.service.submit({ resultID: rw2.id, text: rw2.text, applyRoute: false })
+  const afterSubmit = await f.service.inspect({ targetKey: "session:ses_test" })
+  assert.equal(afterSubmit.kind, "none")
+
+  // 3. In-flight job is aborted and immediately cleared from active jobs by dismiss
+  const pendingPromise = f.service.rewrite({
+    targetKey: "session:ses_other",
+    sessionID: "ses_other",
+    text: "long running",
+    requestID: "req_live_1",
+  })
+  await new Promise((r) => setTimeout(r, 20))
+  const midInspect = await f.service.inspect({ targetKey: "session:ses_other" })
+  assert.equal(midInspect.kind, "running")
+  assert.equal(midInspect.snapshot.requestID, "req_live_1")
+
+  const killRes = await f.service.dismiss({ targetKey: "session:ses_other", requestID: "req_live_1" })
+  assert.equal(killRes.dismissed, true)
+  const jobsAfter = await f.service.jobs()
+  assert.equal(jobsAfter.active.length, 0)
+  await assert.rejects(pendingPromise)
+  rejectInFlight?.(new Error("done"))
+})

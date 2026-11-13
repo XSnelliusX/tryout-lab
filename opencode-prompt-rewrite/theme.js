@@ -18,6 +18,10 @@ export function resolvePalette(theme = {}) {
   const feedbackBg = bg.feedback ?? {}
   const actionText = text.action ?? {}
   const actionBg = bg.action ?? {}
+  const formFieldBg = bg.formField ?? {}
+  const diff = t.diff ?? {}
+  const diffText = diff.text ?? {}
+  const diffBg = diff.background ?? {}
   const syntax = t.syntax ?? {}
 
   const accent = pickColor(
@@ -28,25 +32,39 @@ export function resolvePalette(theme = {}) {
     "#7aa2f7",
   )
 
+  const textBase = pickColor(text.base, typeof t.text === "string" ? t.text : undefined, "#e6edf3")
+  const success = pickColor(feedbackText.success, t.success, t.status?.success, diffText.added, "#9ece6a")
+  const error = pickColor(feedbackText.danger, feedbackText.error, t.error, t.status?.error, diffText.removed, "#f7768e")
+
   return {
-    textBase: pickColor(text.base, typeof t.text === "string" ? t.text : undefined, "#e6edf3"),
+    textBase,
     textMuted: pickColor(text.muted, t.muted, "#8b949e"),
     textFaint: pickColor(text.faint, text.muted, "#6e7681"),
+    textFormField: pickColor(text.formField?.base, typeof text.formField === "string" ? text.formField : undefined, textBase),
     accent,
     secondary: pickColor(t.secondary, syntax.function, "#bb9af7"),
     info: pickColor(feedbackText.info, t.info, t.status?.info, syntax.type, "#7dcfff"),
-    success: pickColor(feedbackText.success, t.success, t.status?.success, t.diff?.text?.added, "#9ece6a"),
+    success,
     warning: pickColor(feedbackText.warning, t.warning, t.status?.warning, "#e0af68"),
-    error: pickColor(feedbackText.danger, feedbackText.error, t.error, t.status?.error, t.diff?.text?.removed, "#f7768e"),
+    error,
     border: pickColor(border.base, border.subtle, typeof t.border === "string" ? t.border : undefined, "#3b4261"),
+    borderSubtle: pickColor(border.subtle, border.base, typeof t.border === "string" ? t.border : undefined, "#30363d"),
     borderActive: pickColor(border.active, t.borderActive, accent, "#7aa2f7"),
+    bgBase: pickColor(bg.base),
     bgPanel: pickColor(raised.base, t.backgroundPanel, bg.panel),
     bgElevated: pickColor(raised.high, t.backgroundElement, raised.max),
+    bgHover: pickColor(actionBg.hover, raised.active, raised.high, raised.max, t.backgroundElement, raised.base),
+    bgFormField: pickColor(formFieldBg.base, typeof bg.formField === "string" ? bg.formField : undefined, raised.base),
     bgActionPrimary: pickColor(actionBg.primary, t.primary, accent, "#3d59a1"),
+    bgActionActive: pickColor(actionBg.active, actionBg.hover, raised.active, raised.high),
     textActionPrimary: pickColor(actionText.primary, text.base, "#ffffff"),
     bgBadgeInfo: pickColor(feedbackBg.info),
     bgBadgeSuccess: pickColor(feedbackBg.success),
     bgBadgeWarning: pickColor(feedbackBg.warning),
     bgBadgeError: pickColor(feedbackBg.danger, feedbackBg.error),
+    diffAdded: pickColor(diffText.added, success),
+    diffRemoved: pickColor(diffText.removed, error),
+    diffBgAdded: pickColor(diffBg.added, feedbackBg.success),
+    diffBgRemoved: pickColor(diffBg.removed, feedbackBg.danger, feedbackBg.error),
   }
 }
