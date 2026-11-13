@@ -78,12 +78,16 @@ export async function createService(ctx, options = {}) {
   const proposals = new Map() // resultID -> stored proposal entry
   const latestByTarget = new Map() // targetKey -> latest job/result snapshot
   const seenRequests = new Set()
+  const dismissedRequests = new Set()
 
   const emitProgress = (payload) => {
     const event = toJsonValue({
       ...payload,
       updatedAt: Date.now(),
     })
+    if (event.requestID && dismissedRequests.has(event.requestID)) {
+      return
+    }
     latestByTarget.set(event.targetKey, {
       ...event,
       created: event.updatedAt,
@@ -456,6 +460,114 @@ export async function createService(ctx, options = {}) {
     return { cancelled: true }
   }
 
+  function rememberDismissed(id) {
+    if (!id) return
+    dismissedRequests.add(id)
+    if (dismissedRequests.size > 1000) dismissedRequests.delete(dismissedRequests.values().next().value)
+  }
+
+  function dismiss({ requestID, targetKey } = {}) {
+    let dismissed = false
+    if (requestID) rememberDismissed(requestID)
+
+    for (const [k, item] of pending) {
+      if ((targetKey && k === targetKey && (!requestID || item.requestID === requestID)) || (requestID && item.requestID === requestID)) {
+        rememberDismissed(item.requestID)
+        pending.delete(k)
+        item.controller.abort()
+        dismissed = true
+      }
+    }
+
+    for (const [id, entry] of proposals) {
+      if ((targetKey && entry.result?.targetKey === targetKey) || (requestID && id === requestID)) {
+        proposals.delete(id)
+        dismissed = true
+      }
+    }
+
+    for (const [id, entry] of grills) {
+      if ((targetKey && entry.targetKey === targetKey) || (requestID && id === requestID)) {
+        grills.delete(id)
+        dismissed = true
+      }
+    }
+
+    if (targetKey && latestByTarget.has(targetKey)) {
+      const snap = latestByTarget.get(targetKey)
+      if (!requestID || snap?.requestID === requestID) {
+        latestByTarget.delete(targetKey)
+        dismissed = true
+      }
+    } else if (requestID) {
+      for (const [k, snap] of latestByTarget) {
+        if (snap?.requestID === requestID) {
+          latestByTarget.delete(k)
+          dismissed = true
+        }
+      }
+    }
+
+    return { dismissed }
+  }
+
+  function inspect({ requestID, targetKey } = {}) {
+    const now = Date.now()
+    for (const [id, entry] of proposals) {
+      if (now - entry.created > TTL_MS) proposals.delete(id)
+    }
+    for (const [id, entry] of grills) {
+      if (now - entry.created > TTL_MS) grills.delete(id)
+    }
+
+    if (requestID && proposals.has(requestID)) {
+      return toJsonValue({ kind: "proposal", proposal: proposals.get(requestID).result })
+    }
+    if (targetKey) {
+      let latestProposal
+      for (const entry of proposals.values()) {
+        if (entry.result?.targetKey === targetKey) latestProposal = entry
+      }
+      if (latestProposal) {
+        return toJsonValue({ kind: "proposal", proposal: latestProposal.result })
+      }
+    }
+
+    if (requestID && grills.has(requestID)) {
+      return toJsonValue({ kind: "grill", grill: grills.get(requestID).data })
+    }
+    if (targetKey) {
+      let latestGrill
+      for (const entry of grills.values()) {
+        if (entry.targetKey === targetKey) latestGrill = entry
+      }
+      if (latestGrill) {
+        return toJsonValue({ kind: "grill", grill: latestGrill.data })
+      }
+    }
+
+    const active = targetKey ? pending.get(targetKey) : undefined
+    if (active && (!requestID || active.requestID === requestID)) {
+      return toJsonValue({
+        kind: "running",
+        snapshot: {
+          requestID: active.requestID,
+          targetKey: active.targetKey,
+          sessionID: active.sessionID ?? null,
+          model: active.model,
+          startedAt: active.startedAt,
+        },
+      })
+    }
+
+    const snap = targetKey ? latestByTarget.get(targetKey) : undefined
+    if (snap && (!requestID || snap.requestID === requestID)) {
+      return toJsonValue({ kind: "snapshot", snapshot: snap })
+    }
+
+    return { kind: "none" }
+  }
+
   async function submit({ resultID, text, applyRoute, selectedModel }) {
     const stored = proposals.get(resultID)
     if (!stored || Date.now() - stored.created > TTL_MS) {
@@ -508,6 +620,10 @@ export async function createService(ctx, options = {}) {
         metadata: { source: "prompt-rewrite", rewriteID: resultID },
       })
       proposals.delete(resultID)
+      if (result.grillID) grills.delete(result.grillID)
+      if (latestByTarget.get(result.targetKey)?.requestID === resultID) {
+        latestByTarget.delete(result.targetKey)
+      }
       return { sessionID: stored.targetSessionID, queued, switched }
     } catch (error) {
       stored.submitting = false
@@ -554,6 +670,8 @@ export async function createService(ctx, options = {}) {
     rewrite,
     propose,
     cancel,
+    dismiss,
+    inspect,
     submit,
     jobs,
     models,
@@ -563,6 +681,7 @@ export async function createService(ctx, options = {}) {
       grills.clear()
       proposals.clear()
       latestByTarget.clear()
+      dismissedRequests.clear()
     },
   }
 }

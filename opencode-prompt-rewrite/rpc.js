@@ -75,6 +75,14 @@ export const Rewrite = Rpc.define({
       input: object({ requestID: string, targetKey: string }, []),
       output: object({ cancelled: boolean }, ["cancelled"]),
     },
+    dismiss: {
+      input: object({ requestID: string, targetKey: string }, []),
+      output: object({ dismissed: boolean }, ["dismissed"]),
+    },
+    inspect: {
+      input: object({ requestID: string, targetKey: string }, []),
+      output: { type: "object" },
+    },
     submit: {
       input: object(
         {

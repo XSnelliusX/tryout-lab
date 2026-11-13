@@ -17,6 +17,7 @@ import {
   parseProposal,
   recentContext,
   serializeModelsForUI,
+  variants,
 } from "../core.js"
 
 const MODELS = [
@@ -328,6 +329,12 @@ test("findDefaultRewriteModel selects terra on low and includes benchmark metric
 
   const def = findDefaultRewriteModel(catalog)
   assert.deepEqual(def, { providerID: "acc-openai", id: "gpt-6.1-terra-openai", variant: "low" })
+
+  // Object-map variants (OpenCode provider catalog shape) are handled cleanly alongside arrays
+  assert.deepEqual(
+    variants({ providerID: "p", id: "m", variants: { none: {}, low: {}, high: { disabled: true }, x: false } }),
+    ["none", "low"],
+  )
 
   const routes = candidateRoutes(catalog, { providerID: "acc-anthropic", id: "claude-5.5-opus-anthropic" })
   const promptRoutes = formatRoutesForPrompt(routes)

@@ -58,7 +58,13 @@ Supported flags (place before prompt text):
 
 ## Installation & Configuration
 
-Add this directory as an OpenCode plugin in your OpenCode config (or symlink/point your OpenCode plugin config to it). `package.json` declares dual server/TUI entrypoints:
+Install or update the local OpenCode plugin (`~/.local/share/opencode/prompt-rewrite` + loader shims in `~/.config/opencode/plugins/prompt-rewrite`):
+
+```sh
+node scripts/install.mjs
+```
+
+Or add this directory as an OpenCode plugin in your OpenCode config (or symlink/point your OpenCode plugin config to it). `package.json` declares dual server/TUI entrypoints:
 
 - `.` -> `./index.js` (server plugin)
 - `./tui` -> `./tui.tsx` (TUI plugin)
