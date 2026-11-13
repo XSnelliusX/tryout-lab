@@ -98,7 +98,7 @@
  "queue_length": 0,
  "queue_lag_seconds": 0,
  "pending_work": 0,
- "dropped": 0,
+ "discarded_bursts": 0,
  "notice": "",
  "capture_status": "Not capturing",
  "audio_seconds": 0,

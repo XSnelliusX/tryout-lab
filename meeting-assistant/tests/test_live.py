@@ -116,6 +116,22 @@ class CaptureTests(AppCase, unittest.TestCase):
         self.idle()
         self.assertEqual(app.library.get_session(app.session_id)["status"], "complete")
 
+    def test_new_recording_uses_the_saved_default_context(self):
+        # Review r2: a new recording took the context of whichever archived session was open.
+        helper = write_helper(self._dir(), 2, "fail")
+        self.make_app(helper=helper)
+        clear_probe_cache()
+        app = self.app
+        app.library.register_session("old-meeting", "teams", "Old meeting: Kubernetes")
+        app.library.set_session_status("old-meeting", "complete")
+        app.session_open("old-meeting")
+        app.update_settings({"meeting_context": "Budget review: Q3"})
+        app.start("teams", True)
+        self.assertEqual(app.library.get_session(app.session_id)["context"], "Budget review: Q3")
+        self.assertEqual(app.capture_profile["context"], "Budget review: Q3")
+        self.idle()
+        self.assertEqual(app.library.get_session("old-meeting")["context"], "Old meeting: Kubernetes")
+
     def test_capture_failure_is_reported(self):
         app = self.start("fail")
         self.idle()

@@ -324,7 +324,22 @@ class Library:
         _text(context, "context", 4000, multiline=True)
         with self._connection(write=True) as db:
             db.execute("INSERT OR IGNORE INTO sessions (id, source, created_at, status, version, context, speaker_names) VALUES (?, ?, ?, ?, ?, ?, ?)", (session_id, source, _now(), "recording", 1, context, "{}"))
+            # The library is authoritative for app-recorded sessions: their journal
+            # only fills in segments the library is missing (see import_legacy).
+            db.execute("INSERT OR IGNORE INTO imports VALUES (?, 0, 0)", (session_id,))
             return self._session_dict(db, self._session(db, session_id))
+
+    def recover_interrupted(self):
+        """Call once at startup, while holding the instance lock: nothing can be recording.
+
+        Sessions still "recording" were interrupted (crash, kill, power loss);
+        segments left "translating" without English become "pending" so the UI
+        offers Retranslate. Returns the number of sessions marked.
+        """
+        with self._connection(write=True) as db:
+            count = db.execute("UPDATE sessions SET status='interrupted' WHERE status='recording'").rowcount
+            db.execute("UPDATE segments SET status='pending' WHERE status IN ('translating', 'pending') AND english=''")
+            return count
 
     def set_session_status(self, session_id, status):
         _text(status, "status", 200, required=True)
@@ -764,17 +779,32 @@ class Library:
             existing = db.execute("SELECT id FROM sessions WHERE id=?", (session_id,)).fetchone()
             # Only legacy-owned sessions can be marked interrupted. A newly
             # registered live session may coexist with a journal being written.
+            # A registered session without an imports row was recorded by an
+            # older app version: it is app-owned too.
             legacy_owned = bool(record["legacy_owned"]) if record else existing is None
+            recovered = False
             if events:
                 started = next((event for event in events if event.get("type") == "session_started"), {})
                 db.execute("INSERT OR IGNORE INTO sessions (id, source, created_at, status, version, context, speaker_names) VALUES (?, ?, ?, ?, ?, ?, ?)",
                            (session_id, started.get("source", "unknown"), started.get("at", _now()), "recording", 1, "", "{}"))
+                # App-owned journals never overwrite the library (that would revert
+                # retranslations and other later changes); they only restore
+                # segments whose library write never happened.
+                known = None if legacy_owned else {row["id"] for row in db.execute("SELECT id FROM segments WHERE session_id=?", (session_id,))}
                 for event in events:
                     if event.get("type") in ("source_segment", "segment"):
+                        if known is not None and event.get("id") in known:
+                            continue
                         self._upsert(db, session_id, event)
+                        recovered = True
                     elif event.get("type") == "session_finished":
-                        db.execute("UPDATE sessions SET status=? WHERE id=?", (event.get("status", "complete"), session_id))
+                        status = event.get("status", "complete")
+                        if legacy_owned:
+                            db.execute("UPDATE sessions SET status=? WHERE id=?", (status, session_id))
+                        else:
+                            db.execute("UPDATE sessions SET status=? WHERE id=? AND status='recording'", (status, session_id))
                 db.execute("INSERT OR REPLACE INTO imports VALUES (?, ?, ?)", (session_id, len(lines), int(legacy_owned)))
             if legacy_owned:
                 db.execute("UPDATE sessions SET status='interrupted' WHERE id=? AND status='recording'", (session_id,))
-            return bool(events)
+                return bool(events)
+            return recovered

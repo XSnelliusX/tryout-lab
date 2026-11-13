@@ -32,7 +32,7 @@ export function mount(container) {
     device: stat("Device"), rate: stat("Sample rate"), transport: stat("Transport"), volume: stat("macOS input volume"),
     floor: stat("Speech-band noise floor", "Background noise in the 250-4000 Hz speech band"), speech: stat("Speech level", "Typical speech level in the 250-4000 Hz speech band"), snr: stat("Signal-to-noise", "Speech level minus noise floor, both in the speech band; Teams audio can read 70-80 dB"), gain: stat("Applied gain", "Gain applied to audio sent to recognition"),
     clipRecent: stat("Clipping, last 10 s"), clipTotal: stat("Clipping, total"),
-    queue: stat("Queue"), lag: stat("Oldest work"), dropped: stat("Skipped"),
+    queue: stat("Queue"), lag: stat("Oldest work"), bursts: stat("Noise bursts ignored"),
   };
   const grid = (...items) => el("dl", { class: "au-grid" }, items.map((s) => s.node));
 
@@ -65,7 +65,7 @@ export function mount(container) {
     section("Input", grid(S.device, S.rate, S.transport, S.volume)),
     section("Signal", grid(S.floor, S.speech, S.snr, S.gain, S.clipRecent, S.clipTotal)),
     section("Latency", latency),
-    section("Work queue", grid(S.queue, S.lag, S.dropped)),
+    section("Work queue", grid(S.queue, S.lag, S.bursts)),
     section("Settings",
       el("div", { class: "field" }, el("label", { for: device.id }, "Input device"), device, deviceHelp),
       el("div", { class: "field" }, el("label", { for: language.id }, "Recognition language"), language,
@@ -105,7 +105,7 @@ export function mount(container) {
       setText(S.clipTotal.value, a ? String(a.clipped_total ?? 0) : "—");
       setText(S.queue.value, state?.queue_length ?? "—");
       setText(S.lag.value, state?.queue_lag_seconds == null ? "—" : `${state.queue_lag_seconds} s`);
-      setText(S.dropped.value, state?.dropped ?? "—");
+      setText(S.bursts.value, state?.discarded_bursts ?? "—");
       const lat = state?.latency;
       for (const r of latRows) [lat?.last, lat?.median, lat?.p90].forEach((src, i) => setText(r.cells[i], formatMs(src?.[r.key])));
       setText(latCount, lat?.count ? `Measured on ${lat.count} captions in this session.` : "No captions measured yet.");

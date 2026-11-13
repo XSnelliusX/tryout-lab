@@ -52,7 +52,8 @@ def capture_error(lines):
 
 _DEVICE_FIELDS = {"uid": str, "name": str, "transport": str, "sample_rate": (int, float), "channels": int,
                   "is_default": bool, "input_volume": (int, float, type(None)), "input_volume_settable": bool}
-_probe_lock = threading.Lock()
+_probe_lock = threading.Lock()     # protects the caches only; never held while a helper runs
+_devices_lock = threading.Lock()   # serialises device scans
 _protocol_cache = {}
 _devices_cache = {}
 
@@ -121,31 +122,36 @@ def helper_stale(helper, source):
 
 
 def list_devices(helper, max_age=5.0):
-    """{"supported": bool, "devices": [...]} from the helper's --list-devices, cached for max_age seconds."""
+    """{"supported": bool, "devices": [...]} from the helper's --list-devices, cached for max_age seconds.
+
+    The listing runs under its own lock, never _probe_lock: /api/state and Record
+    (which need the protocol cache) must not wait up to 5 s for a device scan.
+    """
     if helper_protocol(helper) != 2:
         return {"supported": False, "devices": []}
     key = str(helper)
-    now = time.monotonic()
-    with _probe_lock:
-        cached = _devices_cache.get(key)
-        if cached and now - cached[0] < max_age:
+    with _devices_lock:  # one scan at a time; a second caller reuses its result
+        with _probe_lock:
+            cached = _devices_cache.get(key)
+        if cached and time.monotonic() - cached[0] < max_age:
             return {"supported": True, "devices": [dict(d) for d in cached[1]]}
         devices = []
         try:
             done = subprocess.run([str(helper), "--list-devices"], capture_output=True, timeout=5,
                                   stdin=subprocess.DEVNULL, start_new_session=True)
-            if done.returncode != 0:
-                raise ValueError("The capture helper could not list input devices.")
-            for event in _stderr_events(done.stderr.decode("utf-8", "replace")):
-                if event.get("event") == "device":
-                    device = clean_device(event)
-                    if device:
-                        devices.append(device)
         except subprocess.TimeoutExpired:
             raise ValueError("Listing input devices timed out.") from None
         except OSError:
             raise ValueError("The capture helper could not be run.") from None
-        _devices_cache[key] = (time.monotonic(), devices)
+        if done.returncode != 0:
+            raise ValueError("The capture helper could not list input devices.")
+        for event in _stderr_events(done.stderr.decode("utf-8", "replace")):
+            if event.get("event") == "device":
+                device = clean_device(event)
+                if device:
+                    devices.append(device)
+        with _probe_lock:
+            _devices_cache[key] = (time.monotonic(), devices)
         return {"supported": True, "devices": [dict(d) for d in devices]}
 
 

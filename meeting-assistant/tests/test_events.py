@@ -35,7 +35,7 @@ class HubTests(unittest.TestCase):
         for index in range(7):
             client.put("segment", f"s{index}\n".encode())
         items = client.take(0)
-        self.assertEqual(items[0], json.dumps({"type": "refresh"}).encode() + b"\n")
+        self.assertEqual(json.loads(items[0])["type"], "refresh")
         self.assertLessEqual(len(items), 3)
         self.assertGreaterEqual(client.resyncs, 1)
 
@@ -175,7 +175,9 @@ class EventStreamTests(HttpCase, unittest.TestCase):
         self.assertEqual(headers["content-type"], "application/x-ndjson; charset=utf-8")
         self.assertEqual(headers["cache-control"], "no-store")
         self.assertNotIn("content-length", headers)
-        self.assertEqual(stream.event(), {"type": "ping"})
+        first = stream.event()
+        self.assertEqual(first["type"], "ping")
+        self.assertIsInstance(first["seq"], int)
         self.app.session_id = "fixture"
         self.app._publish_segment({"id": 3, "traditional_text": "早安\n第二行", "status": "complete"}, "fixture")
         event = self.read_event(stream, "segment")
@@ -252,6 +254,63 @@ class EventStreamTests(HttpCase, unittest.TestCase):
         live = [e for e in stream.collect(0.15) if e["type"] == "live"]
         self.app.recording_state = "idle"
         self.assertTrue(7 <= len(live) <= 12, len(live))
+
+
+class SequenceAndTickerTests(AppCase, unittest.TestCase):
+    threads = True
+
+    def setUp(self):
+        self.make_app()
+
+    def test_events_carry_increasing_seq_bounded_by_state(self):
+        app = self.app
+        client = app.hub.subscribe()
+        app.library.register_session("fixture", "teams")
+        app.session_id = "fixture"
+        app._publish_segment({"id": 1, "revision": 1, "status": "complete"}, "fixture")
+        state = app.state()
+        app._publish_segment({"id": 2, "revision": 1, "status": "complete"}, "fixture")
+        app.hub.publish({"type": "refresh"})
+        seqs = [json.loads(line)["seq"] for line in client.take(0)]
+        self.assertEqual(seqs, sorted(seqs))
+        self.assertEqual(len(set(seqs)), len(seqs))
+        segment_seqs = [s for s in seqs]
+        self.assertLessEqual(segment_seqs[0], state["seq"])   # reflected in the snapshot
+        self.assertGreater(segment_seqs[-1], state["seq"])    # newer than the snapshot
+        later = EventHub()
+        self.assertGreater(later.seq, state["seq"])           # a restarted server keeps counting up
+
+    def test_ticker_does_not_spin_while_a_refresh_is_deferred(self):
+        # Review r5: a second refresh request within 250 ms made the ticker busy-loop.
+        from unittest import mock
+
+        app = self.app
+        time.sleep(0.6)
+        with mock.patch.object(app, "live_payload", wraps=app.live_payload) as payload:
+            app._request_refresh()
+            time.sleep(0.05)
+            app._request_refresh()
+            time.sleep(0.4)
+        self.assertLess(payload.call_count, 15)
+
+    def test_device_scan_does_not_block_state_or_record(self):
+        # Review: the 5 s --list-devices scan ran under the lock /api/state needs.
+        from meeting_assistant.audio import helper_protocol, list_devices
+
+        clear_probe_cache()
+        helper = write_helper(self.root, 2)
+        self.app.helper = helper
+        self.assertEqual(helper_protocol(helper), 2)
+        os.environ["FAKE_HELPER_LIST_DELAY"] = "1.0"
+        self.addCleanup(os.environ.pop, "FAKE_HELPER_LIST_DELAY", None)
+        scan = threading.Thread(target=list_devices, args=(helper,))
+        scan.start()
+        time.sleep(0.3)  # the scan is running now
+        started = time.monotonic()
+        self.assertEqual(self.app.state()["capabilities"]["helper_protocol"], 2)
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertTrue(scan.is_alive())
+        scan.join(timeout=5)
 
 
 class StaticFileTests(HttpCase, unittest.TestCase):

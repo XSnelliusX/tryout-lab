@@ -1,8 +1,11 @@
 """Live caption pipeline: scheduler, speculative decoding, previews, timing. Fake models only."""
 
+import json
 import threading
 import time
 import unittest
+
+import numpy as np
 
 from meeting_assistant.scheduler import FINAL, Job, Scheduler
 from meeting_assistant.server import latency_summary
@@ -156,14 +159,26 @@ class PipelineTests(AppCase, unittest.TestCase):
 
     def test_failed_speculative_decode_falls_back_to_a_final_decode(self):
         app = self.app
-        self.model.fail_asr = "boom"
+        self.model.fail_asr, self.model.fail_asr_times = "boom", 1  # a transient failure
         app._on_segment(event("pause", value=0.3))
         app._on_segment(event("final", value=0.3, same_as_pause=True))
-        job = app.jobs.next(timeout=0)
-        app.run_job(job)
-        self.model.fail_asr = None
         self.drain()
         self.assertEqual(self.saved()[0]["traditional_text"], "文字300")
+        self.assertEqual(len(self.model.asr_calls()), 2)
+
+    def test_fallback_after_failed_promoted_decode_keeps_segment_order(self):
+        # Review r10: the retry used to be queued behind later finals and published out of order.
+        app = self.app
+        client = app.hub.subscribe()
+        app._on_segment(event("pause", utterance=1, value=0.1))
+        app._on_segment(event("final", utterance=1, value=0.1, same_as_pause=True))  # promotes the spec
+        app._on_segment(event("final", utterance=2, start=1, end=2, value=0.2))
+        self.model.fail_asr, self.model.fail_asr_times = "transient MLX error", 1
+        self.drain()
+        self.assertEqual([s["id"] for s in app.segments], [1, 2])
+        published = [json.loads(line)["segment"]["id"] for line in client.take(0) if b'"segment"' in line]
+        self.assertEqual(published[0], 1)
+        self.assertEqual(self.saved()[0]["traditional_text"], "文字100")
 
     def test_early_resume_detection_cancels_speculative_before_next_event(self):
         app = self.app
@@ -257,7 +272,7 @@ class PipelineTests(AppCase, unittest.TestCase):
         self.assertEqual(len(segments), 200)
         self.assertEqual([s["id"] for s in segments], list(range(1, 201)))
         self.assertTrue(all(s["status"] == "complete" for s in segments))
-        self.assertEqual(app.dropped, 0)
+        self.assertEqual(app.state()["discarded_bursts"], 0)  # nothing counted as noise or skipped
 
     def test_timing_fields_present_and_monotonic(self):
         app = self.app
@@ -477,6 +492,252 @@ class PipelineTests(AppCase, unittest.TestCase):
         self.assertEqual(state["segments"][0]["id"], 1)
         self.assertEqual(state["audio"]["device"], None)
         self.assertIn("helper_protocol", state["capabilities"])
+
+
+class ReviewRegressionTests(AppCase, unittest.TestCase):
+    """Findings of the independent pipeline review; each failed before its fix."""
+
+    def setUp(self):
+        self.make_app()
+        self.begin()
+
+    def discard(self, utterance=1, part=0, reason="short"):
+        return {"kind": "discard", "audio": np.zeros(0, np.float32), "start": 0.0, "end": 0.5,
+                "utterance": utterance, "part": part, "speech_end": 0.3, "speech_end_at": time.monotonic(),
+                "cut": "silence", "reason": reason}
+
+    def test_discard_clears_ghost_caption_and_cancels_speculation(self):
+        app = self.app
+        app._on_segment(event("pause", value=0.3))
+        self.drain()  # the speculative result is shown as provisional
+        self.assertEqual(app.live_preview["status"], "provisional")
+        app._on_segment(self.discard())
+        self.assertIsNone(app.live_preview)
+        self.assertEqual(app.discarded_bursts, 1)
+        app._on_segment(event("pause", utterance=2, value=0.3))
+        app._on_segment(self.discard(utterance=2, reason="silent"))
+        self.assertEqual(self.drain(), [])  # the queued speculative decode was cancelled
+        self.assertEqual(app.discarded_bursts, 1)  # a silent last part is not a noise burst
+        self.assertIsNone(app.live_preview)
+        self.assertEqual(self.saved(), [])
+
+    def test_short_noise_burst_through_the_real_segmenter_leaves_nothing(self):
+        # Review r1: a click under min_voiced used to emit a pause, start a speculative decode
+        # and leave a provisional caption that never cleared.
+        from meeting_assistant.vad import Segmenter
+
+        rng = np.random.default_rng(0)
+        noise = lambda seconds: (rng.standard_normal(int(seconds * 16000)) * 0.002).astype(np.float32)
+        t = np.arange(int(0.15 * 16000)) / 16000
+        burst = (0.3 * np.sin(2 * np.pi * 900 * t)).astype(np.float32) + noise(0.15)
+        stream = np.concatenate([noise(2.0), burst, noise(3.0)])
+        self.model.text = "嗯"
+        segmenter = Segmenter(self.app._on_segment)
+        for offset in range(0, len(stream), 1600):
+            segmenter.process(stream[offset:offset + 1600], time.monotonic())
+        self.assertEqual(self.drain(), [])
+        self.assertIsNone(self.app.live_preview)
+        self.assertEqual(self.app.discarded_bursts, 1)
+
+    def test_no_speech_result_counts_as_discarded_burst(self):
+        self.app._on_segment(event("final", value=0.0))
+        self.drain()
+        self.assertEqual(self.app.state()["discarded_bursts"], 1)
+        self.assertNotIn("dropped", self.app.live_payload())
+
+    def test_library_write_failure_still_publishes_and_translates(self):
+        # Review r8: the caption was never published or translated and the preview stayed.
+        import sqlite3
+
+        app = self.app
+        client = app.hub.subscribe()
+        app._on_segment(event("preview", value=0.2))
+        self.drain()
+
+        def full(*args, **kwargs):
+            raise sqlite3.OperationalError("database or disk is full")
+        app.library.upsert_segment = full
+        app._on_segment(event("final", value=0.2))
+        ran = self.drain()
+        self.assertEqual(ran, ["final", "translate"])
+        self.assertIsNone(app.live_preview)
+        published = [json.loads(line)["segment"] for line in client.take(0) if b'"segment"' in line]
+        self.assertEqual(published[0]["status"], "error")
+        self.assertIn("Not saved", published[0]["error"])
+        self.assertEqual(published[-1]["english"], "translated")
+        self.assertIn("could not be saved", app.notice)
+        self.assertEqual(app.segments[0]["traditional_text"], "文字200")
+        self.assertEqual([e["type"] for e in app.archive.events][-2:], ["source_segment", "segment"])
+
+    def test_cancelled_translation_records_no_translation_latency(self):
+        # Review r9: a translation cancelled by an edit still counted as a latency sample.
+        app = self.app
+        self.model.mt_gate = threading.Event()
+        app._on_segment(event("final", value=0.2))
+        app.run_job(app.jobs.next(timeout=0))
+        translation = app.jobs.next(timeout=0)
+        worker = threading.Thread(target=app.run_job, args=(translation,))
+        worker.start()
+        self.assertTrue(self.model.mt_started.wait(2))
+        app.segment_edit({"id": 1, "text": "改正", "expected_revision": 1, "session_id": "fixture"})
+        worker.join(timeout=2)
+        timing = self.saved()[0]["timing"]
+        self.assertIsNone(timing["translate_ms"])
+        self.assertIsNone(timing["speech_end_to_english_ms"])
+        self.assertIsNotNone(timing["asr_ms"])
+        self.assertIsNone(app.live_payload()["latency"]["median"]["speech_end_to_english_ms"])
+
+    def test_partial_translation_is_checked_and_published_under_the_edit_lock(self):
+        # Review: a partial checked before an edit could be published after it.
+        app = self.app
+        self.model.partials = ["Good", "Good morning"]
+        self.model.partial_delay = 0.11
+        owned = []
+        original = app._publish_segment
+
+        def spy(segment, session_id):
+            if segment.get("status") == "translating" and segment.get("english"):
+                owned.append(app.lock._is_owned())
+            return original(segment, session_id)
+        app._publish_segment = spy
+        app._on_segment(event("final", value=0.2))
+        self.drain()
+        self.assertTrue(owned)
+        self.assertTrue(all(owned))
+
+    def test_latency_summary_is_cached_until_timing_changes(self):
+        from unittest import mock
+        from meeting_assistant import server
+
+        app = self.app
+        app._on_segment(event("final", value=0.2))
+        self.drain()
+        with mock.patch.object(server, "latency_summary", wraps=server.latency_summary) as summary:
+            for _ in range(50):
+                app.live_payload()
+            self.assertLessEqual(summary.call_count, 1)
+            app._on_segment(event("final", utterance=2, start=2, end=3, value=0.3))
+            self.drain()
+            before = summary.call_count
+            self.assertEqual(app.live_payload()["latency"]["count"], 2)
+            self.assertEqual(summary.call_count, before + 1)
+
+    def test_no_signal_advice_waits_for_30_seconds_without_speech(self):
+        app = self.app
+
+        class Meter:
+            def snapshot(self):
+                return {"rms_db": -120.0, "peak_db": -120.0, "clipped_recent": 0, "clipped_total": 0}
+
+        class Detector:
+            noise_db = speech_db = threshold_db = None
+            speaking = False
+
+        class Capture:
+            meter, detector, samples = Meter(), Detector(), 10 * 16000
+
+        app.capture = Capture()
+        app.last_speech_seconds = None
+        self.assertEqual(app.audio_state()["advice"], "")  # 10 s of digital silence: normal on Teams
+        Capture.samples = 40 * 16000
+        self.assertIn("No audio signal", app.audio_state()["advice"])
+        app.last_speech_seconds = 25.0  # speech 15 s ago
+        self.assertEqual(app.audio_state()["advice"], "")
+        app.capture = None
+
+    def test_archive_close_releases_the_journal_when_the_last_write_fails(self):
+        from meeting_assistant.storage import Archive
+
+        archive = Archive(self.root / "archive-test", "teams")
+        archive.close_audio()
+
+        def broken(event):
+            raise OSError("disk full")
+        archive.log = broken
+        with self.assertRaises(OSError):
+            archive.close("complete")
+        self.assertTrue(archive.journal.closed)
+
+
+class RestartRecoveryTests(unittest.TestCase):
+    """Review r4/r7: journals of app-recorded sessions and interrupted sessions across restarts."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve() / "data"
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def app(self, model=None):
+        from meeting_assistant.server import Application
+
+        app = Application(self.root, model=model or FakeModel(), start_threads=False)
+        self.addCleanup(app.instance_lock.close)
+        self.addCleanup(app.close)
+        return app
+
+    def record(self, app):
+        from meeting_assistant.storage import Archive
+
+        archive = Archive(self.root / "sessions", "teams")
+        app.library.register_session(archive.id, "teams")
+        app.session_id = app.capture_session = archive.id
+        app.archive = archive
+        app.capture_profile = {"context": "", "vocabulary": []}
+        app.capture_audio = {"language": "zh", "normalize": False}
+        app.recording_state = "recording"
+        return archive
+
+    @staticmethod
+    def drain(app):
+        while (job := app.jobs.next(timeout=0)) is not None:
+            app.run_job(job)
+
+    def test_retranslation_survives_restart_and_is_journaled(self):
+        app = self.app()
+        archive = self.record(app)
+
+        def failing(text, **kwargs):
+            raise RuntimeError("translation backend hiccup")
+        app.model.translate = failing
+        app._on_segment(event("final", value=0.2))
+        self.drain(app)
+        app._capture_done(None)
+        self.drain(app)
+        del app.model.translate
+        app.model.translation = "Good morning everyone"
+        app.segment_retranslate(1, archive.id)
+        self.drain(app)
+        self.assertEqual(app.library.get_session(archive.id)["segments"][0]["english"], "Good morning everyone")
+        journal = (self.root / "sessions" / archive.id / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(json.loads(journal[-1])["english"], "Good morning everyone")
+        app.close()
+        app.instance_lock.close()
+        again = self.app()
+        segment = again.library.get_session(archive.id)["segments"][0]
+        self.assertEqual((segment["status"], segment["english"]), ("complete", "Good morning everyone"))
+        self.assertEqual(again.library.get_session(archive.id)["status"], "complete")
+
+    def test_crash_mid_session_keeps_and_restores_captions_and_marks_interrupted(self):
+        app = self.app()
+        archive = self.record(app)
+        app._on_segment(event("final", value=0.2))
+        self.drain(app)  # segment 1 saved and translated
+        # Segment 2: journaled, but the library write never happened (crash or disk full).
+        archive.log({"type": "source_segment", "id": 2, "start": 3.0, "end": 4.0, "kind": "audio",
+                     "raw_text": "b", "traditional_text": "b", "english": "", "revision": 1,
+                     "status": "translating", "speaker": "unknown"})
+        app.instance_lock.close()  # process killed before the finish job
+        again = self.app()
+        session = again.library.get_session(archive.id)
+        self.assertEqual(session["status"], "interrupted")
+        self.assertEqual([(s["id"], s["status"]) for s in session["segments"]], [(1, "complete"), (2, "pending")])
+        self.assertEqual(session["segments"][0]["english"], "translated")
+        self.assertEqual(again.library.get_session(archive.id)["status"], "interrupted")
 
 
 class WorkerThreadTests(AppCase, unittest.TestCase):

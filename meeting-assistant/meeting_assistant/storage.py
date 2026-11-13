@@ -48,6 +48,18 @@ class Archive:
         self.audio.close()
 
     def close(self, status):
-        self.log({"type": "session_finished", "status": status, "at": datetime.now(timezone.utc).isoformat()})
-        with self.lock:
-            self.journal.close()
+        try:
+            self.log({"type": "session_finished", "status": status, "at": datetime.now(timezone.utc).isoformat()})
+        finally:
+            with self.lock:
+                self.journal.close()
+
+
+def append_journal(path: Path, event):
+    """Append one event to an existing session journal (never creates or follows a link)."""
+    line = (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        os.write(fd, line)
+    finally:
+        os.close(fd)

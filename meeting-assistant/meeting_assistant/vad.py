@@ -145,8 +145,11 @@ class Segmenter:
     Events: "preview" (on voiced frames) while speech goes on, "pause" once `pause` seconds of non-speech follow speech, "final" when
     the silence reaches `end_silence`, at a low-energy valley once a part
     reaches `soft_max`, or on flush(). Parts of one utterance never overlap and
-    leave no gap. An utterance with less than `min_voiced` seconds of voiced
-    audio emits no final; its previews or pause event may already have been sent.
+    leave no gap. Previews and pauses are only sent once the utterance holds at
+    least `min_voiced` seconds of voiced audio. An utterance that closes without
+    a final (too little voiced audio, or a last part holding only non-speech)
+    sends "discard" instead (empty audio; `reason` "short" or "silent"), so a
+    consumer can drop anything it started for that utterance and part.
     """
 
     TAIL = 0.15  # seconds of audio kept after the last voiced frame in pause/final events
@@ -236,13 +239,14 @@ class Segmenter:
         if self._silence >= self.end_silence:
             self._finish("silence")
         elif self._silence >= self.pause:
-            if not self._paused and self._part_voiced:
+            if not self._paused and self._part_voiced and self._voiced >= self.min_voiced:
                 self._paused = True
                 self._last_pause = self._audio(self._trimmed_end())
                 self._send("pause", self._last_pause)
         elif self._part_length() >= self.soft_max:
             self._valley_cut()
-        elif voiced and self._part_length() - self._last_preview >= self.preview_interval:
+        elif (voiced and self._voiced >= self.min_voiced
+              and self._part_length() - self._last_preview >= self.preview_interval):
             self._last_preview = self._part_length()
             self._send("preview", self._audio())
 
@@ -263,6 +267,10 @@ class Segmenter:
                 audio, same = self._audio(None if cut == "flush" else self._trimmed_end()), False
             self._send("final", audio, cut=cut, clean=cut == "silence" or self._paused, same_as_pause=same)
             self._emitted_end = self._part_start() + len(audio)
+        else:
+            end = (self._part_start() + self._part_length()) / self.rate
+            self._send("discard", np.zeros(0, np.float32), end=end, cut=cut,
+                       reason="short" if self._voiced < self.min_voiced else "silent")
         self._close()
 
     def _valley_cut(self):
@@ -302,12 +310,14 @@ class Segmenter:
         self._last_pause = None
 
     def flush(self) -> None:
-        if self.open and len(self._pending):
+        if len(self._pending):
+            # A partial frame stays part of the stream: the open utterance gets
+            # it, and the pre-roll history keeps it so a later utterance has no hole.
             start = self.position
             self.position += len(self._pending)
-            self._records.append([start, self._pending.copy(), None, False, None])
-        else:
-            self.position += len(self._pending)
+            if self.open:
+                self._records.append([start, self._pending.copy(), None, False, None])
+            self._history.append((start, self._pending.copy()))
         self._pending = np.zeros(0, np.float32)
         if self.open:
             self._finish("flush")

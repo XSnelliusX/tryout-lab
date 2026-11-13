@@ -63,8 +63,10 @@ only the newest is kept, and a running preview is cancelled when a final or
 pause decode arrives. A preview is shown as a `provisional` caption with the
 id its final will get and is never shown for audio that is already final.
 Finals are never dropped: a backlog shows in `queue_lag_seconds` with a
-notice. A recognition result with no speech is not saved (the journal keeps a
-`no_speech` record with times only); the energy detector also fires on
+notice. A sound with less than 0.3 s of detected speech sends no preview or
+pause and closes with a `discard` event that clears anything provisional; a
+recognition result with no speech is not saved (the journal keeps a
+`no_speech` record with times only). Both count as `discarded_bursts`; the energy detector also fires on
 keyboard or door noise, and the recogniser's no-speech answer is the second
 gate.
 

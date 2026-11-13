@@ -56,14 +56,16 @@ class ServerIntegrationTests(AppCase, unittest.TestCase):
         state = self.app.state()
         for key in ("settings", "session", "sessions", "job", "diarization", "model_status", "model_ready",
                     "recording_state", "session_id", "segments", "live_preview", "no_audio", "queue_length",
-                    "queue_lag_seconds", "pending_work", "dropped", "notice", "capture_status", "audio_seconds",
+                    "queue_lag_seconds", "pending_work", "discarded_bursts", "notice", "capture_status", "audio_seconds",
                     "feed_status", "launcher_name", "archive_dir", "session_path", "audio", "latency",
-                    "capabilities"):
+                    "capabilities", "seq"):
             self.assertIn(key, state)
         self.assertEqual(state["settings"]["audio"], {"device_uid": "", "language": "auto", "normalize": True})
         self.assertIsNone(state["latency"])
         self.assertEqual(state["capabilities"], {"helper_protocol": None, "helper_stale": False, "event_stream": True})
         self.assertNotIn("type", state)
+        self.assertNotIn("dropped", state)
+        self.assertIsInstance(state["seq"], int)
 
     def test_job_start_rejects_non_string_task(self):
         self.app.recording_state = "idle"

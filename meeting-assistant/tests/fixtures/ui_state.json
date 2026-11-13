@@ -567,7 +567,7 @@
  "queue_length": 1,
  "queue_lag_seconds": 1.4,
  "pending_work": 2,
- "dropped": 0,
+ "discarded_bursts": 0,
  "notice": "",
  "capture_status": "Capturing Microsoft Teams audio",
  "audio_seconds": 81.3,

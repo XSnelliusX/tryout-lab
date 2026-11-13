@@ -73,9 +73,33 @@ cd meeting-assistant
 
 The app opens a browser window on a token-authenticated loopback server.
 Alternatively, double-click `Start Meeting Assistant.command` after setup. Wait
-for **Models ready**, choose a source, confirm required consent, and select
-**Start recording**. Select **Stop & finish** and wait for processing before
-closing the launcher.
+for **Models ready** in the sidebar, pick **Teams**, **System** or
+**Microphone** in the toolbar and press **Record**. The confirmation sheet
+explains the source, lets you choose the microphone, and asks you to confirm
+consent. Press **Stop** and wait until the status returns to Idle before
+closing the launcher. After pulling an update that changes
+`native/CaptureAudio.swift`, rebuild the helper with `./scripts/build_capture.sh`
+(the Audio tab shows a banner when the helper is out of date).
+
+### Checking audio levels
+
+The inspector's **Audio** tab shows the input device, its macOS input volume,
+level and peak, clipping, the speech-band noise floor, speech level,
+signal-to-noise, the gain applied before recognition, and how long each
+caption took. A one-line hint appears when the input is too quiet, clipping or
+noisy. To compare recordings before and after a change, measure the saved audio
+(levels only; no transcript is read):
+
+```sh
+.venv/bin/python scripts/measure_levels.py            # the 3 newest sessions
+.venv/bin/python scripts/measure_levels.py --last 6   # or name session folders / .wav files
+```
+
+Healthy microphone speech is roughly −30 to −20 dBFS with a signal-to-noise
+ratio above 15 dB and no clipped samples. If speech is much quieter, raise the
+input in **System Settings → Sound → Input** or move the microphone closer;
+check that the selected input is the one you expect, because macOS switches the
+default when a headset is plugged in.
 
 Microphone mode requires macOS **Microphone** permission. Teams and system
 audio require **Screen & System Audio Recording** permission for the app that

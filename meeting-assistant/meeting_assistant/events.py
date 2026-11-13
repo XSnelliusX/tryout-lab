@@ -4,6 +4,11 @@ Publishing never blocks: each client has a bounded queue. A slow client loses
 its oldest ``live`` events first (they are snapshots; the newest one wins); if
 it falls further behind, its queue is replaced by one ``refresh`` so it
 re-fetches the full state.
+
+Every event carries ``seq``, increasing across the hub's lifetime and, because it
+starts from the clock, across server restarts. A state snapshot taken when the
+hub's seq is S includes the effect of every event with seq <= S (events are
+published after the change they describe is applied).
 """
 
 import collections
@@ -12,8 +17,6 @@ import threading
 import time
 
 PING_SECONDS = 10.0
-_REFRESH = json.dumps({"type": "refresh"}).encode() + b"\n"
-_PING = json.dumps({"type": "ping"}).encode() + b"\n"
 
 
 def encode(event):
@@ -21,8 +24,9 @@ def encode(event):
 
 
 class Client:
-    def __init__(self, limit):
+    def __init__(self, limit, seq=lambda: None):
         self.limit = limit
+        self.seq = seq
         self.items = collections.deque()  # (kind, bytes)
         self.cond = threading.Condition(threading.Lock())
         self.closed = False
@@ -42,7 +46,7 @@ class Client:
                     # Far behind on segment events: resync through the full state.
                     self.items.clear()
                     self.resyncs += 1
-                    self.items.append(("refresh", _REFRESH))
+                    self.items.append(("refresh", encode({"type": "refresh", "seq": self.seq()})))
                     self.cond.notify()
                     if kind in ("refresh", "ping"):
                         return
@@ -73,9 +77,10 @@ class EventHub:
         self.client_limit = client_limit
         self.ping_seconds = ping_seconds
         self.closed = False
+        self.seq = time.time_ns() // 1000  # microseconds: later than any seq of an earlier run
 
     def subscribe(self):
-        client = Client(self.client_limit)
+        client = Client(self.client_limit, lambda: self.seq)
         with self._lock:
             if self.closed:
                 client.close()
@@ -94,11 +99,15 @@ class EventHub:
 
     def publish(self, event):
         kind = event.get("type", "live")
-        data = _REFRESH if kind == "refresh" else encode(event)
+        # Numbering and enqueueing under one lock keeps every client's stream in seq order.
         with self._lock:
-            clients = list(self._clients)
-        for client in clients:
-            client.put(kind, data)
+            self.seq += 1
+            data = encode({**event, "seq": self.seq})
+            for client in self._clients:
+                client.put(kind, data)
+
+    def ping(self):
+        return encode({"type": "ping", "seq": self.seq})
 
     def close(self):
         with self._lock:
@@ -119,7 +128,7 @@ class EventHub:
                 if lines:
                     write(b"".join(lines))
                 if time.monotonic() >= next_ping:
-                    write(_PING)
+                    write(self.ping())
                     next_ping = time.monotonic() + self.ping_seconds
         except (OSError, ValueError):
             pass  # Client went away; ValueError: write to a closed file.

@@ -2,7 +2,7 @@
 import { api, getToken } from "/api.js";
 
 const LIVE_KEYS = ["recording_state", "audio", "audio_seconds", "queue_length", "queue_lag_seconds", "pending_work",
-  "no_audio", "feed_status", "capture_status", "notice", "dropped", "latency"];
+  "no_audio", "feed_status", "capture_status", "notice", "discarded_bursts", "latency"];
 const BACKOFF = [1000, 2000, 5000];
 const POLL_MS = 2000;
 const WATCHDOG_MS = 35000; // the server pings every 10 s
@@ -25,21 +25,30 @@ function notify(...kinds) {
 
 let inflight = null, again = false, trailing = 0;
 let lastSessionId;
+// Events received while /api/state is in flight: the snapshot may be older than they are.
+let buffered = null;
 
 async function refresh() {
   if (inflight) { again = true; return inflight; }
   inflight = (async () => {
     do {
       again = false;
+      buffered = [];
       try {
         const next = await api("/api/state");
+        const replay = buffered;
+        buffered = null;
         store.state = next;
         store.error = "";
+        // Re-apply what the snapshot cannot contain yet (events newer than its seq).
+        // A server without seq gets the old behaviour: the snapshot wins.
+        if (Number.isFinite(next?.seq)) for (const event of replay) if (Number.isFinite(event.seq) && event.seq > next.seq) apply(event);
         const sessionId = next.session?.id ?? null;
         if (lastSessionId !== undefined && sessionId !== lastSessionId && store.dirty.size) store.dirty.clear();
         lastSessionId = sessionId;
         notify("state", "live", "segment");
       } catch (error) {
+        buffered = null;
         store.error = error.message;
         notify("state");
       }
@@ -66,7 +75,10 @@ function applyLive(event) {
 
 function upsert(list, segment) {
   const index = list.findIndex((item) => item.id === segment.id);
-  if (index >= 0) list[index] = segment; else list.push(segment);
+  // Revisions only grow: an older revision (e.g. a partial translation of text the
+  // user has since edited) never replaces a newer one.
+  if (index >= 0) { if (!(list[index].revision > segment.revision)) list[index] = segment; }
+  else list.push(segment);
 }
 
 function applySegment(event) {
@@ -80,11 +92,19 @@ function applySegment(event) {
   notify("segment");
 }
 
-function handle(event) {
-  if (!event || typeof event !== "object") return;
+function apply(event) {
+  const seq = store.state?.seq;
+  // Already reflected in the snapshot we hold.
+  if (Number.isFinite(event.seq) && Number.isFinite(seq) && event.seq <= seq) return;
   if (event.type === "live") applyLive(event);
   else if (event.type === "segment") applySegment(event);
   else if (event.type === "refresh") scheduleRefresh();
+}
+
+function handle(event) {
+  if (!event || typeof event !== "object") return;
+  if (buffered && (event.type === "live" || event.type === "segment")) buffered.push(event);
+  apply(event);
 }
 
 let pollTimer = 0;
@@ -154,6 +174,7 @@ export const store = {
   dirty: new Set(),
   subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   refresh,
+  handle, // applies one stream event (exported for tests)
   segments() {
     const s = this.state;
     const list = s?.session?.segments || s?.segments || [];

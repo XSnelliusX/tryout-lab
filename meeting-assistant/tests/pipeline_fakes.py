@@ -31,6 +31,7 @@ class FakeModel:
         self.partial_delay = 0.0
         self.before_translation = None
         self.fail_asr = None
+        self.fail_asr_times = None      # None: fail every call while fail_asr is set; n: only the next n calls
         self.lock = threading.Lock()
 
     def asr_calls(self):
@@ -50,7 +51,9 @@ class FakeModel:
                     raise Cancelled("cancelled")
         if cancel():
             raise Cancelled("cancelled")
-        if self.fail_asr:
+        if self.fail_asr and (self.fail_asr_times is None or self.fail_asr_times > 0):
+            if self.fail_asr_times is not None:
+                self.fail_asr_times -= 1
             raise RuntimeError(self.fail_asr)
         if self.text is not None:
             text = self.text
@@ -203,6 +206,7 @@ if args == ["--version"]:
     status("error", message="Usage: capture-audio --source teams|system|microphone")
     sys.exit(2)
 if args == ["--list-devices"]:
+    time.sleep(float(os.environ.get("FAKE_HELPER_LIST_DELAY", "0")))
     status("device", uid="BuiltIn", name="MacBook Pro Microphone", transport="built-in", sample_rate=48000,
            channels=1, is_default=True, input_volume=0.62, input_volume_settable=True)
     status("device", uid="USB-1", name="USB Mic", transport="usb", sample_rate=44100, channels=2,

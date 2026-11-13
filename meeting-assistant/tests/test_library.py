@@ -284,6 +284,58 @@ class LibraryTests(unittest.TestCase):
         self.library.import_legacy()
         self.assertEqual(self.library.get_session("session-1")["status"], "recording")
 
+    def test_app_recorded_journal_never_overwrites_the_library(self):
+        # Review r4: replaying an app-recorded journal reverted later changes (retranslations).
+        self.library.register_session("live", "teams")
+        self.library.upsert_segment("live", {"id": 1, "raw_text": "原", "traditional_text": "原", "english": "", "status": "error", "error": "x"})
+        self.library.update_translation("live", 1, 1, "Retranslated")
+        directory = self.root / "sessions" / "live"
+        directory.mkdir(parents=True)
+        events = [{"type": "session_started", "source": "teams"},
+                  {"type": "source_segment", "id": 1, "raw_text": "原", "traditional_text": "原", "status": "translating"},
+                  {"type": "segment", "id": 1, "raw_text": "原", "traditional_text": "原", "english": "", "status": "error", "error": "x"},
+                  {"type": "source_segment", "id": 2, "raw_text": "新", "traditional_text": "新", "status": "translating"},
+                  {"type": "session_finished", "status": "complete"}]
+        (directory / "events.jsonl").write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events), encoding="utf-8")
+        self.assertEqual(Library(self.root).import_legacy(), ["live"])  # segment 2 was restored
+        session = self.library.get_session("live")
+        self.assertEqual([(s["id"], s["english"], s["status"]) for s in session["segments"]],
+                         [(1, "Retranslated", "complete"), (2, "", "translating")])
+        self.assertEqual(session["status"], "complete")  # the journal finished; the library had not
+        self.assertEqual(self.library.import_legacy(), [])
+        self.library.set_session_status("live", "error")
+        with (directory / "events.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"type": "session_finished", "status": "complete"}) + "\n")
+        self.library.import_legacy()
+        self.assertEqual(self.library.get_session("live")["status"], "error")  # the library decides
+
+    def test_session_registered_by_an_older_version_is_app_owned(self):
+        # Sessions registered before imports rows existed must not be replayed over either.
+        self.library.register_session("older", "teams")
+        with self.library._connection(write=True) as db:
+            db.execute("DELETE FROM imports WHERE session_id='older'")
+        self.library.upsert_segment("older", {"id": 1, "raw_text": "a", "traditional_text": "a", "english": "kept", "status": "complete"})
+        directory = self.root / "sessions" / "older"
+        directory.mkdir(parents=True)
+        (directory / "events.jsonl").write_text(json.dumps({"type": "segment", "id": 1, "raw_text": "a", "traditional_text": "a", "english": "stale", "status": "complete"}) + "\n")
+        self.library.import_legacy()
+        self.assertEqual(self.library.get_session("older")["segments"][0]["english"], "kept")
+        self.assertEqual(self.library.get_session("older")["status"], "recording")
+
+    def test_recover_interrupted_marks_sessions_and_stuck_segments(self):
+        # Review r7: a session whose process died stayed "recording" forever.
+        self.library.register_session("crashed", "teams")
+        self.library.register_session("done", "teams")
+        self.library.set_session_status("done", "complete")
+        for ident, status, english in ((1, "translating", ""), (2, "complete", "fine"), (3, "pending", ""), (4, "error", "")):
+            self.library.upsert_segment("crashed", {"id": ident, "raw_text": "a", "traditional_text": "a", "english": english, "status": status})
+        self.assertEqual(self.library.recover_interrupted(), 1)
+        session = self.library.get_session("crashed")
+        self.assertEqual(session["status"], "interrupted")
+        self.assertEqual([s["status"] for s in session["segments"]], ["pending", "complete", "pending", "error"])
+        self.assertEqual(self.library.get_session("done")["status"], "complete")
+        self.assertEqual(self.library.recover_interrupted(), 0)
+
     def test_delete_only_validated_session_and_tracked_exports(self):
         self.register()
         session = self.root / "sessions" / "session-1"

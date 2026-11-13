@@ -300,6 +300,58 @@ class SegmenterTests(unittest.TestCase):
         finals = [e for e in events if e["kind"] == "final"]
         self.assertEqual(len(finals), 1)
         self.assertEqual(finals[0]["utterance"], 2)  # utterance 1 (0.16 s) emitted no final
+        first = [e for e in events if e["utterance"] == 1]
+        # No preview or pause either: nothing may start work for a burst that never becomes a final.
+        self.assertEqual([(e["kind"], e["reason"]) for e in first], [("discard", "short")])
+        self.assertEqual(len(first[0]["audio"]), 0)
+        self.assertLess(first[0]["start"], first[0]["end"])
+        self.assertEqual([e["kind"] for e in events if e["utterance"] == 2], ["pause", "final"])
+
+    def test_burst_under_min_voiced_with_long_silence_sends_no_pause(self):
+        flags = pattern((10, False), (8, True), (60, False))  # 0.26 s burst, then silence
+        events, _ = segment(flags)
+        self.assertEqual([e["kind"] for e in events], ["discard"])
+
+    def test_events_match_the_stream_with_interleaved_flushes(self):
+        # Every event's audio is exactly stream[start:end], also after watchdog-style flushes
+        # that land on a partial frame (they used to leave a hole in the next pre-roll).
+        for seed in range(40):
+            rng = np.random.default_rng(seed)
+            parts = []
+            for _ in range(rng.integers(3, 10)):
+                n = int(float(rng.choice([0.05, 0.2, 0.35, 0.8, 1.5, 3.0])) * RATE)
+                noise = (rng.standard_normal(n) * 0.002).astype(np.float32)
+                if rng.random() < 0.55:
+                    t = np.arange(n) / RATE
+                    voice = 0.2 * (0.5 + 0.5 * np.sin(2 * np.pi * 3 * t)) * np.sin(2 * np.pi * 600 * t)
+                    parts.append(voice.astype(np.float32) + noise)
+                else:
+                    parts.append(noise if rng.random() < 0.85 else np.zeros(n, np.float32))
+            stream = np.concatenate(parts)
+            events = []
+            segmenter = Segmenter(events.append)
+            flushes = set(rng.integers(0, len(stream), 3).tolist())
+            fed = 0
+            while fed < len(stream):
+                step = int(rng.integers(1, 5000))
+                segmenter.process(stream[fed:fed + step])
+                fed = min(fed + step, len(stream))
+                if any(fed - step < point <= fed for point in flushes):
+                    segmenter.flush()
+            segmenter.flush()
+            self.assertEqual(segmenter.position, len(stream))
+            last_final_end = 0.0
+            for event in events:
+                with self.subTest(seed=seed, kind=event["kind"], utterance=event["utterance"]):
+                    start, end = round(event["start"] * RATE), round(event["end"] * RATE)
+                    if event["kind"] == "discard":
+                        self.assertEqual(len(event["audio"]), 0)
+                        self.assertLessEqual(start, end)
+                        continue
+                    np.testing.assert_array_equal(event["audio"], stream[start:end])
+                    if event["kind"] == "final":
+                        self.assertGreaterEqual(event["start"], last_final_end - 1e-9)
+                        last_final_end = event["end"]
 
     def test_flush_emits_open_utterance_with_tail(self):
         flags = pattern((10, False), (30, True))

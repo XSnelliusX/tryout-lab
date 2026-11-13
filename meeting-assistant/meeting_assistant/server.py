@@ -39,7 +39,7 @@ from .events import EventHub
 from .instance import InstanceLock
 from .levels import advice
 from .scheduler import Job, Scheduler
-from .storage import Archive, DATA_DIR
+from .storage import Archive, DATA_DIR, append_journal
 from .workbench import Workbench
 
 # Meeting data defaults to owner-only permissions, including on exceptional paths.
@@ -55,6 +55,7 @@ REFRESH_INTERVAL = 0.25    # refresh bursts are coalesced to one per interval
 PARTIAL_INTERVAL = 0.1     # partial translations: at most 10 segment events per second per segment
 LAG_NOTICE_SECONDS = 20.0  # recognition backlog that earns a notice
 LONG_CONTEXT_CHARS = 600
+NO_SIGNAL_AFTER_SECONDS = 30.0  # "no signal" advice only after this much captured audio without speech
 STATIC_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*\.(html|js|css|svg)")
 CONTENT_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
                  "css": "text/css; charset=utf-8", "svg": "image/svg+xml; charset=utf-8"}
@@ -145,7 +146,8 @@ class Application(Workbench):
         self.last_signal_at = None
         self.audio_seconds = 0.0
         self.started_at = None
-        self.dropped = 0
+        self.discarded_bursts = 0  # noise bursts too short for a final, plus no-speech recognitions
+        self.last_speech_seconds = None  # stream time of the latest detected speech
         self.notice = ""
         self.capture_status = "Not capturing"
         self.capture_profile = None
@@ -155,6 +157,7 @@ class Application(Workbench):
         self.device = None
         self.last_gain_db = 0.0
         self.pipeline_stats = collections.Counter()
+        self._latency_cache = None
         self._keys = {}
         self._open_key = None
         self._spec_key = None
@@ -164,6 +167,9 @@ class Application(Workbench):
         self._refresh_wanted = False
         self._stopping = threading.Event()
         self._init_workbench(data_dir)
+        # The instance lock is held: nothing can be recording, so any session
+        # still marked "recording" was interrupted.
+        self.library.recover_interrupted()
         if model is not None:
             self.model, self.model_ready, self.model_status = model, True, "Models ready"
         self._load_models = load_models and model is None
@@ -268,6 +274,15 @@ class Application(Workbench):
                   "profile": self.capture_profile, "archive": self.archive}
         session_id = self.capture_session
         with self.pipe_lock:
+            if event["kind"] == "discard":
+                # The utterance closed without a final: drop its preview and speculation.
+                if event.get("reason") == "short":
+                    self.discarded_bursts += 1
+                if key != self._open_key:
+                    self._close_key(self._open_key)
+                self._close_key(key)
+                self._open_key = None
+                return
             if key != self._open_key:
                 self._close_key(self._open_key)
                 self._open_key = key
@@ -351,6 +366,8 @@ class Application(Workbench):
         detector, segmenter = capture.detector, capture.segmenter
         if detector.speaking or segmenter.open:
             self.last_signal_at = now
+        if detector.speaking:
+            self.last_speech_seconds = self.audio_seconds
         if self.recording_state == "starting":
             self._set_recording_state("recording", expect=("starting",))
         spec_key = self._spec_key
@@ -432,10 +449,15 @@ class Application(Workbench):
             with self.pipe_lock:
                 job.failed = True
                 final = job.get("final")
-            if final is not None:
-                # The final relied on this decode: decode it again as a plain final.
-                self.jobs.submit(Job("final", job.session_id, id=job.id, key=job.key, event=final["event"],
-                                     emitted_at=final["emitted_at"], asr=job.asr, profile=job.profile, archive=job.archive))
+            if final is None:
+                return  # A later final for this audio decodes it afresh.
+            # The final relied on this decode: decode again right here, so the
+            # segment keeps its place ahead of later finals.
+            try:
+                result = self._transcribe(job)
+            except Exception as exc:
+                result = {"error": str(exc)[:500]}
+            self._finalize(job, result, final["event"], speculative_at=job.emitted_at)
             return
         with self.pipe_lock:
             if job.cancelled:
@@ -470,6 +492,8 @@ class Application(Workbench):
         text = (result.get("traditional_text") or "").strip()
         if "error" not in result and (result.get("no_speech") or not text):
             self.pipeline_stats["no_speech"] += 1
+            with self.pipe_lock:
+                self.discarded_bursts += 1
             if archive:
                 self._journal(archive, {"type": "no_speech", "id": job.id, "start": start, "end": end})
             with self.live_lock:
@@ -486,11 +510,11 @@ class Application(Workbench):
         if archive:
             self._journal(archive, {"type": "source_segment", **segment, "cut": event.get("cut"),
                                     "clean": event.get("clean")})
-        stored = self._store(segment, session_id)
+        stored = self._store_or_report(segment, session_id)
         self._publish_segment(stored, session_id)
         timing["speech_end_to_source_ms"] = _ms(speech_end_at, time.monotonic())
         if "error" in result:
-            self._store(dict(segment, timing=timing), session_id)
+            self._store_or_report(dict(segment, timing=timing), session_id)
             return
         self.jobs.submit(Job("translate", session_id, id=job.id, segment=segment, profile=job.profile,
                              archive=archive, speech_end_at=speech_end_at, queued_at=time.monotonic()))
@@ -504,7 +528,7 @@ class Application(Workbench):
                    "status": "translating"}
         if job.archive:
             self._journal(job.archive, {"type": "source_segment", **segment})
-        stored = self._store(segment, job.session_id)
+        stored = self._store_or_report(segment, job.session_id)
         self._publish_segment(stored, job.session_id)
         self._translate(job, segment, history=False)
 
@@ -528,30 +552,37 @@ class Application(Workbench):
         def on_text(partial):
             nonlocal last
             now = time.monotonic()
-            if now - last < PARTIAL_INTERVAL or superseded():
+            if now - last < PARTIAL_INTERVAL:
                 return
-            last = now
-            self._publish_segment(dict(segment, english=partial, status="translating"), session_id)
+            # Check and publish under the lock a user edit takes, so a partial of
+            # the old text can never follow the edit.
+            with self.lock:
+                if superseded():
+                    return
+                last = now
+                self._publish_segment(dict(segment, english=partial, status="translating"), session_id)
 
         started = time.monotonic()
+        completed = False
         try:
             english = self.model.translate(text, **profile, on_text=on_text, should_cancel=superseded) if text else ""
             segment.update(english=english, status="complete")
             segment.pop("error", None)
+            completed = True
         except Cancelled:
             segment.update(status="complete")  # A user edit superseded it; the library keeps the edit.
         except Exception as exc:
             # Errors are displayed but model inputs are never put in server logs.
             segment.update(status="error", error=str(exc)[:500])
         timing = segment.get("timing")
-        if isinstance(timing, dict):
+        if isinstance(timing, dict) and completed:
+            # Only a finished translation is a latency measurement.
             timing = segment["timing"] = dict(timing)
             timing["translate_ms"] = _ms(started, time.monotonic())
-            if segment["status"] == "complete":
-                timing["speech_end_to_english_ms"] = _ms(job.get("speech_end_at"), time.monotonic())
+            timing["speech_end_to_english_ms"] = _ms(job.get("speech_end_at"), time.monotonic())
         if job.archive:
             self._journal(job.archive, {"type": "segment", **segment})
-        stored = self._store(segment, session_id)
+        stored = self._store_or_report(segment, session_id)
         self._publish_segment(stored, session_id)
 
     def _job_retranslate(self, job):
@@ -566,11 +597,14 @@ class Application(Workbench):
         def on_text(partial):
             nonlocal last
             now = time.monotonic()
-            current = self._current_segment(job.session_id, job.id)
-            if now - last < PARTIAL_INTERVAL or current is None or current.get("revision") != job.revision:
+            if now - last < PARTIAL_INTERVAL:
                 return
-            last = now
-            self._publish_segment(dict(current, english=partial, status="translating"), job.session_id)
+            with self.lock:
+                current = self._current_segment(job.session_id, job.id)
+                if current is None or current.get("revision") != job.revision:
+                    return
+                last = now
+                self._publish_segment(dict(current, english=partial, status="translating"), job.session_id)
 
         error, english = None, ""
         try:
@@ -586,6 +620,7 @@ class Application(Workbench):
                 return  # A newer user edit has already superseded this result.
             self._remember(stored, job.session_id)
         self._publish_segment(stored, job.session_id)
+        self._journal_session(job.session_id, {"type": "segment", **stored})
 
     def _finish(self, job):
         status = "error" if job.get("error") else "complete"
@@ -627,18 +662,64 @@ class Application(Workbench):
             self._remember(stored, session_id)
             return stored
 
+    def _store_or_report(self, segment, session_id):
+        """_store, but a library failure still shows the caption (as an error) and keeps going.
+
+        The journal already holds the segment, so the next start restores it.
+        """
+        try:
+            return self._store(segment, session_id)
+        except Exception:
+            failed = dict(segment, status="error",
+                          error="Not saved: the transcript library could not be written. "
+                                "The session journal keeps this caption; it is restored on the next start.")
+            with self.lock:
+                self._remember(failed, session_id)
+            self._set_notice("Captions could not be saved to the transcript library (disk full or locked?). "
+                             "They are kept in the session journal and restored on the next start.")
+            return failed
+
+    def _journal_session(self, session_id, event):
+        """Journal a change to a session that may no longer be recording."""
+        archive = self.archive
+        if archive is not None and archive.id == session_id:
+            self._journal(archive, event)
+            return
+        try:
+            append_journal(self._session_path(session_id) / "events.jsonl", event)
+        except FileNotFoundError:
+            pass  # No journal (manual-only session): the library is the only record.
+        except Exception:
+            self._set_notice("Saved, but the session journal could not be updated.")
+
     def _remember(self, segment, session_id):
         # lock held; copy-on-write so lock-free readers see a consistent list
         if session_id != self.session_id:
             return
-        segments = list(self.segments)
+        old = self.segments
+        segments = list(old)
+        previous_timing = None
         for index, previous in enumerate(segments):
             if previous["id"] == segment["id"]:
+                previous_timing = previous.get("timing")
                 segments[index] = dict(segment)
                 break
         else:
             segments.append(dict(segment))
+        cache = self._latency_cache
+        if cache is not None and cache[0] is old and previous_timing == segment.get("timing"):
+            self._latency_cache = (segments, cache[1])  # timing unchanged: the summary still holds
         self.segments = segments
+
+    def _latency(self):
+        """Latency summary of the selected session, recomputed only when the segments changed."""
+        segments = self.segments
+        cache = self._latency_cache
+        if cache is not None and cache[0] is segments:
+            return cache[1]
+        summary = latency_summary(segments)
+        self._latency_cache = (segments, summary)
+        return summary
 
     def _current_segment(self, session_id, ident):
         if session_id != self.session_id:
@@ -707,7 +788,9 @@ class Application(Workbench):
                 notice = ("The capture helper is outdated, so the selected microphone is ignored and the macOS "
                           "default input is used. Rebuild it with scripts/build_capture.sh.")
             archive = Archive(self.data_dir / "sessions", source)
-            context = self.profile(self.session_id)["context"]
+            # A new recording starts from the saved default context, not from
+            # whichever archived session happens to be open.
+            context = settings.get("meeting_context", "")
             self.library.register_session(archive.id, source, context)
             self.capture_profile = self.profile(archive.id)
             self.capture_audio = audio
@@ -728,7 +811,8 @@ class Application(Workbench):
             self.last_audio_at = None
             self.last_signal_at = None
             self.audio_seconds = 0.0
-            self.dropped = 0
+            self.discarded_bursts = 0
+            self.last_speech_seconds = None
             self.notice = notice
             self._context_warned = self._lag_warned = False
             self._context_notice(self.capture_profile.get("context", ""))
@@ -826,10 +910,18 @@ class Application(Workbench):
                   "threshold_db": _round(detector.threshold_db), "speaking": bool(detector.speaking),
                   "gain_db": _round(self.last_gain_db if (self.capture_audio or {}).get("normalize", True) else 0.0) or 0.0,
                   "clipped_recent": meter["clipped_recent"], "clipped_total": meter["clipped_total"]}
-        hint = advice({**levels, "input_volume": (device or {}).get("input_volume")}) if capture.samples else ""
+        hint = ""
+        if capture.samples:
+            facts = {**levels, "input_volume": (device or {}).get("input_volume")}
+            quiet_for = capture.samples / RATE - (self.last_speech_seconds or 0.0)
+            if facts["peak_db"] is not None and facts["peak_db"] <= -90.0 and quiet_for < NO_SIGNAL_AFTER_SECONDS:
+                # Digital silence is normal on Teams/system audio between speakers:
+                # warn about a dead input only after a long stretch without speech.
+                facts["peak_db"] = None
+            hint = advice(facts)
         return {**levels, "advice": hint, "device": device}
 
-    def live_payload(self, now=None):
+    def live_payload(self, now=None, latency=False):
         now = time.monotonic() if now is None else now
         queue_length, lag, pending = self.jobs.stats(now)
         no_audio, feed = self._feed(now)
@@ -837,14 +929,17 @@ class Application(Workbench):
                 "audio_seconds": round(self.audio_seconds, 1), "preview": self.live_preview,
                 "queue_length": queue_length, "queue_lag_seconds": round(lag, 1), "pending_work": pending,
                 "no_audio": no_audio, "feed_status": feed, "capture_status": self.capture_status,
-                "notice": self.notice, "dropped": self.dropped, "latency": latency_summary(self.segments)}
+                "notice": self.notice, "discarded_bursts": self.discarded_bursts,
+                "latency": self._latency() if latency is False else latency}
 
     def state(self):
+        # Every event with seq <= this value is reflected below (see events.py).
+        seq = self.hub.seq
         live = self.live_payload()
         live.pop("type")
         preview = live.pop("preview")
         return {**self.workbench_state(), **live, "model_status": self.model_status, "model_ready": self.model_ready,
-                "session_id": self.session_id, "segments": list(self.segments), "live_preview": preview,
+                "session_id": self.session_id, "segments": list(self.segments), "live_preview": preview, "seq": seq,
                 "capabilities": self.capabilities(), "launcher_name": launcher_name(),
                 "archive_dir": str(self.data_dir / "sessions"),
                 "session_path": str(self.data_dir / "sessions" / self.session_id) if self.session_id else None}
@@ -870,7 +965,10 @@ class Application(Workbench):
         last_refresh = last_sent = 0.0
         while not self._stopping.is_set():
             capturing = self.recording_state != "idle"
-            self._live_dirty.wait(LIVE_INTERVAL if capturing else 0.5)
+            timeout = LIVE_INTERVAL if capturing else 0.5
+            if self._refresh_wanted:  # a deferred refresh: wake when it is due, not before
+                timeout = min(timeout, max(0.0, last_refresh + REFRESH_INTERVAL - time.monotonic()))
+            self._live_dirty.wait(timeout)
             self._live_dirty.clear()
             delay = LIVE_INTERVAL - (time.monotonic() - last_sent)
             if delay > 0 and self._stopping.wait(delay):
@@ -879,8 +977,9 @@ class Application(Workbench):
                 return
             started = time.monotonic()
             try:
+                latency = self._latency()  # cached; recomputed outside the lock when segments change
                 with self.live_lock:
-                    payload = self.live_payload(started)
+                    payload = self.live_payload(started, latency=latency)
                     encoded = json.dumps(payload, sort_keys=True, default=str)
                     if encoded != last_live:
                         last_live, last_sent = encoded, started
@@ -894,8 +993,6 @@ class Application(Workbench):
                     self._refresh_wanted = False
                     last_refresh = started
                     self.hub.publish({"type": "refresh"})
-                elif self._refresh_wanted:
-                    self._live_dirty.set()
             except Exception:
                 pass  # The stream is best effort; /api/state remains authoritative.
 
@@ -1032,7 +1129,7 @@ def make_handler(app, token):
             self.close_connection = True
             try:
                 self._headers(200, "application/x-ndjson; charset=utf-8")
-                self.wfile.write(b'{"type":"ping"}\n')
+                self.wfile.write(app.hub.ping())
             except OSError:
                 app.hub.unsubscribe(client)
                 return

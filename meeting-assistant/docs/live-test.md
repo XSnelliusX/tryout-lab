@@ -17,12 +17,12 @@ After an implementation update, stop any recording, wait for finishing, and stop
 
 ## Meeting checklist
 
-1. Choose one source: **Teams** for Teams desktop output, **system** for all system output, or **microphone** for a physical meeting using the macOS default input. Teams does not need to be open for microphone capture. These are alternatives, not mixed capture. Teams and system output do not include your microphone directly. Close music and other sound sources if using system capture.
-2. Wait for **Models Ready**. Obtain required consent for recording and local archiving, then select **Start**. Launching alone does not request microphone permission or start capture.
-3. Grant the relevant macOS permission if prompted; see troubleshooting below. The UI also provides Settings links.
-4. Check the audio meter, then the live Chinese source transcript and English translation.
-5. Use **Focus captions** for larger English text and fewer controls during the meeting. This is a normal browser window, not an always-on-top overlay.
-6. Select **Stop & finish** and wait for the final queue to finish before closing the browser or launcher. Use **Save transcript** for a readable bilingual text file. The session archive is local and private; its path is shown by the app. Recordings are retained until you delete them manually; there is no automatic retention deletion. Also consider separate copies and backups.
+1. Choose one source in the toolbar: **Teams** for Teams desktop output, **System** for all system output, or **Microphone** for a physical meeting (the default input or a device you pick in the Record sheet or the Audio tab). Teams does not need to be open for microphone capture. These are alternatives, not mixed capture. Teams and system output do not include your microphone directly. Close music and other sound sources if using system capture.
+2. Wait for **Models ready** in the sidebar. Obtain required consent for recording and local archiving, press **Record** and confirm in the sheet. Launching alone does not request microphone permission or start capture.
+3. Grant the relevant macOS permission if prompted; see troubleshooting below. The Audio tab links to the matching Settings pane.
+4. Check the level meter and the Audio tab hint, then the live captions: English first, Chinese below. Dimmed captions are provisional and may still change; English fills in as it is translated.
+5. Use the focus button in the toolbar to hide the sidebar and inspector, and the **A A** buttons to change the caption size. This is a normal browser window, not an always-on-top overlay.
+6. Press **Stop** and wait until the status returns to Idle before closing the browser or launcher. Use **Save transcript** in the Export tab for a readable bilingual text file. The session archive is local and private; its path is shown by the app. Recordings are retained until you delete them manually; there is no automatic retention deletion. Also consider separate copies and backups.
 
 If capture is unavailable, use the UI's pasted-Chinese translation fallback with the local model. Live inference stays on the Mac; there is no cloud fallback. Speaker diarization, gateway review and summaries are not part of this MVP.
 
@@ -32,7 +32,7 @@ The status now separates startup from active capture. Check **Received: … seco
 
 - Stuck at **0.0**: no audio frames have reached the app. Check the displayed permission/startup error first; `-3801` blocks capture entirely.
 - Counter increases but signal RMS stays near **0.0000**: audio frames are arriving but silent. For microphone, check **Sound → Input** and the input-level indicator while someone speaks. For Teams, check computer audio is connected and someone remote is speaking; the physical room is not captured by this source.
-- Counter increases and the RMS signal is nonzero, but no captions: very quiet sound may be below the current `0.008` speech threshold, or inference may be queued. Review the signal and queue diagnostics. Source captions may take up to a six-second chunk plus model processing to appear; there is no measured latency guarantee.
+- Counter increases and the level moves, but no captions: check the Audio tab. The speech detector adapts to the room's noise floor, so a very low signal-to-noise ratio (under about 10 dB) or speech far below the noise can still be missed; the hint line says so. Also check the work queue. Captions normally end about 0.6 s after a pause and English follows within about a second (measured median 0.8 s on replayed recordings); a long meeting context slows every caption.
 
 If Teams app filtering stays silent after permissions are granted, stop and select **All system audio** only if capturing other apps is appropriate and consented. Microphone is a separate alternative for physical-room speech, not a direct digital Teams fallback.
 

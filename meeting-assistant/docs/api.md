@@ -18,8 +18,12 @@ Heavy (reads the library). Fetch on load and when told to refresh, not on a fast
 
 Fields: `settings, session, sessions, job, diarization, model_status, model_ready, recording_state
 ("idle"|"starting"|"recording"|"draining"), session_id, segments, live_preview, no_audio, queue_length,
-queue_lag_seconds, pending_work, dropped, notice, capture_status, audio_seconds, feed_status, launcher_name,
-archive_dir, session_path`, plus:
+queue_lag_seconds, pending_work, discarded_bursts, notice, capture_status, audio_seconds, feed_status,
+launcher_name, archive_dir, session_path, seq`, plus:
+
+- `discarded_bursts`: sounds of the current recording that produced no caption (too little speech for a
+  final, or the recogniser heard no speech). Nothing is ever skipped for lack of capacity.
+- `seq`: the event-stream sequence number this snapshot reflects (see below).
 
 ```jsonc
 "audio": {                      // live input diagnostics; levels in dBFS (0 = full scale), null when unknown
@@ -80,18 +84,26 @@ with `fetch` and the `Authorization` header and read through `response.body.getR
 ```jsonc
 {"type": "live", "recording_state": "recording", "audio": { /* as above */ }, "audio_seconds": 81.3,
  "preview": { /* provisional segment or null */ }, "queue_length": 0, "queue_lag_seconds": 0.0,
- "pending_work": 1, "no_audio": false, "feed_status": "…", "capture_status": "…", "notice": "", "dropped": 0}
+ "pending_work": 1, "no_audio": false, "feed_status": "…", "capture_status": "…", "notice": "", "discarded_bursts": 0,
+ "latency": { /* as above */ }, "seq": 1794539764689721}
    // sent when any of these change; at most about 10 per second while capturing
 {"type": "segment", "session_id": "…", "segment": { /* full segment, upsert by id */ }}
    // every create or update of a segment of the selected session, including each partial-translation step
 {"type": "refresh"}   // something else changed (sessions, settings, job, results, model status, session switch)
-{"type": "ping"}      // every 10 s
+{"type": "ping"}      // every 10 s, and once when the stream opens
 ```
+
+Every event carries `seq`, an integer that increases with each event, also across server restarts (it starts
+from the clock; pings repeat the latest value). `GET /api/state` returns the `seq` it reflects: the
+snapshot includes the effect of every event with `seq` <= that value.
 
 Client rules: on load `GET /api/state`, then open the stream; apply `live` and `segment` events to the local
 copy; on `refresh` refetch the state (coalescing bursts); if the stream ends or errors, poll `/api/state`
 every 2 s and retry the stream with backoff (1 s, 2 s, 5 s). A `segment` whose id equals the current preview
-id replaces the preview.
+id replaces the preview. Ignore events whose `seq` is <= the snapshot's `seq`. Keep the `live` and
+`segment` events that arrive while a `/api/state` request is in flight, and re-apply those newer than the
+returned snapshot's `seq` after replacing the local copy. Never replace a segment with a lower `revision`
+(a partial translation of text the user has since edited). A server without `seq` is handled as before.
 
 ## GET /api/devices
 
