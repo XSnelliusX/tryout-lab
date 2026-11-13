@@ -3,81 +3,111 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="text-scale" content="scale">
   <title>Meeting Assistant</title>
   <link rel="stylesheet" href="/glass.css">
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/panels.css">
   <script type="module" src="/app.js"></script>
 </head>
-<body data-sidebar="shown" data-inspector="shown">
+<body>
   <div class="ambient" aria-hidden="true"></div>
-
-  <main id="captions" class="scroll-edge captions" tabindex="-1" aria-label="Live captions">
-    <div id="caption-column" class="caption-column">
-      <div id="caption-empty" class="cap-empty" role="status"></div>
-      <div id="caption-list" class="caption-list" role="log" aria-live="off"></div>
-      <p id="caption-note" class="cap-note" hidden>Times are approximate audio chunk boundaries, not word timings. Captions may be incomplete or inaccurate. Stop the recording before closing this page or the launcher.</p>
-    </div>
-  </main>
   <div id="announcer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-  <button id="jump-live" type="button" class="glass-button glass-button--filled jump-live" hidden><span data-icon="arrow-down"></span><span>Jump to live</span></button>
 
-  <header id="toolbar" class="glass-toolbar toolbar" role="toolbar" aria-label="Recording controls">
-    <div class="glass-group">
-      <button id="toggle-sidebar" type="button" class="glass-button glass-button--icon" aria-label="Sessions sidebar" title="Show or hide sessions" aria-pressed="true" aria-controls="sidebar"><span data-icon="sidebar"></span></button>
-    </div>
-    <h1 id="session-title" class="glass-toolbar-title toolbar-title">Meeting Assistant</h1>
-    <span class="glass-spacer"></span>
-    <div class="glass-group status-group" role="status" aria-label="Recording status">
-      <span id="rec-dot" class="rec-dot" aria-hidden="true"></span>
-      <span id="rec-text" class="rec-text">Idle</span>
-      <span id="elapsed" class="elapsed tnum" title="Audio received this session">0:00</span>
-      <level-meter id="toolbar-meter" class="toolbar-meter" aria-label="Input level"></level-meter>
-    </div>
-    <div class="glass-group">
-      <glass-segmented id="source" value="teams" aria-label="Audio source">
-        <button value="teams" title="Teams desktop audio">Teams</button>
-        <button value="system" title="All system audio">System</button>
-        <button value="microphone" title="Microphone, for in-person meetings">Microphone</button>
-      </glass-segmented>
-    </div>
-    <button id="record" type="button" class="glass-button glass-button--large glass-button--prominent record-button"><span id="record-icon"></span><span id="record-label">Record</span></button>
-    <div class="glass-group">
-      <button id="text-smaller" type="button" class="glass-button glass-button--icon size-button size-button--small" aria-label="Smaller captions" title="Smaller captions">A</button>
-      <button id="text-larger" type="button" class="glass-button glass-button--icon size-button size-button--large" aria-label="Larger captions" title="Larger captions">A</button>
-      <span class="divider divider--vertical" role="separator"></span>
-      <button id="focus-toggle" type="button" class="glass-button glass-button--icon" aria-label="Focus captions" title="Focus captions: hide sidebar and inspector" aria-pressed="false"><span data-icon="display"></span></button>
-      <button id="toggle-inspector" type="button" class="glass-button glass-button--icon" aria-label="Inspector" title="Show or hide inspector" aria-pressed="true" aria-controls="inspector"><span data-icon="inspector"></span></button>
-    </div>
-  </header>
+  <div id="app-shell" class="app-shell">
+    <header id="toolbar" class="glass glass--thick glass-toolbar toolbar" role="toolbar" aria-label="Recording controls">
+      <div class="toolbar-cluster toolbar-cluster--lead">
+        <button id="toggle-sidebar" type="button" class="glass-button glass-button--icon" aria-label="Sessions sidebar" title="Show or hide sessions" aria-pressed="true" aria-controls="sidebar"><span data-icon="sidebar"></span></button>
+        <h1 id="session-title" class="glass-toolbar-title toolbar-title">Meeting Assistant</h1>
+      </div>
 
-  <aside id="sidebar" class="glass-sidebar sidebar" aria-label="Saved sessions">
-    <h2 class="glass-list-header">Sessions</h2>
-    <ul id="session-list" class="glass-list session-list"></ul>
-    <p id="session-empty" class="field-help sidebar-empty">No saved sessions yet. Recordings appear here when you stop.</p>
-    <div class="sidebar-foot">
-      <p class="model-status" role="status"><span id="model-dot" class="model-dot" aria-hidden="true"></span><span id="model-status-text">Connecting…</span></p>
-      <p id="privacy-note" class="field-help"></p>
-    </div>
-  </aside>
+      <div class="glass-group status-group">
+        <span id="rec-dot" class="rec-dot" aria-hidden="true"></span>
+        <span id="rec-text" class="rec-text">Ready</span>
+        <span id="elapsed" class="elapsed tnum" title="Audio received this session">0:00</span>
+        <level-meter id="toolbar-meter" class="toolbar-meter" aria-label="Input level"></level-meter>
+      </div>
 
-  <aside id="inspector" class="glass glass--thick inspector" data-shape="panel" aria-label="Inspector">
-    <div class="inspector-head">
-      <glass-segmented id="tabs" value="audio" aria-label="Inspector section">
-        <button value="audio" id="tab-audio" aria-controls="pane-audio">Audio</button>
-        <button value="context" id="tab-context" aria-controls="pane-context">Context</button>
-        <button value="speakers" id="tab-speakers" aria-controls="pane-speakers">Speakers</button>
-        <button value="review" id="tab-review" aria-controls="pane-review">Review</button>
-        <button value="export" id="tab-export" aria-controls="pane-export">Export</button>
-      </glass-segmented>
+      <div class="toolbar-cluster toolbar-cluster--capture">
+        <glass-segmented id="source" value="teams" aria-label="Audio source">
+          <button value="teams" id="source-teams">Teams</button>
+          <button value="system" id="source-system">System audio</button>
+          <button value="microphone" id="source-microphone">Microphone</button>
+        </glass-segmented>
+        <button id="record" type="button" class="glass-button record-button" data-recording="false"><span id="record-icon" class="record-icon"><span data-icon="record"></span></span><span id="record-label">Record</span></button>
+      </div>
+
+      <div class="toolbar-cluster toolbar-cluster--tools">
+        <div class="glass-group size-group" role="group" aria-label="Caption text size">
+          <button id="text-smaller" type="button" class="glass-button glass-button--compact size-button size-button--small" aria-label="Smaller captions" title="Smaller captions">A-</button>
+          <button id="text-larger" type="button" class="glass-button glass-button--compact size-button size-button--large" aria-label="Larger captions" title="Larger captions">A+</button>
+        </div>
+        <button id="focus-toggle" type="button" class="glass-button glass-button--icon" aria-label="Focus captions" title="Focus captions: hide sessions and tools" aria-pressed="false"><span data-icon="display"></span></button>
+        <button id="toggle-inspector" type="button" class="glass-button glass-button--filled inspector-toggle" aria-label="Tools sidebar" title="Show or hide tools sidebar" aria-pressed="true" aria-controls="inspector"><span data-icon="inspector"></span><span class="inspector-toggle-label">Tools</span></button>
+      </div>
+    </header>
+
+    <div id="workspace" class="workspace">
+      <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+      <aside id="sidebar" class="glass glass--thick glass-sidebar sidebar" data-shape="panel" aria-label="Saved sessions">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Sessions</h2>
+          <button id="close-sidebar" type="button" class="glass-button glass-button--icon drawer-close" aria-label="Close sessions"><span data-icon="xmark"></span></button>
+        </div>
+        <ul id="session-list" class="glass-list session-list"></ul>
+        <p id="session-empty" class="field-help sidebar-empty">No saved sessions yet. Recordings appear here when you stop.</p>
+        <div class="sidebar-foot">
+          <p class="model-status" role="status"><span id="model-dot" class="model-dot" aria-hidden="true"></span><span id="model-status-text">Connecting…</span></p>
+          <p id="privacy-note" class="field-help"></p>
+        </div>
+      </aside>
+
+      <main id="captions" class="captions" tabindex="-1" aria-label="Live captions and transcript">
+        <div id="caption-column" class="caption-column">
+          <div id="caption-empty" class="cap-empty" role="status"></div>
+          <div id="caption-list" class="caption-list" role="log" aria-live="off"></div>
+          <p id="caption-note" class="cap-note" hidden>Times are approximate audio chunk boundaries, not word timings. Captions may be incomplete or inaccurate. Stop the recording before closing this page or the launcher.</p>
+        </div>
+        <button id="jump-live" type="button" class="glass glass--thick glass-button glass-button--large jump-live" hidden><span data-icon="arrow-down"></span><span>Jump to live</span></button>
+      </main>
+
+      <aside id="inspector" class="glass glass--thick inspector" data-shape="panel" aria-label="Tools and settings">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Tools</h2>
+          <button id="close-inspector" type="button" class="glass-button glass-button--icon drawer-close" aria-label="Close tools"><span data-icon="xmark"></span></button>
+        </div>
+
+        <div id="inspector-scroll" class="inspector-scroll">
+          <div class="inspector-top">
+            <details id="manual-translate-details" class="glass-disclosure manual-translate-details">
+              <summary id="manual-translate-summary">
+                <span class="manual-translate-summary-label"><span data-icon="translate"></span><span>Translate text</span></span>
+                <span class="manual-translate-summary-meta">
+                  <span id="manual-translate-pair" class="badge">zh-hant → en</span>
+                  <span data-icon="chevron-right"></span>
+                </span>
+              </summary>
+              <div id="pane-translate" class="glass-disclosure-body"></div>
+            </details>
+          </div>
+
+          <div class="inspector-head">
+            <glass-segmented id="tabs" value="setup" aria-label="Tools section">
+              <button value="setup" id="tab-setup" aria-controls="pane-setup">Setup</button>
+              <button value="speakers" id="tab-speakers" aria-controls="pane-speakers">Speakers</button>
+              <button value="notes" id="tab-notes" aria-controls="pane-notes">Notes</button>
+            </glass-segmented>
+          </div>
+
+          <div class="inspector-body">
+            <section id="pane-setup" class="pane" role="group" aria-labelledby="tab-setup"></section>
+            <section id="pane-speakers" class="pane" role="group" aria-labelledby="tab-speakers" hidden></section>
+            <section id="pane-notes" class="pane" role="group" aria-labelledby="tab-notes" hidden></section>
+          </div>
+        </div>
+      </aside>
     </div>
-    <div class="inspector-body">
-      <section id="pane-audio" class="pane" role="group" aria-labelledby="tab-audio"></section>
-      <section id="pane-context" class="pane" role="group" aria-labelledby="tab-context" hidden></section>
-      <section id="pane-speakers" class="pane" role="group" aria-labelledby="tab-speakers" hidden></section>
-      <section id="pane-review" class="pane" role="group" aria-labelledby="tab-review" hidden></section>
-      <section id="pane-export" class="pane" role="group" aria-labelledby="tab-export" hidden></section>
-    </div>
-  </aside>
+  </div>
 </body>
 </html>

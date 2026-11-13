@@ -1,5 +1,5 @@
-// Inspector panel "Export": exports, transcript save, manual translation, archive location and privacy.
-import { el, toast } from "/glass.js";
+// Export & Save actions for Notes tab: export formats, quick transcript save, optional transcript note, and archive path.
+import { el, icon, toast } from "/glass.js";
 import { store } from "/store.js";
 import { action } from "/api.js";
 
@@ -35,7 +35,7 @@ function pathResult() {
 }
 
 export function mount(container) {
-  const root = el("div", { class: "pn pn-export" });
+  const root = el("div", { class: "pn-stack pn-export" });
   container.append(root);
   let busy = false;
 
@@ -74,11 +74,11 @@ export function mount(container) {
     busy = false; refresh();
   });
 
-  // ---- Manual translation ----
+  // ---- Manual note into transcript ----
   const manualId = uid("manual");
-  const manual = el("textarea", { class: "text-area", id: manualId, rows: 4, maxlength: "5000", lang: "zh-Hant", placeholder: "輸入中文…", "aria-describedby": `${manualId}-help` });
+  const manual = el("textarea", { class: "text-area", id: manualId, rows: 3, maxlength: "5000", lang: "zh-Hant", placeholder: "Enter Chinese text to add to this transcript…", "aria-describedby": `${manualId}-help` });
   const manualCount = el("span", { class: "pn-count tnum" });
-  const translateBtn = el("button", { type: "button", class: "glass-button glass-button--filled" }, "Translate");
+  const translateBtn = el("button", { type: "button", class: "glass-button glass-button--filled" }, "Add to transcript");
   const manualStatus = el("p", { class: "field-help pn-status", role: "status", "aria-live": "polite" });
   const manualWhy = el("p", { class: "field-help", role: "status" });
   manual.addEventListener("input", () => { manualStatus.textContent = ""; refresh(); });
@@ -86,7 +86,7 @@ export function mount(container) {
     if (translateBtn.disabled) return;
     busy = true; refresh();
     await action("/api/manual", { text: manual.value }, {
-      success: () => { manual.value = ""; manualStatus.textContent = "Added to the transcript. Manual text is excluded from remote processing."; },
+      success: () => { manual.value = ""; manualStatus.textContent = "Added and translated into the transcript."; },
     });
     busy = false; refresh();
   });
@@ -96,35 +96,29 @@ export function mount(container) {
 
   root.append(
     el("section", { class: "pn-section", "aria-labelledby": "pe-h-export" },
-      el("h3", { class: "pn-title", id: "pe-h-export" }, "Export session"),
+      el("h3", { class: "pn-title", id: "pe-h-export" }, "Export & Save"),
       el("p", { class: "field-help" },
-        "Each export is a separate copy, not a live view: later edits do not update files you already exported. Exports can contain sensitive meeting content, so avoid shared or cloud-synced folders unless that is authorised."),
+        "Download a separate snapshot of this session. Later transcript edits won’t overwrite exported files."),
       el("ul", { class: "group-box pn-box pn-formats", "aria-label": "Export formats" }, rows),
-      exportNeedsSession, exportResult.box, exportStatus),
-    el("section", { class: "pn-section", "aria-labelledby": "pe-h-save" },
-      el("h3", { class: "pn-title", id: "pe-h-save" }, "Transcript file"),
-      el("p", { class: "field-help" },
-        "Save writes the captions that are available now. Stop and finish the recording first, and wait until finishing is done, to get the full available transcript."),
+      exportNeedsSession, exportResult.box, exportStatus,
       el("div", { class: "pn-actions" }, saveBtn), saveResult.box, saveStatus),
-    el("section", { class: "pn-section", "aria-labelledby": "pe-h-manual" },
-      el("h3", { class: "pn-title", id: "pe-h-manual" }, "Translate pasted text"),
-      el("div", { class: "group-box pn-box pn-stack" },
+    el("details", { class: "glass-disclosure" },
+      el("summary", null, el("span", null, "Add Chinese line to transcript"), icon("chevron-right")),
+      el("div", { class: "glass-disclosure-body" },
         el("div", { class: "field" },
           el("label", { for: manualId }, "Chinese text"),
           manual,
-          el("p", { class: "field-help", id: `${manualId}-help` }, "Paste Chinese text as a fallback. It uses the same local model worker as captions."),
+          el("p", { class: "field-help", id: `${manualId}-help` }, "Appends text into the session transcript and translates it locally."),
           manualCount),
         el("div", { class: "pn-actions" }, translateBtn),
         manualWhy, manualStatus)),
-    el("section", { class: "pn-section", "aria-labelledby": "pe-h-privacy" },
-      el("h3", { class: "pn-title", id: "pe-h-privacy" }, "Archive and privacy"),
-      el("div", { class: "group-box pn-box pn-stack" },
+    el("details", { class: "glass-disclosure" },
+      el("summary", null, el("span", null, "Archive folder & privacy"), icon("chevron-right")),
+      el("div", { class: "glass-disclosure-body" },
         el("p", { class: "pn-copy" },
-          "Live audio, transcription and translation stay on this Mac. Optional post-meeting text processing sends text to your chosen gateway only after confirmation. Recording saves audio and transcript events locally until you delete them. Exports are separate copies. Review consent and your organization’s policy before recording."),
-        el("p", { class: "pn-copy" }, "Sessions and exports are stored here:"),
-        archive,
-        el("p", { class: "pn-copy" },
-          "Delete session folders and exports there when no longer needed; backups or other copies must be removed separately."))));
+          "Live audio, transcription and translation stay on this Mac. Optional post-meeting AI notes send transcript text only when you explicitly confirm."),
+        el("p", { class: "pn-copy" }, "Local sessions and exports folder:"),
+        archive)));
 
   function refresh() {
     const s = store.state;

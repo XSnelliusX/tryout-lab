@@ -1,5 +1,6 @@
-// Inspector panel "Context": default meeting context, per-session context, vocabulary.
+// Meeting topic context and custom glossary, with on-demand Pinyin for Chinese terms.
 import { el, icon, confirmSheet, toast } from "/glass.js";
+import { createPinyinControl } from "/pinyin-ui.js";
 import { store } from "/store.js";
 import { action } from "/api.js";
 
@@ -96,7 +97,7 @@ function contextEditor({ label, help, dirtyKey, saveLabel, locked, onSave }) {
 }
 
 export function mount(container) {
-  const root = el("div", { class: "pn pn-context" });
+  const root = el("div", { class: "pn-stack pn-context" });
   container.append(root);
 
   // ---- Default context for new recordings ----
@@ -188,14 +189,17 @@ export function mount(container) {
     const badges = el("span", { class: "pn-badges" });
     if (entry.known) badges.append(badge("Known", "green"));
     if (!entry.enabled) badges.append(badge("Disabled", "orange"));
+    const termPinyin = createPinyinControl(() => entry.term || "", { label: "Pinyin", compact: true });
+    termPinyin.sync();
     return el("li", { class: "pn-row", "data-id": entry.id, "data-disabled": entry.enabled ? null : "" },
       el("div", { class: "pn-row-main" },
         el("div", { class: "pn-row-head" }, termNode(entry.term || ""), badges),
         entry.translation
           ? el("div", { class: "pn-row-sub" }, "→ ", el("span", null, entry.translation))
           : el("div", { class: "pn-row-sub pn-muted" }, "Recognition hint only"),
-        entry.note ? el("div", { class: "pn-row-note" }, entry.note) : null),
-      el("div", { class: "pn-row-actions" }, editBtn, delBtn));
+        entry.note ? el("div", { class: "pn-row-note" }, entry.note) : null,
+        termPinyin.host),
+      el("div", { class: "pn-row-actions" }, termPinyin.button, editBtn, delBtn));
   }
 
   function editorRow(entry) {

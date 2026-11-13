@@ -1,16 +1,23 @@
-// Inspector panel "Review": post-meeting jobs (local and remote), gateway settings, payload preview, results.
+// Notes & AI review tools: meeting notes/summary, transcript review, study vocabulary, local refinement, and gateway configuration.
 import { el, icon, confirmSheet, toast } from "/glass.js";
+import { createPinyinControl } from "/pinyin-ui.js";
 import { store } from "/store.js";
 import { action } from "/api.js";
 
-const REMOTE_TASKS = ["review", "summary", "learning"];
+const REMOTE_TASKS = ["summary", "review", "learning"];
 const TASK_LABELS = {
-  refine: "Refine locally", diarize: "Diarize locally",
-  review: "Remote review", summary: "Remote summary", learning: "Remote learning",
+  refine: "Re-check wording locally",
+  diarize: "Identify speakers",
+  review: "Suggest transcript fixes",
+  summary: "Generate meeting notes",
+  learning: "Extract study vocabulary",
 };
 const KIND_TITLES = {
-  review: "Review proposals", refine: "Refined candidates", diarize: "Speaker timeline",
-  summary: "Summary", learning: "Learning items",
+  review: "Suggested transcript fixes",
+  refine: "Local re-check candidates",
+  diarize: "Speaker timeline",
+  summary: "Meeting notes",
+  learning: "Study vocabulary",
 };
 // Unsaved drafts that reset the send confirmation and block remote jobs.
 const REMOTE_DRAFTS = { gateway: "gateway settings", context: "default context", "session-context": "session context", speakers: "speaker names", "segment-edit": "an open caption editor" };
@@ -66,7 +73,7 @@ function progressInfo(progress) {
 }
 
 export function mount(container) {
-  const root = el("div", { class: "pn pn-review" });
+  const root = el("div", { class: "pn-stack pn-review" });
   container.append(root);
   let busy = false;
 
@@ -89,8 +96,6 @@ export function mount(container) {
     el("div", { class: "pn-job-head" }, jobTitle, jobBadge), jobBar, jobText, jobError, cancelBtn);
 
   // ================= Local jobs =================
-  const diarBadge = el("span", { class: "badge" });
-  const diarText = el("p", { class: "field-help" });
   const localJobs = {};
   function jobItem(task, description) {
     const descId = uid("desc"), whyId = uid("why");
@@ -102,9 +107,7 @@ export function mount(container) {
     return node;
   }
   const localBox = el("div", { class: "group-box pn-box pn-stack" },
-    el("div", { class: "pn-diar" }, diarBadge, diarText),
-    jobItem("refine", "Listens to the saved audio again with the local model and offers alternative wording. Nothing is changed automatically."),
-    jobItem("diarize", "Groups the audio into anonymous speaker clusters. Assignments are approximate, not verified identities."));
+    jobItem("refine", "Re-checks saved audio locally with the speech model and suggests wording alternatives without editing automatically."));
 
   // ================= Remote jobs =================
   const endpoint = el("input", { class: "text-input", type: "url", autocomplete: "off", spellcheck: false, placeholder: "https://", maxlength: "2048", autocapitalize: "off" });
@@ -182,17 +185,26 @@ export function mount(container) {
   const results = el("div", { class: "pn-stack pn-results" });
   const resultsEmpty = p("No results yet. Run a job above; results for this session appear here.", "field-help");
 
+  const jobSection = el("section", { class: "pn-section", "aria-labelledby": "pr-h-job", hidden: true },
+    el("h3", { class: "pn-title", id: "pr-h-job" }, "Active task"), jobBox);
+
+  const advancedAiDetails = el("details", { class: "glass-disclosure" },
+    el("summary", null, el("span", null, "Transcript cleanup & AI gateway settings"), icon("chevron-right")),
+    el("div", { class: "glass-disclosure-body" },
+      el("h4", { class: "pn-subtitle" }, "On this Mac"),
+      localBox,
+      el("h4", { class: "pn-subtitle" }, "External gateway configuration"),
+      warning, gatewayBox, payloadBox));
+
   root.append(
-    el("section", { class: "pn-section", "aria-labelledby": "pr-h-job" }, el("h3", { class: "pn-title", id: "pr-h-job" }, "Job"), jobBox),
-    el("section", { class: "pn-section", "aria-labelledby": "pr-h-local" },
-      el("h3", { class: "pn-title", id: "pr-h-local" }, "On this Mac"), localBox),
+    jobSection,
     el("section", { class: "pn-section", "aria-labelledby": "pr-h-remote" },
-      el("h3", { class: "pn-title", id: "pr-h-remote" }, "Send to your gateway"),
-      warning, gatewayBox, payloadBox, confirmBox, remoteGrid, remoteWhy),
+      el("h3", { class: "pn-title", id: "pr-h-remote" }, "AI notes & review"),
+      remoteGrid, confirmBox, remoteWhy),
     el("section", { class: "pn-section", "aria-labelledby": "pr-h-results" },
-      el("h3", { class: "pn-title", id: "pr-h-results" }, "Results"),
-      p("Results refer to a specific session version. Review proposals before applying; changed sessions make older results stale.", "field-help"),
-      resultsEmpty, results));
+      el("h3", { class: "pn-title", id: "pr-h-results" }, "Saved AI results"),
+      resultsEmpty, results),
+    advancedAiDetails);
 
   // ================= Blockers =================
   function localBlockers(task) {
@@ -271,12 +283,14 @@ export function mount(container) {
   function updateJob(s) {
     const job = s?.job;
     const badgeKind = { running: "accent", cancelling: "orange", complete: "green", failed: "red", cancelled: "orange" }[job?.status] || "";
-    if (!job) {
-      jobTitle.textContent = "No job";
+    if (!job || job.task === "diarize") {
+      jobSection.hidden = true;
+      jobTitle.textContent = "No active task";
       jobBadge.hidden = true; jobBar.hidden = true; jobError.hidden = true;
-      jobText.textContent = "No job running or reported.";
+      jobText.textContent = "";
       return;
     }
+    jobSection.hidden = false;
     jobTitle.textContent = TASK_LABELS[job.task] || job.task || "Unknown task";
     jobBadge.hidden = false;
     jobBadge.className = `badge${badgeKind ? ` badge--${badgeKind}` : ""}`;
@@ -290,12 +304,8 @@ export function mount(container) {
     jobError.textContent = job.error ? `Error: ${job.error}` : "";
   }
 
-  function updateLocal(s) {
-    const cap = s?.diarization;
-    if (!cap) { diarBadge.textContent = "Unknown"; diarBadge.className = "badge"; diarText.textContent = "Diarization availability unknown."; return; }
-    diarBadge.textContent = cap.ready ? "Diarization ready" : "Diarization not ready";
-    diarBadge.className = `badge ${cap.ready ? "badge--green" : "badge--orange"}`;
-    diarText.textContent = cap.reason || "";
+  function updateLocal() {
+    /* Speaker identification status now renders directly in the Speakers tab. */
   }
 
   function updateGateway(s) {
@@ -364,6 +374,8 @@ export function mount(container) {
       const approve = el("button", { type: "button", class: "glass-button glass-button--filled", "data-fk": `approve-${index}` }, "Approve this proposal");
       approve.disabled = ctx.stale || ctx.notReady || !ctx.idle || busy;
       guarded(approve, () => run("/api/artifact/apply", { artifact_id: artifact.id, proposal_index: index, expected_version: artifact.source_version }));
+      const pinyinCtl = createPinyinControl(() => proposal.replacement || proposal.original || "", { label: "Pinyin", compact: true });
+      pinyinCtl.sync();
       nodes.push(el("div", { class: "pn-item" },
         el("div", { class: "pn-item-head" }, el("strong", null, `Segment ${proposal.segment_id ?? "?"}`),
           el("span", { class: "badge" }, `Uncertainty: ${proposal.uncertainty || "unknown"}`)),
@@ -372,7 +384,8 @@ export function mount(container) {
           el("dt", null, "Proposed"), el("dd", { class: "pn-proposed", lang: zh(proposal.replacement) }, proposal.replacement || ""),
           el("dt", null, "Evidence"), el("dd", { lang: zh(proposal.quote) }, el("q", null, proposal.quote || "")),
           el("dt", null, "Reason"), el("dd", null, proposal.reason || "unknown")),
-        approve));
+        pinyinCtl.host,
+        el("div", { class: "pn-actions" }, approve, pinyinCtl.button)));
     });
     if (!nodes.length) nodes.push(p("No proposals in this result.", "field-help"));
     return nodes;
@@ -390,9 +403,12 @@ export function mount(container) {
           toast("Clipboard unavailable. Select and copy the candidate text manually.", { kind: "warning" });
         }
       });
+      const candZh = el("p", { class: "pn-zh", lang: "zh-Hant" }, candidate.traditional_text || "");
+      const py = createPinyinControl(() => candidate.traditional_text || "", { label: "Pinyin", compact: true, replaceEl: candZh });
+      py.sync();
       nodes.push(el("div", { class: "pn-item" },
-        el("div", { class: "pn-item-head" }, el("strong", { class: "tnum" }, formatTime(candidate))),
-        el("p", { class: "pn-zh", lang: "zh-Hant" }, candidate.traditional_text || ""),
+        el("div", { class: "pn-item-head" }, el("strong", { class: "tnum" }, formatTime(candidate)), py.button),
+        el("div", { class: "py-slot" }, candZh, py.host),
         candidate.english ? el("p", { class: "pn-en" }, candidate.english) : null,
         copy));
     });
@@ -472,11 +488,14 @@ export function mount(container) {
         guarded(add, () => run("/api/vocabulary", { term: item.term, translation: item.meaning || "", note: "Added from learning results" }));
         control = el("div", { class: "pn-learn-actions" }, add);
       }
+      const quoteEl = item.quote ? el("p", { class: "pn-quote", lang: zh(item.quote) }, el("q", null, item.quote)) : null;
+      const py = createPinyinControl(() => item.quote || item.term || "", { label: "Pinyin", compact: true, replaceEl: quoteEl });
+      py.sync();
       return el("div", { class: "pn-item" },
-        el("div", { class: "pn-learn-head" }, el("span", { class: "pn-learn-term", lang: zh(item.term) || "zh-Hant" }, item.term || "unknown"), el("span", { class: "pn-muted" }, item.pinyin || "unknown")),
+        el("div", { class: "pn-learn-head" }, el("span", { class: "pn-learn-term", lang: zh(item.term) || "zh-Hant" }, item.term || "unknown"), el("span", { class: "pn-muted" }, item.pinyin || "unknown"), py.button),
         el("p", { class: "pn-copy" }, item.meaning || "unknown"),
         el("p", { class: "field-help" }, `Segment ${item.segment_id ?? "unknown"} · ${segment ? formatTime(segment) : "time unknown"}`),
-        item.quote ? el("p", { class: "pn-quote", lang: zh(item.quote) }, el("q", null, item.quote)) : null,
+        quoteEl ? el("div", { class: "py-slot" }, quoteEl, py.host) : py.host,
         el("p", { class: "field-help" }, `${item.validation_status || "validation unknown"} · ${item.dictionary_provenance || "provenance unknown"}`),
         item.validation_flags?.length ? el("p", { class: "field-help" }, item.validation_flags.join(" · ")) : null,
         control);

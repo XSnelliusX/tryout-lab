@@ -47,6 +47,28 @@ class AssignmentTests(unittest.TestCase):
                 d.assign_segments([], [row])
 
 
+    def test_dominant_speaker_survives_minor_boundary_bleed_while_overlaps_stay_unknown(self):
+        timeline = [
+            {"start": 0.0, "end": 4.9, "speaker": "speaker_2"},
+            {"start": 4.8, "end": 5.0, "speaker": "speaker_1"},
+            {"start": 10.0, "end": 12.0, "speaker": "speaker_1"},
+            {"start": 11.8, "end": 14.0, "speaker": "speaker_2"},
+            {"start": 20.0, "end": 21.4, "speaker": "speaker_3"},
+        ]
+        segments = [
+            {"id": 1, "start": 0.0, "end": 5.0},   # 98% speaker_2, 4% bleed -> retains speaker_2
+            {"id": 2, "start": 10.0, "end": 14.0}, # 50/55 overlap -> stays unknown
+            {"id": 3, "start": 20.0, "end": 22.0}, # 70% single speaker -> below 80% threshold -> unknown
+        ]
+        result = d.assign_segments(segments, timeline)
+        self.assertEqual(result[0]["speaker"], "speaker_2")
+        self.assertEqual(result[0]["reason"], "dominant_speaker_coverage")
+        self.assertEqual(result[1]["speaker"], "unknown")
+        self.assertEqual(result[1]["reason"], "multiple_speakers")
+        self.assertEqual(result[2]["speaker"], "unknown")
+        self.assertEqual(result[2]["reason"], "insufficient_coverage")
+
+
 class BackendTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -121,8 +143,31 @@ with open(args[args.index('--output') + 1], 'w') as f:
         events = []
         result = d.diarize_session(self.session, data_dir=self.root, progress=events.append)
         self.assertEqual(result["timeline"], [{"start": 0.25, "end": 1.5, "speaker": "speaker_1"}])
+        self.assertEqual(result["summary"], {
+            "speaker_count": 1,
+            "speakers": ["speaker_1"],
+            "single_speaker": True,
+            "no_speech": False,
+        })
         self.assertEqual([e["status"] for e in events], ["running", "complete"])
         self.assertNotIn("PRIVATE", str(result) + str(events))
+
+    def test_empty_diarization_reports_no_speech_without_inventing_speakers(self):
+        self.exe.write_text(f"#!{sys.executable}\n" + """import json, sys
+args = sys.argv[1:]
+with open(args[args.index('--output') + 1], 'w') as f:
+    json.dump({'segments': []}, f)
+""")
+        self.config["executable_sha256"] = hashlib.sha256(self.exe.read_bytes()).hexdigest()
+        self.write_config()
+        result = d.diarize_session(self.session, data_dir=self.root)
+        self.assertEqual(result["timeline"], [])
+        self.assertEqual(result["summary"], {
+            "speaker_count": 0,
+            "speakers": [],
+            "single_speaker": False,
+            "no_speech": True,
+        })
 
     def test_rejects_outside_session_and_symlinks(self):
         outside = self.root / "outside"

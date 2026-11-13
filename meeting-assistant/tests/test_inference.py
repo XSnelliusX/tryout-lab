@@ -595,6 +595,37 @@ class TranslateTests(InferenceTestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises((ValueError, TypeError)):
                 model.translate(**kwargs)
 
+    def test_manual_language_pairs_and_prompt_tokens(self):
+        prompt = inference._translation_prompt("Hello, today we discuss the budget.", "", [], [], source_lang="en", target_lang="zh-hant")
+        self.assertIn("<|plamo:tag|>input<|plamo:key|>lang<|plamo:val|>en<|plamo:msg|>", prompt)
+        self.assertIn("<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>zh-hant<|plamo:msg|>", prompt)
+
+        auto_prompt = inference._translation_prompt("你好", "", [], [], source_lang="auto", target_lang="en")
+        self.assertIn("<|plamo:tag|>input<|plamo:msg|>你好", auto_prompt)
+        self.assertNotIn("<|plamo:val|>auto<|plamo:msg|>", auto_prompt)
+        self.assertIn("<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>en<|plamo:msg|>", auto_prompt)
+
+        model = self.models()
+        record = []
+        with mock.patch.dict(sys.modules, fake_mlx_lm(["你好，我們今天討論預算。"], record=record)):
+            out = model.translate(
+                "Hello, today we discuss the budget.",
+                source_lang="en",
+                target_lang="zh-hant",
+            )
+        self.assertEqual(out, "你好，我們今天討論預算。")
+
+    def test_unsupported_language_pairs_rejected(self):
+        langs = inference.supported_languages()
+        self.assertEqual(langs["source"][0]["code"], "auto")
+        target_codes = {item["code"] for item in langs["target"]}
+        self.assertIn("zh-hant", target_codes)
+        self.assertIn("zh-hans", target_codes)
+        self.assertNotIn("zh", target_codes)
+        for pair in (("zh", "en"), ("en", "zh"), ("en", "pt"), ("en", "auto"), ("en", "en"), ("ja", "ja")):
+            with self.subTest(pair=pair), self.assertRaises(ValueError):
+                inference.validate_language_pair(*pair)
+
 
 if __name__ == "__main__":
     unittest.main()

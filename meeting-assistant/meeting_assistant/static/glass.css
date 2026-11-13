@@ -7,9 +7,9 @@
   color-scheme: light dark;
 
   /* colour: labels, accent, status */
-  --label: light-dark(rgba(0, 0, 0, .85), rgba(255, 255, 255, .85));
-  --label-2: light-dark(rgba(0, 0, 0, .62), rgba(255, 255, 255, .65)); /* spec .55; raised to hold 4.5:1 on glass */
-  --label-3: light-dark(rgba(0, 0, 0, .3), rgba(255, 255, 255, .3));
+  --label: light-dark(rgba(0, 0, 0, .88), rgba(255, 255, 255, .90));
+  --label-2: light-dark(rgba(0, 0, 0, .68), rgba(255, 255, 255, .74));
+  --label-3: light-dark(rgba(0, 0, 0, .42), rgba(255, 255, 255, .44));
   --accent: light-dark(#5856D6, #5E5CE6);
   --accent-hover: light-dark(#4B49C8, #4F4DD0);
   --on-accent: #fff;
@@ -34,46 +34,47 @@
   --thumb: light-dark(#fff, rgba(255, 255, 255, .24));
 
   /* material */
-  --glass-fill: light-dark(rgba(255, 255, 255, .66), rgba(38, 38, 44, .62));
-  --glass-fill-thick: light-dark(rgba(250, 250, 252, .8), rgba(30, 30, 36, .78));
-  --glass-fill-clear: light-dark(rgba(255, 255, 255, .28), rgba(38, 38, 44, .28));
-  --glass-filter: blur(28px) saturate(1.5);
-  --glass-filter-thick: blur(36px) saturate(1.5);
+  --glass-fill: light-dark(rgba(255, 255, 255, .64), rgba(34, 34, 46, .54));
+  --glass-fill-thick: light-dark(rgba(255, 255, 255, .74), rgba(28, 28, 38, .66));
+  --glass-fill-clear: light-dark(rgba(255, 255, 255, .28), rgba(38, 38, 48, .28));
+  --glass-filter: blur(28px) saturate(1.65);
+  --glass-filter-thick: blur(36px) saturate(1.7);
   --glass-filter-clear: blur(12px) saturate(1.3);
-  --glass-opaque: light-dark(#f2f2f6, #2a2a30);
-  --glass-opaque-thick: light-dark(#fafafc, #1e1e24);
-  --glass-edge: light-dark(rgba(255, 255, 255, .5), rgba(255, 255, 255, .14));
+  --glass-opaque: light-dark(#f2f2f6, #242430);
+  --glass-opaque-thick: light-dark(#fafafc, #1c1c26);
+  --glass-edge: light-dark(rgba(255, 255, 255, .62), rgba(255, 255, 255, .18));
   --glass-edge-w: .5px;
-  --glass-highlight: light-dark(rgba(255, 255, 255, .7), rgba(255, 255, 255, .12));
-  --glass-rim: light-dark(rgba(0, 0, 0, .07), rgba(0, 0, 0, .35));
-  --glass-shadow: 0 12px 32px -12px light-dark(rgba(0, 0, 0, .28), rgba(0, 0, 0, .6));
-  --scrim: rgba(0, 0, 0, .3);
+  --glass-highlight: light-dark(rgba(255, 255, 255, .82), rgba(255, 255, 255, .16));
+  --glass-rim: light-dark(rgba(0, 0, 0, .06), rgba(0, 0, 0, .30));
+  --glass-shadow: 0 14px 36px -14px light-dark(rgba(30, 32, 68, .22), rgba(0, 0, 0, .52));
+  --scrim: rgba(0, 0, 0, .32);
   --dim: rgba(0, 0, 0, .35);
-  --edge-tint: light-dark(rgba(240, 241, 250, .4), rgba(18, 18, 24, .4));
+  --edge-tint: light-dark(rgba(240, 241, 250, .4), rgba(20, 20, 30, .36));
 
-  /* type: macOS text styles (size/line-height) */
+  /* type: scalable rem typography following OS text-scale */
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-zh: "PingFang TC", -apple-system, BlinkMacSystemFont, sans-serif;
   --caption-scale: 1;
-  --text-body: 400 13px/16px var(--font);
-  --text-headline: 700 13px/16px var(--font);
-  --text-title3: 400 15px/20px var(--font);
-  --text-title2: 400 17px/22px var(--font);
-  --text-title1: 400 22px/26px var(--font);
-  --text-callout: 400 12px/15px var(--font);
-  --text-subheadline: 400 11px/14px var(--font);
-  --text-footnote: 400 10px/13px var(--font);
-  --text-caption-en: 500 calc(20px * var(--caption-scale))/calc(28px * var(--caption-scale)) var(--font);
-  --text-caption-zh: 400 calc(16px * var(--caption-scale))/calc(24px * var(--caption-scale)) var(--font-zh);
+  --text-body: 400 1rem/1.5 var(--font);
+  --text-headline: 600 1.0625rem/1.4 var(--font);
+  --text-title3: 600 1.125rem/1.35 var(--font);
+  --text-title2: 600 1.25rem/1.3 var(--font);
+  --text-title1: 600 1.5rem/1.25 var(--font);
+  --text-callout: 400 0.9375rem/1.45 var(--font);
+  --text-subheadline: 500 0.875rem/1.4 var(--font);
+  --text-footnote: 400 0.875rem/1.4 var(--font);
+  --text-mono: 400 0.875rem/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  --text-caption-en: 500 calc(1.4375rem * var(--caption-scale))/1.45 var(--font);
+  --text-caption-zh: 400 calc(1.0625rem * var(--caption-scale))/1.55 var(--font-zh);
 
   /* shape, size, spacing */
   --r-capsule: 999px;
   --r-panel: 20px;
   --r-sheet: 26px;
-  --r-control: 8px;
-  --r-group: 12px;
-  --h-control: 28px;
-  --h-large: 36px;
+  --r-control: 10px;
+  --r-group: 14px;
+  --h-control: 2.375rem;
+  --h-large: 2.75rem;
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;
@@ -146,22 +147,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .glass-dim { position: absolute; inset: 0; background: var(--dim); pointer-events: none; }
 
 /* ---------- 2. Toolbar ---------- */
-.glass-toolbar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
-.glass-group { display: inline-flex; align-items: center; gap: 2px; box-sizing: border-box; height: var(--h-large); padding: 0 3.5px; }
-.glass-spacer { flex: 1; }
+.glass-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
+.glass-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; box-sizing: border-box; min-height: var(--h-control); padding: 2px 4px; }
+.glass-spacer { flex: 1; min-width: var(--s-2); }
 .glass-toolbar-title { font: var(--text-headline); padding: 0 var(--s-2); white-space: nowrap; }
 
 /* ---------- 3. Button ---------- */
 .glass-button {
   --_bg: transparent;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
-  box-sizing: border-box; height: var(--h-control); min-width: var(--h-control); padding: 0 var(--s-3);
+  box-sizing: border-box; min-height: var(--h-control); min-width: var(--h-control); padding: 4px var(--s-3);
   border: 0; border-radius: var(--r-capsule); background: var(--_bg); color: var(--label);
-  font: var(--text-body); font-weight: 500; white-space: nowrap; cursor: default; user-select: none;
+  font: var(--text-callout); font-weight: 500; white-space: nowrap; cursor: pointer; user-select: none;
   transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .glass-button:hover { --_bg: var(--fill-1); }
 .glass-button:active { --_bg: var(--fill-3); transform: scale(.97); }
+.glass-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .glass-button[aria-pressed="true"] { --_bg: var(--fill-2); }
 .glass-button[aria-pressed="true"]:hover { --_bg: var(--fill-3); }
 .glass-button:disabled { opacity: .4; pointer-events: none; }
@@ -173,8 +175,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .glass-button--prominent:hover { --_bg: var(--accent-hover); }
 .glass-button--destructive, .glass-button--destructive[aria-pressed="true"] { --_bg: var(--destructive); }
 .glass-button--destructive:hover { --_bg: color-mix(in srgb, var(--destructive), black 12%); }
-.glass-button--large { --h-control: var(--h-large); padding: 0 var(--s-4); }
-.glass-button--icon { padding: 0; width: var(--h-control); }
+.glass-button--large { --h-control: var(--h-large); padding: 6px var(--s-4); font: var(--text-body); font-weight: 600; }
+.glass-button--icon { padding: 0; width: var(--h-control); height: var(--h-control); }
+.glass-button--compact { min-height: 2rem; padding: 3px var(--s-2); font: var(--text-subheadline); }
 
 /* ---------- 4. Sidebar and list ---------- */
 .glass-sidebar { display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; width: var(--sidebar-w, 260px); padding: var(--s-2); overflow: hidden; }
@@ -210,19 +213,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field-help { color: var(--label-2); font: var(--text-subheadline); }
 .field--inline { flex-direction: row; align-items: center; gap: var(--s-2); }
 .text-input, .text-area, .select {
-  box-sizing: border-box; width: 100%; min-height: var(--h-control); padding: 0 var(--s-2);
+  box-sizing: border-box; width: 100%; min-height: var(--h-control); padding: 6px var(--s-2);
   border: 1px solid var(--field-border); border-radius: var(--r-control); background-color: var(--field-bg); color: var(--label); font: var(--text-body);
 }
-.text-area { padding: 6px var(--s-2); min-height: 72px; resize: vertical; }
+.text-area { padding: 8px var(--s-2); min-height: 78px; resize: vertical; }
 .text-input::placeholder, .text-area::placeholder { color: var(--label-2); }
-.text-input:focus-visible, .text-area:focus-visible, .select:focus-visible { outline-offset: 0; border-color: var(--focus); }
+.text-input:focus-visible, .text-area:focus-visible, .select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
 :is(.text-input, .text-area, .select)[aria-invalid="true"] { border-color: var(--red-ink); }
 .select {
-  -webkit-appearance: none; appearance: none; padding-inline-end: 26px;
+  -webkit-appearance: none; appearance: none; padding-inline-end: 28px; cursor: pointer;
   background-image: linear-gradient(45deg, transparent 50%, var(--label-2) 50%), linear-gradient(135deg, var(--label-2) 50%, transparent 50%);
-  background-position: calc(100% - 14px) 12px, calc(100% - 10px) 12px; background-size: 4px 5px; background-repeat: no-repeat;
+  background-position: calc(100% - 14px) calc(50% - 1px), calc(100% - 9px) calc(50% - 1px); background-size: 5px 5px; background-repeat: no-repeat;
 }
-:is(.text-input, .text-area, .select, .switch, .checkbox):disabled { opacity: .5; }
+:is(.text-input, .text-area, .select, .switch, .checkbox, .glass-slider):disabled { opacity: .5; cursor: not-allowed; }
+.switch:focus-visible, .checkbox:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .switch, .checkbox { -webkit-appearance: none; appearance: none; position: relative; flex: none; margin: 0; }
 .switch { width: 38px; height: 22px; border-radius: 11px; background: var(--field-border); transition: background var(--dur-fast) var(--ease); }
@@ -243,7 +247,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .badge {
   --_c: var(--label-2); --_bg: var(--fill-2);
-  display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; height: 18px; padding: 0 var(--s-2);
+  display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; min-height: 1.5rem; padding: 2px var(--s-2);
   border-radius: var(--r-capsule); background: var(--_bg); color: var(--_c); font: var(--text-subheadline); font-weight: 600; white-space: nowrap;
 }
 .badge--accent { --_c: var(--accent-ink); --_bg: color-mix(in srgb, var(--accent) 16%, transparent); }
@@ -262,7 +266,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .banner--warning { --_c: var(--orange-ink); }
 .banner--error { --_c: var(--red-ink); }
 
-.group-box { padding: var(--s-1); border-radius: var(--r-group); background: var(--fill-1); box-shadow: inset 0 0 0 1px var(--separator); }
+.group-box { padding: var(--s-1); border-radius: var(--r-group); background: light-dark(rgba(255, 255, 255, .48), rgba(255, 255, 255, .07)); box-shadow: inset 0 0 0 .5px var(--separator); }
 .group-box-title { margin: 0; padding: var(--s-2) var(--s-3) var(--s-1); color: var(--label-2); font: var(--text-subheadline); font-weight: 600; }
 .group-box-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--h-large); padding: 0 var(--s-3); }
 .group-box-row + .group-box-row { border-top: 1px solid var(--separator); }
@@ -270,19 +274,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .divider--vertical { width: 1px; height: 16px; margin: 0 var(--s-1); flex: none; }
 
 /* ---------- 7. Segmented control ---------- */
-glass-segmented { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; box-sizing: border-box; height: var(--h-control); padding: 2px; border-radius: var(--r-capsule); background: var(--fill-2); }
+glass-segmented { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; box-sizing: border-box; min-height: var(--h-control); padding: 3px; border-radius: var(--r-capsule); background: var(--fill-2); }
 glass-segmented > button {
-  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 var(--s-3);
-  border: 0; border-radius: var(--r-capsule); background: transparent; color: var(--label); font: var(--text-body); font-weight: 500; white-space: nowrap; cursor: default;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: calc(var(--h-control) - 6px); padding: 4px var(--s-3);
+  border: 0; border-radius: var(--r-capsule); background: transparent; color: var(--label); font: var(--text-callout); font-weight: 500; white-space: nowrap; cursor: pointer;
 }
+glass-segmented > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 glass-segmented > button[aria-checked="true"] { font-weight: 600; }
 .glass-segmented-thumb {
-  position: absolute; top: 2px; bottom: 2px; left: 0; width: 0; border-radius: var(--r-capsule); background: var(--thumb);
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: var(--r-capsule); background: var(--thumb);
   box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .06);
 }
 glass-segmented[data-ready] .glass-segmented-thumb { transition: transform var(--dur) var(--spring), width var(--dur) var(--spring); }
 glass-segmented[disabled] { opacity: .4; pointer-events: none; }
-:is(.glass-group, .glass-sidebar) glass-segmented { height: var(--h-control); }
+:is(.glass-group, .glass-sidebar) glass-segmented { min-height: var(--h-control); }
 
 /* ---------- 8. Sheet ---------- */
 glass-sheet { display: contents; }
@@ -327,3 +332,53 @@ level-meter { display: flex; align-items: center; gap: var(--s-2); min-width: 12
 .lm-clip { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fill-3); }
 level-meter[data-clipped] .lm-clip { background: var(--red); box-shadow: 0 0 6px var(--red); }
 .lm-readout { min-width: 8ch; text-align: end; color: var(--label-2); font: var(--text-callout); font-variant-numeric: tabular-nums; }
+
+/* ---------- 11. Slider & Disclosure ---------- */
+.glass-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 24px; margin: 0; background: transparent; cursor: pointer;
+  --control-value: 50%;
+}
+.glass-slider:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--r-capsule); }
+.glass-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--r-capsule);
+  background: linear-gradient(to right, var(--accent) 0 var(--control-value), var(--fill-3) var(--control-value) 100%);
+}
+.glass-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
+  background: #fff; border: 1px solid light-dark(rgba(0, 0, 0, .14), rgba(255, 255, 255, .25));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .28); transition: transform var(--dur-fast) var(--spring);
+}
+.glass-slider:hover::-webkit-slider-thumb { transform: scale(1.08); }
+.glass-slider:active::-webkit-slider-thumb { transform: scale(.96); }
+.glass-slider::-moz-range-track {
+  height: 6px; border-radius: var(--r-capsule); background: var(--fill-3);
+}
+.glass-slider::-moz-range-progress {
+  height: 6px; border-radius: var(--r-capsule); background: var(--accent);
+}
+.glass-slider::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%; background: #fff;
+  border: 1px solid light-dark(rgba(0, 0, 0, .14), rgba(255, 255, 255, .25));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .28);
+}
+
+.glass-disclosure {
+  border-radius: var(--r-group); background: light-dark(rgba(255, 255, 255, .46), rgba(255, 255, 255, .07)); box-shadow: inset 0 0 0 .5px var(--separator);
+}
+.glass-disclosure > summary {
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  min-height: var(--h-large); padding: var(--s-2) var(--s-3); cursor: pointer;
+  font: var(--text-callout); font-weight: 600; color: var(--label); border-radius: var(--r-group);
+}
+.glass-disclosure > summary::-webkit-details-marker { display: none; }
+.glass-disclosure > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.glass-disclosure > summary .icon { flex: none; color: var(--label-2); transition: transform var(--dur-fast) var(--ease); }
+.glass-disclosure[open] > summary .icon { transform: rotate(90deg); }
+.glass-disclosure-body { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-1) var(--s-3) var(--s-3); }
+
+@media (pointer: coarse) {
+  :root { --h-control: 2.75rem; --h-large: 3rem; }
+  .glass-button--compact { min-height: 2.5rem; padding: 4px var(--s-3); }
+}

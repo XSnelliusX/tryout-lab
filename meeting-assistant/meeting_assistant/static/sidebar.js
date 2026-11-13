@@ -12,6 +12,7 @@ let listNode, emptyNode, signature = "";
 export function hasDrafts() { return store.dirty.size > 0; }
 
 async function openSession(id) {
+  window.dispatchEvent(new CustomEvent("meeting:session-opened"));
   if (store.state?.session?.id === id) return;
   if (hasDrafts() && !(await confirmSheet({
     title: "Open another session?",

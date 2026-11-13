@@ -34,10 +34,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from .audio import STALL_SECONDS, Capture, RATE, clean_device, helper_protocol, helper_stale, list_devices
+from .audio import (
+    RATE,
+    STALL_SECONDS,
+    Capture,
+    clean_device,
+    direct_input_volume_supported,
+    helper_protocol,
+    helper_stale,
+    list_devices,
+    set_input_volume as helper_set_input_volume,
+)
 from .events import EventHub
+from .inference import supported_languages, validate_language_pair
 from .instance import InstanceLock
 from .levels import advice
+from .pinyin import analyze_pinyin, has_chinese, pinyin_status
 from .scheduler import Job, Scheduler
 from .storage import Archive, DATA_DIR, append_journal
 from .workbench import Workbench
@@ -120,6 +132,14 @@ def static_file(name):
         return source.read(), CONTENT_TYPES[match.group(1)]
 
 
+class ServiceUnavailableError(RuntimeError):
+    """Raised when a requested local service or model is loading or unavailable (HTTP 503)."""
+
+
+class TranslationFailureError(RuntimeError):
+    """Raised when manual translation inference fails cleanly (HTTP 502)."""
+
+
 class Application(Workbench):
     def __init__(self, data_dir=None, *, model=None, helper=None, load_models=True, start_threads=True):
         data_dir = Path(data_dir) if data_dir is not None else DATA_DIR
@@ -136,6 +156,7 @@ class Application(Workbench):
         self.model = None
         self.model_status = "Loading models locally…"
         self.model_ready = False
+        self.model_load_state = "loading" if (load_models and model is None) else "unloaded"
         self.capture = None
         self.archive = None
         self.session_id = None
@@ -155,6 +176,7 @@ class Application(Workbench):
         self.capture_session = None
         self.live_preview = None
         self.device = None
+        self.input_volume_mode = "auto"
         self.last_gain_db = 0.0
         self.pipeline_stats = collections.Counter()
         self._latency_cache = None
@@ -172,6 +194,7 @@ class Application(Workbench):
         self.library.recover_interrupted()
         if model is not None:
             self.model, self.model_ready, self.model_status = model, True, "Models ready"
+            self.model_load_state = "ready"
         self._load_models = load_models and model is None
         self.worker = self.ticker = None
         if start_threads:
@@ -231,8 +254,10 @@ class Application(Workbench):
                 model.load()
                 self.model = model
                 self.model_ready = True
+                self.model_load_state = "ready"
                 self._model_status("Models ready")
             except Exception as exc:
+                self.model_load_state = "error"
                 self._model_status(f"Model loading failed: {exc}. Check local model setup and dependencies, then restart the app.")
         while not self._stopping.is_set():
             job = self.jobs.next()
@@ -866,12 +891,115 @@ class Application(Workbench):
             self.jobs.submit(Job("manual", self.session_id, id=self._alloc_id(), text=text.strip(),
                                  archive=self.archive, profile=self.profile(self.session_id)))
 
+    def update_settings(self, data):
+        with self.lock:
+            previous_uid = (self.library.get_settings().get("audio") or {}).get("device_uid")
+            settings = super().update_settings(data)
+            new_uid = (settings.get("audio") or {}).get("device_uid")
+            if new_uid != previous_uid and self.capture is None:
+                with self.live_lock:
+                    self.input_volume_mode = "auto"
+            return settings
+
     def devices(self):
-        return list_devices(self.helper)
+        listed = list_devices(self.helper)
+        devices = [{**d, "direct_volume_supported": direct_input_volume_supported(d, "microphone", self.helper)}
+                   for d in listed.get("devices", [])]
+        return {"supported": listed.get("supported", False), "devices": devices}
+
+    def set_input_volume(self, volume=None, device_uid=None, mode=None):
+        if mode == "auto" and volume is None:
+            with self.live_lock:
+                self.input_volume_mode = "auto"
+            self._request_refresh()
+            return {"input_volume_mode": "auto", "input_volume": (self.device or {}).get("input_volume")}
+        if isinstance(volume, bool) or not isinstance(volume, (int, float)):
+            raise ValueError("Input volume must be a number between 0.0 and 1.0.")
+        level = float(volume)
+        if not math.isfinite(level) or not 0.0 <= level <= 1.0:
+            raise ValueError("Input volume must be between 0.0 and 1.0.")
+        if device_uid is not None and not isinstance(device_uid, str):
+            raise ValueError("device_uid must be a string.")
+        explicit_uid = device_uid.strip() if isinstance(device_uid, str) else ""
+        if explicit_uid.startswith("-"):
+            raise ValueError("device_uid must be an input device UID.")
+
+        with self.lock:
+            capture = self.capture
+            capture_source = getattr(capture, "source", "microphone") if capture is not None else None
+            if capture_source is not None and capture_source != "microphone":
+                raise ValueError("Direct microphone input volume is only available when capturing a microphone.")
+            saved_audio = dict((self.library.get_settings().get("audio") or {}))
+            target_uid = explicit_uid or saved_audio.get("device_uid") or ""
+
+        listed = list_devices(self.helper)
+        if not listed.get("supported"):
+            raise ValueError("Direct microphone input volume control is unavailable.")
+        candidates = listed.get("devices", [])
+        target_dev = next((d for d in candidates if d.get("uid") == target_uid), None) if target_uid else next((d for d in candidates if d.get("is_default")), None)
+        if not direct_input_volume_supported(target_dev, "microphone", self.helper):
+            raise ValueError("Direct microphone input volume control is unavailable for the selected input.")
+
+        updated = helper_set_input_volume(self.helper, level, device_uid=target_uid or None)
+        with self.live_lock:
+            self.input_volume_mode = "manual"
+            if self.device is not None and (not updated.get("uid") or self.device.get("uid") == updated.get("uid")):
+                self.device = dict(self.device, input_volume=updated.get("input_volume"))
+        self._request_refresh()
+        return {"input_volume": updated.get("input_volume"), "uid": updated.get("uid", ""),
+                "input_volume_mode": "manual"}
+
+    def translate_manual(self, text, *, source_lang="zh-hant", target_lang="en", include_pinyin=False):
+        if not isinstance(text, str) or not text.strip() or len(text) > 5000:
+            raise ValueError("Enter text to translate (up to 5,000 characters).")
+        src_norm, tgt_norm = validate_language_pair(source_lang, target_lang)
+        with self.lock:
+            model = self.model
+            ready = self.model_ready
+            load_state = self.model_load_state
+            status_msg = self.model_status
+            error_msg = getattr(self, "model_error", "")
+            profile = self.profile(self.session_id)
+        if not ready or model is None or load_state in ("loading", "error", "unloaded"):
+            if load_state == "loading":
+                raise ServiceUnavailableError("Translation model is still loading locally. Try again once models are ready.")
+            if load_state == "error":
+                raise ServiceUnavailableError(error_msg or status_msg or "Translation model failed to load.")
+            raise ServiceUnavailableError("Translation model is not loaded.")
+        source_text = text.strip()
+        try:
+            translated = model.translate(
+                source_text,
+                context=profile["context"],
+                vocabulary=profile["vocabulary"],
+                source_lang=src_norm,
+                target_lang=tgt_norm,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise TranslationFailureError(f"Translation failed: {exc}") from None
+        payload = {
+            "translation": translated,
+            "source_lang": src_norm or "auto",
+            "target_lang": tgt_norm,
+        }
+        if include_pinyin:
+            if has_chinese(source_text):
+                payload["source_pinyin"] = analyze_pinyin(source_text)
+            if has_chinese(translated):
+                payload["target_pinyin"] = analyze_pinyin(translated)
+        return payload
+
+    def lookup_pinyin(self, text):
+        return analyze_pinyin(text)
 
     def capabilities(self):
-        return {"helper_protocol": helper_protocol(self.helper), "helper_stale": helper_stale(self.helper, HELPER_SOURCE),
-                "event_stream": True}
+        return {
+            "helper_protocol": helper_protocol(self.helper),
+            "helper_stale": helper_stale(self.helper, HELPER_SOURCE),
+            "event_stream": True,
+        }
 
     # -- state ----------------------------------------------------------------------
     def _feed(self, now):
@@ -896,11 +1024,15 @@ class Application(Workbench):
     def audio_state(self):
         capture = self.capture
         device = self.device
+        capture_source = getattr(capture, "source", "microphone") if capture is not None else "microphone"
+        direct_supported = direct_input_volume_supported(device, capture_source, self.helper)
+        mode = self.input_volume_mode if (capture is None or direct_supported) else "auto"
         if capture is None:
             levels = {"rms_db": None, "peak_db": None, "noise_db": None, "speech_db": None, "snr_db": None,
                       "threshold_db": None, "speaking": False, "gain_db": 0.0, "clipped_recent": 0,
                       "clipped_total": 0}
-            return {**levels, "advice": "", "device": device}
+            return {**levels, "advice": "", "device": device, "direct_volume_supported": direct_supported,
+                    "input_volume_mode": mode}
         meter = capture.meter.snapshot()
         detector = capture.detector
         noise, speech = detector.noise_db, detector.speech_db
@@ -919,7 +1051,8 @@ class Application(Workbench):
                 # warn about a dead input only after a long stretch without speech.
                 facts["peak_db"] = None
             hint = advice(facts)
-        return {**levels, "advice": hint, "device": device}
+        return {**levels, "advice": hint, "device": device, "direct_volume_supported": direct_supported,
+                "input_volume_mode": mode}
 
     def live_payload(self, now=None, latency=False):
         now = time.monotonic() if now is None else now
@@ -939,6 +1072,8 @@ class Application(Workbench):
         live.pop("type")
         preview = live.pop("preview")
         return {**self.workbench_state(), **live, "model_status": self.model_status, "model_ready": self.model_ready,
+                "model_load_state": self.model_load_state,
+                "pinyin": pinyin_status(), "translation_languages": supported_languages(),
                 "session_id": self.session_id, "segments": list(self.segments), "live_preview": preview, "seq": seq,
                 "capabilities": self.capabilities(), "launcher_name": launcher_name(),
                 "archive_dir": str(self.data_dir / "sessions"),
@@ -1074,6 +1209,10 @@ def make_handler(app, token):
         def _guard(self, run):
             try:
                 run()
+            except ServiceUnavailableError as exc:
+                self._safe_error(503, str(exc))
+            except TranslationFailureError as exc:
+                self._safe_error(502, str(exc))
             except (ValueError, TypeError, KeyError, OSError, wave.Error) as exc:
                 message = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc
                 self._safe_error(400, f"Invalid request: missing or invalid {message}" if isinstance(exc, KeyError) else str(exc))
@@ -1164,6 +1303,17 @@ def make_handler(app, token):
             elif path == "/api/manual":
                 app.manual(data.get("text"))
                 response = {"ok": True}
+            elif path == "/api/translate":
+                return self._reply(200, app.translate_manual(
+                    data.get("text"),
+                    source_lang=data.get("source_lang", "zh-hant"),
+                    target_lang=data.get("target_lang", "en"),
+                    include_pinyin=bool(data.get("include_pinyin", False)),
+                ))
+            elif path == "/api/pinyin":
+                return self._reply(200, app.lookup_pinyin(data.get("text")))
+            elif path == "/api/audio/input-volume":
+                response = app.set_input_volume(data.get("volume"), device_uid=data.get("device_uid"), mode=data.get("mode"))
             elif path == "/api/save":
                 response = {"path": app.save()}
             elif path == "/api/settings":
