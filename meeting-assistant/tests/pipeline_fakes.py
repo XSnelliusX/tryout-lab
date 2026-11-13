@@ -212,6 +212,17 @@ if args == ["--list-devices"]:
     status("device", uid="USB-1", name="USB Mic", transport="usb", sample_rate=44100, channels=2,
            is_default=False, input_volume=None, input_volume_settable=False, extra="ignored")
     sys.exit(0)
+if args and args[0] == "--set-input-volume":
+    vol = float(args[1]) if len(args) > 1 else -1.0
+    dev = args[3] if len(args) > 3 and args[2] == "--device" else "BuiltIn"
+    if dev in ("USB-1", "Virtual-1"):
+        status("error", message="This input device does not support direct microphone input volume control.")
+        sys.exit(1)
+    if not (0.0 <= vol <= 1.0):
+        status("error", message="Input volume must be between 0.0 and 1.0")
+        sys.exit(2)
+    status("input_volume", uid=dev, input_volume=round(vol, 4), input_volume_settable=True)
+    sys.exit(0)
 if len(args) < 2 or args[0] != "--source":
     status("error", message="usage")
     sys.exit(2)

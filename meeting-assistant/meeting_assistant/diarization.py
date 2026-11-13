@@ -231,10 +231,18 @@ def diarize_session(session_path, *, data_dir, progress=None, cancelled=None) ->
             _stop(process)
     if progress:
         progress({"stage": "diarize", "status": "complete", "total_seconds": duration})
-    return {"timeline": timeline, "provenance": {"backend": "NeMo-Speech.cpp", "runtime_version": RUNTIME_VERSION,
-            "model": "nvidia/Nemotron-3-Diarization", "model_revision": MODEL_REVISION,
-            "model_sha256": MODEL_SHA256, "device": status["device"], "preset": "v3-offline",
-            "mode": "stateful_chunked", "audio_seconds": duration},
+    speakers = sorted({item["speaker"] for item in timeline})
+    return {"timeline": timeline,
+            "summary": {
+                "speaker_count": len(speakers),
+                "speakers": speakers,
+                "single_speaker": len(speakers) == 1,
+                "no_speech": len(timeline) == 0,
+            },
+            "provenance": {"backend": "NeMo-Speech.cpp", "runtime_version": RUNTIME_VERSION,
+                           "model": "nvidia/Nemotron-3-Diarization", "model_revision": MODEL_REVISION,
+                           "model_sha256": MODEL_SHA256, "device": status["device"], "preset": "v3-offline",
+                           "mode": "stateful_chunked", "audio_seconds": duration},
             "limitations": ["Anonymous clusters are not verified identities.",
                             "At most eight distinct voices per session; overflow cannot be detected reliably and must be flagged by the user.",
                             "Accuracy and two-hour performance on this Mac have not been validated."]}
@@ -245,7 +253,7 @@ def _number(value):
 
 
 def assign_segments(segments, timeline) -> list[dict]:
-    """Assign only single-cluster windows with >=80% coverage, preserving uncertainty."""
+    """Assign clear single or clearly dominant speakers; keep true overlaps/low coverage unknown."""
     if not isinstance(segments, list) or not isinstance(timeline, list):
         raise ValueError("Segments and timeline must be lists.")
     intervals = []
@@ -282,10 +290,26 @@ def assign_segments(segments, timeline) -> list[dict]:
                     left, right = a, b
             ratios[speaker] = round((total + right - left) / (end - start), 6)
         candidates = sorted(ratios)
-        clear = len(candidates) == 1 and ratios[candidates[0]] >= 0.8
-        assignments.append({"id": segment["id"], "speaker": candidates[0] if clear else "unknown",
-                            "ambiguous": not clear, "speaker_candidates": candidates,
-                            "overlap_ratios": ratios,
-                            "reason": "single_speaker_coverage" if clear else
-                                      "multiple_speakers" if len(candidates) > 1 else "insufficient_coverage"})
+        if not candidates:
+            assignments.append({"id": segment["id"], "speaker": "unknown", "ambiguous": True,
+                                "speaker_candidates": candidates, "overlap_ratios": ratios,
+                                "reason": "insufficient_coverage"})
+            continue
+        ordered = sorted(ratios.items(), key=lambda item: (-item[1], item[0]))
+        top_speaker, top_ratio = ordered[0]
+        if len(ordered) == 1:
+            clear = top_ratio >= 0.8
+            assignments.append({"id": segment["id"], "speaker": top_speaker if clear else "unknown",
+                                "ambiguous": not clear, "speaker_candidates": candidates,
+                                "overlap_ratios": ratios,
+                                "reason": "single_speaker_coverage" if clear else "insufficient_coverage"})
+        else:
+            second_ratio = ordered[1][1]
+            total_ratio = sum(ratios.values())
+            dominant = (top_ratio >= 0.8 and second_ratio <= 0.16
+                        and total_ratio > 0 and (top_ratio / total_ratio) >= 0.83)
+            assignments.append({"id": segment["id"], "speaker": top_speaker if dominant else "unknown",
+                                "ambiguous": not dominant, "speaker_candidates": candidates,
+                                "overlap_ratios": ratios,
+                                "reason": "dominant_speaker_coverage" if dominant else "multiple_speakers"})
     return assignments

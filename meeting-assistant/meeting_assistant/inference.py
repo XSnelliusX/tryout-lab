@@ -200,19 +200,129 @@ def _history_pairs(history):
     return checked
 
 
-def _translation_prompt(text, context, glossary, history):
+# Exact 53 language codes documented in PLaMo 3 Translate 0.8B README + ja-easy alias.
+PLAMO_LANGUAGES = (
+    ("zh-hant", "Chinese (Traditional)"),
+    ("zh-hans", "Chinese (Simplified)"),
+    ("en", "English"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("fr", "French"),
+    ("de", "German"),
+    ("es", "Spanish"),
+    ("it", "Italian"),
+    ("vi", "Vietnamese"),
+    ("th", "Thai"),
+    ("id", "Indonesian"),
+    ("ms", "Malay"),
+    ("nl", "Dutch"),
+    ("pl", "Polish"),
+    ("ru", "Russian"),
+    ("ar", "Arabic"),
+    ("hi", "Hindi"),
+    ("az", "Azerbaijani"),
+    ("be", "Belarusian"),
+    ("bg", "Bulgarian"),
+    ("bn", "Bengali"),
+    ("ca", "Catalan"),
+    ("ceb", "Cebuano"),
+    ("et", "Estonian"),
+    ("eu", "Basque"),
+    ("fa", "Persian"),
+    ("gu", "Gujarati"),
+    ("he", "Hebrew"),
+    ("hr", "Croatian"),
+    ("hu", "Hungarian"),
+    ("hy", "Armenian"),
+    ("ja-easy", "Japanese (Easy)"),
+    ("jv", "Javanese"),
+    ("ka", "Georgian"),
+    ("kk", "Kazakh"),
+    ("km", "Khmer"),
+    ("lt", "Lithuanian"),
+    ("lv", "Latvian"),
+    ("ml", "Malayalam"),
+    ("mr", "Marathi"),
+    ("my", "Burmese"),
+    ("ne", "Nepali"),
+    ("pa", "Punjabi"),
+    ("si", "Sinhala"),
+    ("sk", "Slovak"),
+    ("sl", "Slovenian"),
+    ("sr", "Serbian"),
+    ("sw", "Swahili"),
+    ("ta", "Tamil"),
+    ("te", "Telugu"),
+    ("tl", "Tagalog"),
+    ("ur", "Urdu"),
+    ("uz", "Uzbek"),
+)
+_PLAMO_CODES = {code for code, _ in PLAMO_LANGUAGES}
+
+
+def supported_languages() -> dict:
+    """Return UI-ready source and target language options supported by PLaMo 3 Translate."""
+    targets = [{"code": code, "label": label} for code, label in PLAMO_LANGUAGES]
+    return {
+        "source": [{"code": "auto", "label": "Auto-detect"}, *targets],
+        "target": targets,
+    }
+
+
+def validate_language_pair(source_lang: str | None, target_lang: str | None) -> tuple[str | None, str]:
+    """Validate and normalize translation language pair against PLaMo 3 Translate."""
+    if source_lang is None:
+        src = None
+    elif not isinstance(source_lang, str):
+        raise ValueError("Source language must be a string.")
+    else:
+        raw_src = source_lang.strip().lower()
+        if raw_src == "ja(easy)":
+            raw_src = "ja-easy"
+        if raw_src in ("", "auto"):
+            src = None
+        elif raw_src == "zh":
+            raise ValueError("Specify Traditional Chinese ('zh-hant') or Simplified Chinese ('zh-hans').")
+        elif raw_src not in _PLAMO_CODES:
+            raise ValueError(f"Unsupported source language: {source_lang}.")
+        else:
+            src = raw_src
+
+    if not isinstance(target_lang, str) or not target_lang.strip():
+        raise ValueError("Target language is required.")
+    raw_tgt = target_lang.strip().lower()
+    if raw_tgt == "ja(easy)":
+        raw_tgt = "ja-easy"
+    if raw_tgt == "auto":
+        raise ValueError("Target language cannot be auto-detect.")
+    if raw_tgt == "zh":
+        raise ValueError("Specify Traditional Chinese ('zh-hant') or Simplified Chinese ('zh-hans').")
+    if raw_tgt not in _PLAMO_CODES:
+        raise ValueError(f"Unsupported target language: {target_lang}.")
+
+    if src is not None and src == raw_tgt:
+        raise ValueError("Source and target languages must be different.")
+    return src, raw_tgt
+
+
+def _translation_prompt(text, context, glossary, history, *, source_lang: str | None = None, target_lang: str = "en"):
     """PFML3 in the order of the hash-pinned PFN chat_template.jinja."""
-    output = "<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>en<|plamo:msg|>"
+    src_prefix = (
+        f"<|plamo:tag|>input<|plamo:key|>lang<|plamo:val|>{source_lang}<|plamo:msg|>"
+        if source_lang and source_lang != "auto"
+        else "<|plamo:tag|>input<|plamo:msg|>"
+    )
+    output = f"<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>{target_lang}<|plamo:msg|>"
     prompt = "<|plamo:bos|><|plamo:tag|>dataset<|plamo:msg|>translation"
     if context:
         prompt += "<|plamo:tag|>context<|plamo:msg|>" + context
     for source, target in history:
-        prompt += "<|plamo:tag|>input<|plamo:msg|>" + source + output + target
+        prompt += src_prefix + source + output + target
     if glossary:
         prompt += "<|plamo:tag|>glossary"
         for source, target in glossary:
             prompt += "<|plamo:index|>" + source + "<|plamo:item|>" + target
-    return prompt + "<|plamo:tag|>input<|plamo:msg|>" + text + output
+    return prompt + src_prefix + text + output
 
 
 def _verify_model(path: Path, expected: dict[str, str]) -> None:
@@ -523,9 +633,10 @@ class LocalModels:
             return result
 
     def translate(self, text: str, *, context: str = "", vocabulary=None, history=None,
+                  source_lang: str | None = None, target_lang: str = "en",
                   on_text: Callable[[str], None] | None = None,
                   should_cancel: Callable[[], bool] | None = None) -> str:
-        """Translate into English; optional history is caller-supplied, never retained.
+        """Translate between supported PLaMo languages; optional history is never retained.
 
         ``on_text`` receives the cumulative translation as it grows (at most
         about every 80 ms) and once more with the final text; its exceptions
@@ -536,6 +647,7 @@ class LocalModels:
             raise TypeError("on_text must be callable")
         if should_cancel is not None and not callable(should_cancel):
             raise TypeError("should_cancel must be callable")
+        src_lang, tgt_lang = validate_language_pair(source_lang, target_lang)
         with self._lock:
             if self._translator is None or self._tokenizer is None:
                 raise RuntimeError("Local models are not loaded")
@@ -544,7 +656,8 @@ class LocalModels:
             pairs = _history_pairs(history)
             if not text.strip():
                 return ""
-            prompt = _translation_prompt(text, context, glossary, pairs)
+            prompt = _translation_prompt(text, context, glossary, pairs,
+                                         source_lang=src_lang, target_lang=tgt_lang)
             from mlx_lm import stream_generate
             from mlx_lm.sample_utils import make_sampler
 

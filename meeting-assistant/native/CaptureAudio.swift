@@ -511,6 +511,63 @@ private func deviceInfo(_ id: AudioDeviceID, defaultID: AudioDeviceID?) -> [Stri
             "input_volume_settable": inputVolumeSettable(id)]
 }
 
+private func setInputVolume(_ value: Float, deviceUID: String?) -> Int32 {
+    guard value.isFinite, value >= 0, value <= 1 else {
+        status("error", ["message": "Input volume must be between 0.0 and 1.0"])
+        return 2
+    }
+    let id: AudioDeviceID
+    do {
+        id = try selectInputDevice(deviceUID)
+    } catch let failure as CaptureFailure {
+        status("error", ["message": failure.message])
+        return 1
+    } catch {
+        status("error", ["message": "Could not select input device"])
+        return 1
+    }
+    guard transportName(id) != "virtual", inputVolumeSettable(id) else {
+        status("error", ["message": "This input device does not support direct microphone input volume control."])
+        return 1
+    }
+    let elements: [AudioObjectPropertyElement]
+    var mainAddr = audioAddress(kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeInput, kAudioObjectPropertyElementMain)
+    if AudioObjectHasProperty(id, &mainAddr) {
+        var settable: DarwinBoolean = false
+        if AudioObjectIsPropertySettable(id, &mainAddr, &settable) == noErr && settable.boolValue {
+            elements = [kAudioObjectPropertyElementMain]
+        } else {
+            elements = []
+        }
+    } else {
+        elements = [1, 2].filter { elem in
+            var addr = audioAddress(kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeInput, elem)
+            var settable: DarwinBoolean = false
+            return AudioObjectHasProperty(id, &addr) && AudioObjectIsPropertySettable(id, &addr, &settable) == noErr && settable.boolValue
+        }
+    }
+    guard !elements.isEmpty else {
+        status("error", ["message": "This input device does not support direct microphone input volume control."])
+        return 1
+    }
+    var target = value
+    let size = UInt32(MemoryLayout<Float32>.size)
+    for elem in elements {
+        var addr = audioAddress(kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeInput, elem)
+        guard AudioObjectSetPropertyData(id, &addr, 0, nil, size, &target) == noErr else {
+            status("error", ["message": "macOS rejected setting microphone input volume on this device."])
+            return 1
+        }
+    }
+    guard let readBack = inputVolume(id), abs(readBack - value) <= 0.025 else {
+        status("error", ["message": "This input device ignored direct microphone input volume control."])
+        return 1
+    }
+    let uid = stringProperty(id, kAudioDevicePropertyDeviceUID) ?? deviceUID ?? ""
+    status("input_volume", ["uid": uid, "input_volume": jsonVolume(readBack), "input_volume_settable": true])
+    return 0
+}
+
 private func listInputDevices() -> Int32 {
     guard let ids = audioDeviceIDs() else {
         status("error", ["message": "Could not enumerate audio devices"])
@@ -696,6 +753,29 @@ private struct CaptureAudio {
         return (source, device)
     }
 
+    // Returns (volume, device UID) for --set-input-volume <0..1> [--device <uid>], nil otherwise.
+    static func parseSetInputVolume(_ args: [String]) -> (volume: Float, device: String?)? {
+        guard !args.isEmpty else { return nil }
+        var volume: Float?
+        var device: String?
+        var index = 0
+        while index < args.count {
+            guard index + 1 < args.count else { return nil }
+            let name = args[index]
+            let value = args[index + 1]
+            if name == "--set-input-volume" && volume == nil, let parsed = Float(value), parsed.isFinite {
+                volume = parsed
+            } else if name == "--device" && device == nil && !value.isEmpty && !value.hasPrefix("--") {
+                device = value
+            } else {
+                return nil
+            }
+            index += 2
+        }
+        guard let volume else { return nil }
+        return (volume, device)
+    }
+
     static func main() async {
         signal(SIGPIPE, SIG_IGN)
         // Install signal handling first so an early stop request is never lost.
@@ -716,10 +796,13 @@ private struct CaptureAudio {
         if args == ["--list-devices"] {
             exit(listInputDevices())
         }
+        if let volumeRequest = parseSetInputVolume(args) {
+            exit(setInputVolume(volumeRequest.volume, deviceUID: volumeRequest.device))
+        }
         let listOnly = args == ["--list-apps"]
         let capture = listOnly ? nil : parseCapture(args)
         guard listOnly || capture != nil else {
-            status("error", ["message": "Usage: capture-audio --source teams|system|microphone [--device <uid>] (--device only with microphone) OR capture-audio --list-apps|--list-devices|--version"])
+            status("error", ["message": "Usage: capture-audio --source teams|system|microphone [--device <uid>] (--device only with microphone) OR capture-audio --set-input-volume <0..1> [--device <uid>] OR capture-audio --list-apps|--list-devices|--version"])
             exit(2)
         }
         let source = capture?.source ?? ""

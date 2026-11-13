@@ -155,6 +155,56 @@ def list_devices(helper, max_age=5.0):
         return {"supported": True, "devices": [dict(d) for d in devices]}
 
 
+def direct_input_volume_supported(device, source="microphone", helper=None):
+    """True only when the active capture path and device support real CoreAudio mic volume writes."""
+    if source != "microphone" or not isinstance(device, dict):
+        return False
+    if device.get("input_volume_settable") is not True or device.get("input_volume") is None:
+        return False
+    if device.get("transport") == "virtual":
+        return False
+    if helper is not None and helper_protocol(helper) != 2:
+        return False
+    return True
+
+
+def set_input_volume(helper, volume, device_uid=None):
+    """Set macOS CoreAudio input volume (0.0..1.0) on a settable physical microphone."""
+    if helper_protocol(helper) != 2:
+        raise ValueError("Capture helper does not support direct microphone input volume control.")
+    if isinstance(volume, bool) or not isinstance(volume, (int, float)):
+        raise ValueError("Input volume must be a number between 0.0 and 1.0.")
+    level = float(volume)
+    if level != level or not 0.0 <= level <= 1.0:
+        raise ValueError("Input volume must be between 0.0 and 1.0.")
+    if device_uid is not None:
+        if not isinstance(device_uid, str) or len(device_uid) > 300 or device_uid.startswith("-"):
+            raise ValueError("Invalid input device UID.")
+        device_uid = device_uid or None
+    args = [str(helper), "--set-input-volume", f"{level:.4f}"]
+    if device_uid:
+        args += ["--device", device_uid]
+    try:
+        done = subprocess.run(args, capture_output=True, timeout=5,
+                              stdin=subprocess.DEVNULL, start_new_session=True)
+    except subprocess.TimeoutExpired:
+        raise ValueError("Setting microphone input volume timed out.") from None
+    except OSError:
+        raise ValueError("The capture helper could not be run.") from None
+    events = list(_stderr_events(done.stderr.decode("utf-8", "replace")))
+    if done.returncode != 0:
+        for ev in reversed(events):
+            if ev.get("event") == "error" and isinstance(ev.get("message"), str) and ev["message"]:
+                raise ValueError(ev["message"])
+        raise ValueError("Could not set microphone input volume on this device.")
+    with _probe_lock:
+        _devices_cache.clear()
+    for ev in reversed(events):
+        if ev.get("event") == "input_volume":
+            return {"uid": ev.get("uid") or device_uid or "", "input_volume": ev.get("input_volume")}
+    return {"uid": device_uid or "", "input_volume": round(level, 4)}
+
+
 def clear_probe_cache():
     with _probe_lock:
         _protocol_cache.clear()
