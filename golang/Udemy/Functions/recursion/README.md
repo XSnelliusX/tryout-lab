@@ -41,19 +41,29 @@ Every recursive function needs an `if` that returns **without calling itself** â
 
 `factorial(5)` does not compute anything before its inner call finishes. The calls stack up first, then resolve bottom-up:
 
-```
-factorial(5)
-  5 * factorial(4)
-        4 * factorial(3)
-              3 * factorial(2)
-                    2 * factorial(1)
-                          1 * factorial(0)
-                                returns 1        <- exit condition, first to finish
-                          returns 1 * 1 = 1
-                    returns 2 * 1 = 2
-              returns 3 * 2 = 6
-        returns 4 * 6 = 24
-  returns 5 * 24 = 120
+```mermaid
+sequenceDiagram
+    participant caller
+    participant f5 as factorial(5)
+    participant f4 as factorial(4)
+    participant f3 as factorial(3)
+    participant f2 as factorial(2)
+    participant f1 as factorial(1)
+    participant f0 as factorial(0)
+
+    caller->>f5: factorial(5)
+    f5->>f4: 5 * factorial(4)
+    f4->>f3: 4 * factorial(3)
+    f3->>f2: 3 * factorial(2)
+    f2->>f1: 2 * factorial(1)
+    f1->>f0: 1 * factorial(0)
+    Note over f0: exit condition, first to finish
+    f0-->>f1: returns 1
+    f1-->>f2: returns 1 * 1 = 1
+    f2-->>f3: returns 2 * 1 = 2
+    f3-->>f4: returns 3 * 2 = 6
+    f4-->>f5: returns 4 * 6 = 24
+    f5-->>caller: returns 5 * 24 = 120
 ```
 
 Five executions of the same function run at once (four of them paused, waiting), and each finishing execution hands its value back to the one that started it.

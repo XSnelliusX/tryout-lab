@@ -10,25 +10,48 @@ It works with **any OpenCode provider**. The [ai-gateway plugin](../ai-gateway) 
 
 ## Architecture
 
-```
-                    you
-                     |
-                     v
-          +---------------------+   cc-commander (singleton, name "commander")
-          |  Commander (tier 0) |   OpenCode role "commander", cwd = ticket_root
-          +----------+----------+
-                     | skills: herdr-commander, herdr-model-router
-     cc-ticket init |   cc-space ensure   |   hc run --bg ... cc-<role> "task"
-                     v                     v
-   <ticket_root>/PROJ-123/            Herdr Space "PROJ-123"
-     TASK.md  artifacts/                +-- tab: implementer   (OpenCode, role pinned by cc-agent)
-     my-service/  (git worktree)        +-- tab: verifier-fast
-     other-repo/  (git worktree)        +-- tab: shell tests   (hc run, no LLM cost)
-                     ^                     |
-                     +---- hc send commander "<summary>" ----+   (workers report back)
+```mermaid
+flowchart TB
+    you(["You"]) <-->|"plain language"| CMD
 
-  cc-agent <role> --> OpenCode  (models.json -> OPENCODE_CONFIG_CONTENT, isolated per-role state dir)
-  cc-budget        --> reads the optional cost log, drives the escalation downgrade
+    subgraph CTRL["Commander · tier 0"]
+        CMD["<b>Commander</b><br/>OpenCode TUI, singleton (cc-commander)<br/>cwd = ticket_root · never edits code"]
+        SK[["skills: herdr-commander, herdr-model-router"]]
+        SK -.->|"loaded by"| CMD
+    end
+
+    CMD -->|"1 · cc-ticket init"| TICKET
+    CMD -->|"2 · cc-space ensure"| SPACE
+    CMD -->|"3 · hc run --bg cc-#lt;role#gt; #quot;task#quot;"| AGENT
+    CMD -->|"hc run --bg #quot;#lt;test cmd#gt;#quot;"| SH
+
+    subgraph LAUNCH["Worker launch"]
+        AGENT["cc-agent #lt;role#gt;"]
+        CFG[("models.json<br/>roles · models · budget cap")]
+        BUD["cc-budget"]
+        LOG[("~/.gateway-cost/usage.jsonl<br/>ai-gateway usage log")]
+        CFG --> AGENT
+        LOG -->|"this month's cost"| BUD
+        BUD -->|"cap_tier3 / exceeded:<br/>use fallback_role"| AGENT
+    end
+
+    subgraph TICKET["#lt;ticket_root#gt;/PROJ-123/"]
+        TASK["TASK.md · artifacts/"]
+        WT1["my-service/ · git worktree"]
+        WT2["other-repo/ · git worktree"]
+    end
+
+    subgraph SPACE["Herdr Space #quot;PROJ-123#quot;"]
+        IMP["tab: implementer"]
+        VER["tab: verifier-fast"]
+        SH["tab: shell tests<br/>plain shell, no LLM cost"]
+    end
+
+    AGENT -->|"OpenCode with OPENCODE_CONFIG_CONTENT,<br/>isolated per-role state dir"| IMP
+    AGENT --> VER
+    IMP -.->|"works in"| WT1
+    VER -.->|"verifies"| WT1
+    SPACE -->|"hc send commander #quot;#lt;summary#gt;#quot;"| CMD
 ```
 
 Pieces:

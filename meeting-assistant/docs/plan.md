@@ -63,21 +63,35 @@ The [official model card](https://huggingface.co/pfnet/plamo-3-translate-0.8b-ML
 
 ## Data flow
 
-```text
-One selected source: Teams output / system output / default microphone
-  -> timestamped local audio chunks + recovery manifest
-  -> VAD / rolling windows -> Qwen3-ASR-1.7B (MLX)
-  -> versioned source clauses -> PLaMo translation (MLX)
-  -> Traditional Chinese + English caption window
-  -> local meeting archive
+```mermaid
+flowchart TD
+    subgraph LIVE["Live"]
+        direction TB
+        SRC["One selected source:<br/>Teams output / system output / default microphone"] --> CH["timestamped local audio chunks + recovery manifest"]
+        CH --> VAD["VAD / rolling windows"]
+        VAD --> ASR["Qwen3-ASR-1.7B (MLX)"]
+        ASR --> CL["versioned source clauses"]
+        CL --> MT["PLaMo translation (MLX)"]
+        MT --> CW["Traditional Chinese + English caption window"]
+        CW --> AR[("local meeting archive")]
+    end
 
-After meeting:
-  retained audio -> Qwen second pass where needed
-  retained audio -> Nemotron offline speaker timeline (<=8 voices)
-  transcript + timeline -> speaker/name review
-  approved text -> existing gateway -> proposed transcript edits
-  reviewed source -> existing gateway -> meeting/person notes + vocabulary
-  vocabulary -> local dictionary/pinyin validation -> review/export
+    subgraph POST["After meeting"]
+        direction TB
+        RA[("retained audio")] --> Q2["Qwen second pass where needed"]
+        RA --> DIA["Nemotron offline speaker timeline (#lt;=8 voices)"]
+        Q2 --> TT["transcript + timeline"]
+        DIA --> TT
+        TT --> SR["speaker/name review"]
+        SR --> AT["approved text"]
+        AT --> GW1["existing gateway"] --> PE["proposed transcript edits"]
+        PE --> RS["reviewed source"]
+        RS --> GW2["existing gateway"] --> NOTES["meeting/person notes + vocabulary"]
+        NOTES --> VOC["vocabulary"]
+        VOC --> DICT["local dictionary/pinyin validation"] --> EXP["review/export"]
+    end
+
+    AR -.-> RA
 ```
 
 Keep live processing independent of the gateway. Gateway failure, quota exhaustion or missing credentials leave the local archive and captions usable; mark post-processing pending and allow retry. Do not substitute another provider automatically.

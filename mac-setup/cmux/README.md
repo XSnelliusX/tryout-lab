@@ -6,12 +6,12 @@ Source: [github.com/manaflow-ai/cmux](https://github.com/manaflow-ai/cmux) · Do
 
 ## How it is organized
 
-```
-Window
-└── Workspace group (Space)   optional folder in the sidebar, one per project
-    └── Workspace             a sidebar entry
-        └── Pane              a split region
-            └── Surface       a tab inside a pane (terminal or browser)
+```mermaid
+flowchart TD
+    W["<b>Window</b>"] --> G["<b>Workspace group (Space)</b><br/>optional folder in the sidebar, one per project"]
+    G --> WS["<b>Workspace</b><br/>a sidebar entry"]
+    WS --> P["<b>Pane</b><br/>a split region"]
+    P --> SF["<b>Surface</b><br/>a tab inside a pane (terminal or browser)"]
 ```
 
 The sidebar calls groups **Spaces**. The CLI says *workspace*, *workspace-group*, *surface*.
