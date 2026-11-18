@@ -360,7 +360,7 @@ Fields that say where a line comes from:
 | Field | Values |
 | --- | --- |
 | `tool` | `opencode`, `nvim`, `claude-code`, `claude-desktop` (Claude Code started from the desktop app). Missing in lines from before 2026-10-19: agent `nvim` means Neovim, anything else OpenCode. |
-| `billing` | `gateway` (billed per token through the gateway), `subscription` (Claude seat: `cost` is the API equivalent, not an invoice), `other` (an OpenCode provider outside the gateway). |
+| `billing` | `gateway` (billed per token through the gateway), `usage` (billed by usage directly by the provider, not through the gateway: Claude Code), `other` (an OpenCode provider outside the gateway). |
 | `agent` | OpenCode: `build`, `plan`, ... · Claude Code: `main` or the subagent type (`general-purpose`, `Explore`, ...) · Neovim: `prediction`. |
 
 Any tool can join: append lines with a unique `event_id`, the token fields and
@@ -402,7 +402,7 @@ Claude Code does not go through the gateway, so it cannot be seen there. Its
 transcripts (`~/.claude/projects/**/*.jsonl`, subagents included) record every
 API call with its exact token usage; `claude_usage.py` (stdlib Python) turns
 new calls into `usage.jsonl` lines with `tool: claude-code`, `billing:
-subscription`, `agent: main` or the subagent type.
+usage`, `agent: main` or the subagent type.
 
 ```sh
 python3 claude_usage.py            # import what is new (first run: all history)
@@ -427,12 +427,11 @@ How it counts:
   once it is finished: another line follows it, its transcript is idle for 2
   minutes, or its session ended. Token counts are the largest seen for the call
   (the transcript repeats a call per content block while it streams).
-* Cost is the **API equivalent**: tokens × the gateway catalog's direct-Anthropic
-  prices (`claude-opus-5-5` → `claude-5.5-opus-anthropic`), with 5 min cache
-  writes at the catalog's cache-write price, 1 h cache writes at 2× the input
-  price, thinking tokens at the output price. On a Claude seat this is what the
-  usage would cost at API rates (useful against an extra-usage limit), not an
-  invoice.
+* Cost: tokens × the gateway catalog's direct-Anthropic prices
+  (`claude-opus-5-5` → `claude-5.5-opus-anthropic`), with 5 min cache writes at
+  the catalog's cache-write price, 1 h cache writes at 2× the input price,
+  thinking tokens at the output price. Claude Code is billed by usage, so this
+  is its usage-based cost.
 * Not in the transcripts, so not counted: Claude Code's small background calls
   (session titles, command classification), and the price premium of fast mode.
 

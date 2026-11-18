@@ -58,7 +58,7 @@ The same AI gateway installer registers a hook (`Stop`, `SubagentStop`, `Session
 
 - `tool`: `claude-code`, or `claude-desktop` for sessions started from the desktop app
 - `agent`: `main`, or the subagent type (`general-purpose`, `Explore`, ...)
-- `billing`: `subscription`. The Enterprise seat is not billed per token, so `cost` is the **API equivalent** (tokens × Anthropic prices from the gateway catalog). Useful against the monthly limit (`monthlyLimitUSD` in `~/.gateway-cost/config.js`), not an invoice.
+- `billing`: `usage`. The Enterprise account is billed by usage directly by Anthropic, so `cost` is tokens × Anthropic prices from the gateway catalog. It counts against the monthly limit (`monthlyLimitUSD` in `~/.gateway-cost/config.js`).
 
 The first run imports the whole history; every call is logged once (deduplicated by request id). The hook is silent and always exits 0; problems go to `~/.gateway-cost/claude-usage.log`. Run it by hand with `python3 ~/.config/opencode/plugins/ai-gateway/claude_usage.py` (`--dry-run` to preview). A hook left over from the plugin's old folder name is repointed to `ai-gateway` on the next run of `ai-gateway/install.sh --only claude`; it does nothing until the plugin exists. This folder's `install.sh` only sets `statusLine` in `settings.json` and keeps the hooks as they are.
 

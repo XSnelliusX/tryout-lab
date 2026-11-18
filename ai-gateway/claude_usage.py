@@ -15,10 +15,10 @@ Usage (stdlib only, Python 3.9+):
 As a Claude Code hook (Stop, SubagentStop, SessionEnd) it reads the hook JSON on
 stdin, stays silent and always exits 0. Problems go to claude-usage.log.
 
-Cost: Claude Code runs on a Claude seat here, not through the gateway, so lines get
-billing "subscription" and the cost is the API equivalent: tokens x the Anthropic
-prices in models.json (5 min cache writes at the catalog's cache-write price, 1 h
-cache writes at 2x the input price, thinking tokens at the output price).
+Cost: Claude Code is billed by usage directly by Anthropic, not through the gateway,
+so lines get billing "usage" and the cost is tokens x the Anthropic prices in
+models.json (5 min cache writes at the catalog's cache-write price, 1 h cache
+writes at 2x the input price, thinking tokens at the output price).
 Not in the transcripts, so not counted: Claude Code's small background calls
 (session titles, command classification).
 """
@@ -56,7 +56,7 @@ def setting(name, fallback):
 
 
 COST_DIR = expand_home(setting("GATEWAY_COST_DIR", "~/.gateway-cost"))
-PROJECTS = os.path.expanduser(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude"), "projects"))
+PROJECTS = os.path.expanduser("~/.claude/projects")
 USAGE_LOG = os.path.join(COST_DIR, "usage.jsonl")
 STATE_FILE = os.path.join(COST_DIR, "claude-code-state.json")
 ERROR_LOG = os.path.join(COST_DIR, "claude-usage.log")
@@ -196,7 +196,7 @@ def record(rid, c, catalog):
         "session_id": c["session_id"],
         "message_id": c["message_id"],
         "tool": c["tool"],
-        "billing": "subscription",
+        "billing": "usage",
         "agent": c["agent"],
         "provider_id": "anthropic",
         "model_id": c["model"],
@@ -365,7 +365,7 @@ def main():
         cost = sum(r["cost"] for r in lines)
         unpriced = sorted({r["model_id"] for r in lines if not r["input_per_1M"]})
         print(f"{'would log' if args.dry_run else 'logged'} {len(lines)} Claude Code calls, "
-              f"${cost:.2f} API equivalent; {len(state['pending']) - (len(done) if args.dry_run else 0)} still open"
+              f"${cost:.2f}; {len(state['pending']) - (len(done) if args.dry_run else 0)} still open"
               + (f"; no price for: {', '.join(unpriced)}" if unpriced else ""))
 
 

@@ -356,7 +356,7 @@ type UsageRecord = {
   session_id: string
   message_id: string
   tool?: string // "opencode" | "nvim" | "claude-code" | "claude-desktop" | ...; missing in old lines
-  billing?: "gateway" | "subscription" | "other" // subscription = Claude seat, cost is the API equivalent
+  billing?: "gateway" | "usage" | "other" // usage = billed by usage directly by the provider (Claude Code)
   agent: string | null
   provider_id: string
   model_id: string

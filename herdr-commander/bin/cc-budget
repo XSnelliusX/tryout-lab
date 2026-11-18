@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Compute current calendar-month gateway spend vs the configured monthly cap.
+"""Compute current calendar-month AI spend vs the configured monthly cap.
+
+The spend comes from the ai-gateway usage log (default ~/.gateway-cost/usage.jsonl),
+the single source of truth for usage, counted the way the gateway's usage dashboard
+counts its "Month" range: every row of every tool and billing mode, local calendar
+month, each event_id once.
 
 Reads the optional `budget` section of the Command Center config (default
-~/.config/command-center/models.json, override with $CC_CONFIG). The cost log
-is written by the optional ai-gateway OpenCode plugin. If the log or the cap is
-missing, the status is "unknown" and nothing downstream ever downgrades a role.
+~/.config/command-center/models.json, override with $CC_CONFIG). Without a cap
+the status is "unknown" (the spend is still reported); without the log there is
+no spend either. An "unknown" status never downgrades a role.
 
 Usage: cc-budget [--short]
 """
@@ -43,6 +48,14 @@ def num(value, default=None):
         return default
 
 
+def local_day(ts):
+    """YYYY-MM-DD of an ISO timestamp in local time (the dashboard's day), or None."""
+    try:
+        return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d")
+    except (AttributeError, ValueError):
+        return None
+
+
 def unknown(reason, usage_file=None, cap=None):
     out = {"status": "unknown", "reason": reason}
     if usage_file:
@@ -60,11 +73,11 @@ def compute():
     cap_t3_pct = num(cfg.get("auto_cap_tier3_pct"), 85.0)
 
     if not cap or cap <= 0:
-        return unknown("no budget.monthly_cap_usd configured", usage_file)
+        cap = None
     if not os.path.isfile(usage_file):
         return unknown("cost log not found", usage_file, cap)
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now()  # local time, like the dashboard
     month_prefix = now.strftime("%Y-%m")
     today_prefix = now.strftime("%Y-%m-%d")
     days_in_month = calendar.monthrange(now.year, now.month)[1]
@@ -73,7 +86,9 @@ def compute():
     spent = 0.0
     today_spent = 0.0
     by_tool = defaultdict(float)
+    by_billing = defaultdict(float)
     by_model = defaultdict(float)
+    seen = set()
     steps = 0
 
     try:
@@ -88,27 +103,46 @@ def compute():
                     continue
                 if not isinstance(d, dict):
                     continue
-                ts = d.get("ts") or ""
-                if not isinstance(ts, str) or not ts.startswith(month_prefix):
+                day = local_day(d.get("ts"))
+                if not day or not day.startswith(month_prefix):
                     continue
-                # Subscription rows (e.g. Claude Code on a plan) are logged too but cost nothing on the gateway.
-                if d.get("billing", "gateway") != "gateway" or d.get("gateway") is False:
-                    continue
+                event_id = d.get("event_id")
+                if event_id:
+                    if event_id in seen:
+                        continue
+                    seen.add(event_id)
                 cost = num(d.get("cost"), 0.0)
                 spent += cost
                 steps += 1
-                if ts.startswith(today_prefix):
+                if day == today_prefix:
                     today_spent += cost
                 by_tool[d.get("tool") or "unknown"] += cost
+                by_billing[d.get("billing") or ("gateway" if d.get("gateway") else "other")] += cost
                 by_model[f"{d.get('provider_id', '?')}/{d.get('model_id', '?')}"] += cost
     except OSError as e:
         return unknown(f"cost log unreadable: {e}", usage_file, cap)
 
+    daily_burn = spent / days_elapsed
+    projected = daily_burn * days_in_month
+    out = {
+        "month": month_prefix,
+        "spent_usd": round(spent, 2),
+        "today_usd": round(today_spent, 2),
+        "daily_burn_usd": round(daily_burn, 2),
+        "projected_usd": round(projected, 2),
+        "days_elapsed": days_elapsed,
+        "days_in_month": days_in_month,
+        "steps": steps,
+        "by_billing": {k: round(v, 2) for k, v in sorted(by_billing.items(), key=lambda x: -x[1])},
+        "by_tool": {k: round(v, 2) for k, v in sorted(by_tool.items(), key=lambda x: -x[1])},
+        "top_models": [{"model": k, "cost_usd": round(v, 2)} for k, v in sorted(by_model.items(), key=lambda x: -x[1])[:8]],
+    }
+    if not cap:
+        return {**out, "status": "unknown", "reason": "no budget.monthly_cap_usd configured", "usage_file": usage_file}
+
     pct = spent / cap * 100.0
     remaining = max(0.0, cap - spent)
     days_left = max(1, days_in_month - now.day + 1)
-    daily_burn = spent / days_elapsed
-    projected = daily_burn * days_in_month
     daily_allowance = remaining / days_left
 
     if pct >= 100.0:
@@ -121,21 +155,12 @@ def compute():
         status = "ok"
 
     return {
-        "month": month_prefix,
-        "spent_usd": round(spent, 2),
-        "today_usd": round(today_spent, 2),
+        **out,
         "cap_usd": round(cap, 2),
         "remaining_usd": round(remaining, 2),
         "pct_used": round(pct, 1),
-        "daily_burn_usd": round(daily_burn, 2),
         "daily_allowance_usd": round(daily_allowance, 2),
-        "projected_usd": round(projected, 2),
-        "days_elapsed": days_elapsed,
-        "days_in_month": days_in_month,
-        "steps": steps,
         "status": status,
-        "by_tool": {k: round(v, 2) for k, v in sorted(by_tool.items(), key=lambda x: -x[1])},
-        "top_models": [{"model": k, "cost_usd": round(v, 2)} for k, v in sorted(by_model.items(), key=lambda x: -x[1])[:8]],
     }
 
 
@@ -145,8 +170,9 @@ def main():
         return
     out = compute()
     if "--short" in sys.argv[1:]:
-        if out["status"] == "unknown":
-            print(f"budget unknown ({out['reason']}) [unknown]")
+        if "cap_usd" not in out or "spent_usd" not in out:
+            spent = f"${out['spent_usd']:.2f} this month, " if "spent_usd" in out else ""
+            print(f"{spent}budget unknown ({out['reason']}) [unknown]")
         else:
             print(
                 f"${out['spent_usd']:.2f}/${out['cap_usd']:.0f} ({out['pct_used']:.0f}%) "

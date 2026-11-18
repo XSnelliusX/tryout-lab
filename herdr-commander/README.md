@@ -195,7 +195,7 @@ Each role except `explore` and `reviewer` has an `hc` template `cc-<role>` (inst
 
 ## Budget guardrail
 
-`cc-budget` sums the current UTC month's rows of the cost log (`budget.usage_file`) and prints either JSON or, with `--short`, one line: `$89.88/$250 (36%) proj $150 [ok]` (spent/cap, share used, projected month-end spend, status).
+`cc-budget` sums the current month's rows of the ai-gateway usage log (`budget.usage_file`) and prints either JSON or, with `--short`, one line: `$89.88/$250 (36%) proj $150 [ok]` (spent/cap, share used, projected month-end spend, status).
 
 | Status | Meaning |
 |---|---|
@@ -203,9 +203,9 @@ Each role except `explore` and `reviewer` has an `hc` template `cc-<role>` (inst
 | `warn` | At or above `soft_warn_pct`: prefer cheaper tiers, fewer parallel workers. |
 | `cap_tier3` | At or above `auto_cap_tier3_pct`: `cc-agent escalation` is downgraded to its `fallback_role`. |
 | `exceeded` | At or above 100%: same downgrade. |
-| `unknown` | No cap configured, or the cost log is missing/unreadable. **Never downgrades anything.** |
+| `unknown` | No cap configured (the spend is still reported), or the usage log is missing/unreadable. **Never downgrades anything.** |
 
-Only rows with `billing == "gateway"` (or no billing field) count; subscription rows are skipped. The log is written by the **optional** `ai-gateway` OpenCode plugin (sibling folder `../ai-gateway` in this repository), which records per-step token usage and cost for gateway models. Without it, or with a different provider, the framework works the same and the budget simply stays `unknown`. You can also point `usage_file` at any JSONL with rows like `{"ts": "2026-05-01T10:00:00Z", "cost": 0.12, "tool": "opencode", "provider_id": "...", "model_id": "..."}`.
+The log is the **optional** `ai-gateway` plugin's usage log (sibling folder `../ai-gateway` in this repository), the single source of truth for usage: OpenCode's gateway steps, Claude Code's calls (`billing: usage`) and any other tool that logs there. `cc-budget` counts it exactly like the usage dashboard's **Month** range: every row and billing mode, the local calendar month, each `event_id` once, with the cost each row carries (it computes no prices itself). The JSON output also has the split `by_billing`, `by_tool` and `top_models`. Without it, or with a different provider, the framework works the same and the budget simply stays `unknown`. You can also point `usage_file` at any JSONL with rows like `{"ts": "2026-05-01T10:00:00Z", "cost": 0.12, "tool": "opencode", "provider_id": "...", "model_id": "..."}`.
 
 ## The skills
 

@@ -160,10 +160,6 @@ source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-# Personal Claude Code aliases
-alias claude-personal='CLAUDE_CONFIG_DIR="$HOME/.claude-personal" command claude'
-alias clp='CLAUDE_CONFIG_DIR="$HOME/.claude-personal" command claude'
-
 # User-local binaries (Claude Code native installer, herdr-core hc, cc-* scripts).
 # ~/.zprofile only covers login shells, so add it here too.
 export PATH="$HOME/.local/bin:$PATH"

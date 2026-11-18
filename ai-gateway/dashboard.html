@@ -2071,7 +2071,7 @@
         </article>
         <article class="card" aria-labelledby="h-by-tool">
           <div class="card-head">
-            <div class="card-title-group"><h2 id="h-by-tool">By Tool</h2><span class="sub">Gateway vs seat</span></div>
+            <div class="card-title-group"><h2 id="h-by-tool">By Tool</h2><span class="sub">Gateway vs direct</span></div>
           </div>
           <div class="bars" id="by-tool"></div>
         </article>
@@ -2264,8 +2264,8 @@ const TOOL_COLORS = {
   "Prompt Rewriter / Improver": "var(--s5)",
 }
 const toolColor = (t) => TOOL_COLORS[t] ?? "var(--other)"
-const BILLING_LABELS = { gateway: "Gateway (metered)", subscription: "Claude seat (equiv.)", other: "Other provider" }
-const BILLING_COLORS = { gateway: "var(--s1)", subscription: "var(--s3)", other: "var(--other)" }
+const BILLING_LABELS = { gateway: "Gateway (metered)", usage: "Usage-based (direct)", other: "Other provider" }
+const BILLING_COLORS = { gateway: "var(--s1)", usage: "var(--s3)", other: "var(--other)" }
 const toolOf = (r) => {
   const raw = r.tool || (r.agent === "nvim" ? "nvim" : "opencode")
   return TOOL_LABELS[raw] ?? raw
