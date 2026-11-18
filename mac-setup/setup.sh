@@ -13,7 +13,6 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # BASH_SOURCE: also right when this file is sourced
 repo="$(dirname "$here")"
 . "$here/lib.sh"
-GW_ENV="$HOME/.config/ai-gateway/env"
 
 STEPS=(xcode brew packages apps shell font zshrc git github ssh aws claude opencode gateway cmux vorssaint neovim asdf macos)
 MENU=()   # the steps the menu offers: everything after xcode and brew, which always run first
@@ -29,7 +28,7 @@ SSM_PLUGIN_PKG_URL="https://s3.amazonaws.com/session-manager-downloads/plugin/la
 # openssl@3/readline/xz/sqlite are build deps for asdf python; fd/lazygit/tree-sitter-cli for LazyVim;
 # gum draws the menus; herdr is the terminal agent multiplexer.
 FORMULAE=(git gh fzf eza bat watch jq ripgrep fd lazygit asdf openssl@3 readline xz sqlite nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr)
-CASKS=(rancher cmux vorssaint)
+CASKS=(orbstack cmux vorssaint)
 # cask|app bundle|menu text (no commas)|preselected. Names checked with brew info --cask.
 # Rectangle and Maccy are not preselected: Vorssaint already does window snapping and clipboard history.
 APP_CASKS=(
@@ -56,7 +55,7 @@ PLUGINS=(
 
 describe() { # the menu text of a step
   case "$1" in
-    packages) echo "Homebrew CLI tools (gum herdr asdf fzf ...) and the casks rancher cmux vorssaint, missing ones only" ;;
+    packages) echo "Homebrew CLI tools (gum herdr asdf fzf ...) and the casks orbstack cmux vorssaint, missing ones only" ;;
     apps) echo "Optional GUI apps from a list with Chrome and Postman preselected" ;;
     shell) echo "oh-my-zsh and the zsh plugins" ;;
     font) echo "MesloLGS NF font for the prompt icons" ;;
@@ -67,7 +66,7 @@ describe() { # the menu text of a step
     aws) echo "Optional: AWS CLI and Session Manager plugin" ;;
     claude) echo "Claude Code (native installer) and the statusline" ;;
     opencode) echo "OpenCode CLI from the official installer" ;;
-    gateway) echo "AI gateway plugin for OpenCode with its env file and API key" ;;
+    gateway) echo "AI gateway module (../ai-gateway): OpenCode plugin, env file and key, Claude Code commands, model comparison" ;;
     cmux) echo "cmux config with sidebars and Ghostty" ;;
     vorssaint) echo "Vorssaint menu bar settings" ;;
     neovim) echo "LazyVim config at the locked plugin versions" ;;
@@ -321,139 +320,10 @@ step_opencode() {
   info "installed: $("$HOME/.opencode/bin/opencode" --version 2>/dev/null || echo "open a new terminal, then run opencode --version")"
 }
 
-gw_get() { # gw_get <VAR>: its value from the gateway env file (sourced in a subshell), empty if none
-  [ -f "$GW_ENV" ] || return 0
-  (set +eu; . "$GW_ENV"; printf '%s' "${!1:-}")
-}
-gw_value() { # gw_value <VAR>: the process environment first, then the env file
-  local v="${!1:-}"
-  if [ -z "$v" ]; then v="$(gw_get "$1")"; fi
-  printf '%s' "$v"
-}
-gw_old_dirs() { # the old gateway plugin folders (not ai-gateway) that hold claude_usage.py, one per line
-  local d
-  for d in "$HOME"/.config/opencode/plugins/*-gateway; do
-    if [ -d "$d" ] && [ "$(basename "$d")" != ai-gateway ] && [ -e "$d/claude_usage.py" ]; then printf '%s\n' "$d"; fi
-  done
-  return 0
-}
-gw_copy_missing() { # gw_copy_missing <old folder> <new folder>: copy the files the new folder does not have yet
-  local rel
-  while IFS= read -r rel; do
-    rel="${rel#./}"
-    if [ -e "$2/$rel" ] || skip_file "$rel"; then continue; fi
-    mkdir -p "$(dirname "$2/$rel")"; cp "$1/$rel" "$2/$rel"; info "copied $rel from $1"
-  done < <(cd "$1" && find . -type f)
-}
-gw_cfg_hint() { # opencode.json still points at an old *-gateway folder: say so, the script does not edit it
-  local cfg hits
-  for cfg in "$HOME/.config/opencode/opencode.json" "$HOME/.config/opencode/opencode.jsonc"; do
-    [ -f "$cfg" ] || continue
-    hits="$(grep -nE -- '-gateway[/"]' "$cfg" | grep -vE 'ai-gateway[/"]' || true)"
-    if [ -n "$hits" ]; then
-      info "$cfg still has an old gateway plugin path, change it to .../plugins/ai-gateway by hand:"
-      printf '%s\n' "$hits" | sed 's/^/        /'
-    fi
-  done
-}
-gw_key() { # gw_key <key file> <gateway url> <old key path from the old index.ts, may be empty>
-  local keyfile="$1" url="$2" old="$3" f key kdir
-  if [ -z "$old" ] || [ ! -f "$old" ]; then
-    old=""
-    for f in "$HOME"/.keys/*opencode*.key; do
-      if [ -f "$f" ]; then old="$f"; break; fi
-    done
-  fi
-  if [ -n "$old" ] && [ "$old" != "$keyfile" ]; then
-    if ask "Found the old key file $old. Move it to $keyfile (no copy, no backup)?"; then
-      if dry; then info "would move $old -> $keyfile (chmod 600)"; return 0; fi
-      kdir="$(dirname "$keyfile")"
-      if [ ! -d "$kdir" ]; then mkdir -p "$kdir"; chmod 700 "$kdir"; fi
-      mv "$old" "$keyfile"; chmod 600 "$keyfile"; info "moved $old -> $keyfile (chmod 600)"
-      return 0
-    fi
-  fi
-  if dry; then info "would ask for the API key and write $keyfile"; return 0; fi
-  key="$(secret "API key for $url (typed hidden)")"
-  if [ -n "$key" ]; then
-    kdir="$(dirname "$keyfile")"
-    if [ ! -d "$kdir" ]; then mkdir -p "$kdir"; chmod 700 "$kdir"; fi
-    ( umask 077; printf '%s\n' "$key" > "$keyfile" ); chmod 600 "$keyfile"
-    info "wrote $keyfile (chmod 600)"
-  else info "no key given, $keyfile is still missing"; fi
-  key=""
-}
-
 step_gateway() {
-  bold "AI gateway for OpenCode (plugin folder, env file, API key)"
-  local src="$here/ai-gateway" dst="$HOME/.config/opencode/plugins/ai-gateway"
-  local olds olds_list=() old first_old idx="" url_def="" spec="" oldkey="" cur url keyfile kf cost tmp
-  ask "Install it?" || return 0
-  if [ ! -d "$src" ]; then info "$src is missing, nothing to install"; return 0; fi
-
-  # Old install: its folder is renamed to ai-gateway (no backup, the files live on under the new name).
-  olds="$(gw_old_dirs)"
-  first_old="${olds%%$'\n'*}"
-  # Defaults from the old plugin's index.ts, read before anything moves. They only prefill the prompts.
-  idx="${first_old:-$dst}/index.ts"
-  if [ -f "$idx" ]; then
-    url_def="$(sed -n 's/^const DEFAULT_BASE_URL = "\(.*\)".*/\1/p' "$idx")"
-    url_def="${url_def%%$'\n'*}"
-    spec="$(sed -n 's/^const DEFAULT_KEY_SPEC = "{file:\(.*\)}".*/\1/p' "$idx")"
-    spec="${spec%%$'\n'*}"
-    if [ -n "$spec" ]; then oldkey="${spec/#\~/$HOME}"; fi
-  fi
-  # The folders go into an array first: a loop over <<< would hand its stdin to the questions below.
-  while IFS= read -r old; do
-    if [ -n "$old" ]; then olds_list+=("$old"); fi
-  done <<< "$olds"
-  for old in ${olds_list[@]+"${olds_list[@]}"}; do
-    if [ ! -e "$dst" ]; then
-      if dry; then info "would rename $old -> ai-gateway"; continue; fi
-      mv "$old" "$dst"; info "renamed $old -> ai-gateway"
-      continue
-    fi
-    info "$old and $dst both exist"
-    if dry; then info "would copy the files ai-gateway lacks and remove $old"; continue; fi
-    gw_copy_missing "$old" "$dst"
-    if ask "Remove the old folder $old? opencode would load it as a second copy of the plugin" n; then
-      rm -rf "$old"; info "removed $old"
-    fi
-  done
-
-  install_tree "$src" "$dst" README.md
-  gw_cfg_hint
-
-  cur="$(gw_value GATEWAY_BASE_URL)"; [ -n "$cur" ] || cur="$url_def"
-  url="$(input "Gateway base URL" "$cur")"
-  if [ -z "$url" ]; then info "no URL, the env file is not written"; return 0; fi
-  cur="$(gw_value GATEWAY_API_KEY_FILE)"
-  keyfile="$(input "API key file" "${cur:-$HOME/.keys/ai-gateway.key}")"
-  case "$keyfile" in   # ~, $HOME and ${HOME} typed at the prompt
-    "~"|"~/"*) keyfile="$HOME${keyfile#\~}" ;;
-    '$HOME'|'$HOME/'*) keyfile="$HOME${keyfile#\$HOME}" ;;
-    '${HOME}'|'${HOME}/'*) keyfile="$HOME${keyfile#\$\{HOME\}}" ;;
-  esac
-  if [ ! -s "$keyfile" ]; then gw_key "$keyfile" "$url" "$oldkey"; fi
-
-  cost="$(gw_value GATEWAY_COST_DIR)"
-  kf="${keyfile/#"$HOME"/\$HOME}"; cost="${cost/#"$HOME"/\$HOME}"   # $HOME stays in the file, like the example
-  tmp="$(mktemp)"
-  {
-    printf 'export GATEWAY_BASE_URL="%s"\n' "$url"
-    printf 'export GATEWAY_API_KEY_FILE="%s"\n' "$kf"
-    if [ -n "$cost" ]; then printf 'export GATEWAY_COST_DIR="%s"\n' "$cost"; fi
-  } > "$tmp"
-  install_file "$tmp" "$GW_ENV"
-  rm -f "$tmp"
-  if ! dry && [ -e "$GW_ENV" ]; then chmod 600 "$GW_ENV"; fi
-
-  if dry; then info "would run check_gateway.py"
-  elif have python3 && [ -f "$dst/check_gateway.py" ]; then
-    ( . "$GW_ENV"; python3 "$dst/check_gateway.py" ) || info "check_gateway.py reported a problem (not fatal, see above)"
-  fi
-  ask "Re-run the Claude Code installer so its usage hook points at the new collector?" || return 0
-  "$here/claude-code/install.sh"
+  bold "AI gateway module (OpenCode plugin, env file and key, Claude Code commands, model comparison)"
+  # The module lives at the top of the repo and installs on its own too: ../ai-gateway/install.sh
+  "$repo/ai-gateway/install.sh"
 }
 
 step_cmux() {

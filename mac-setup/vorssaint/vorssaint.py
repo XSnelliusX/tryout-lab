@@ -5,7 +5,7 @@
   vorssaint.py import <file>   merge <file> into the live settings
 
 Machine-specific and personal keys are left out of the export: feature
-availability probes, window sizes, shelf contents, the command-bar habit key and
+availability probes, display-hardware probes, window and menu-bar positions, shelf contents, the command-bar habit key and
 update/onboarding bookkeeping, usage counters, and anything holding a path in the
 home folder (e.g. the screenshot folder). Clipboard history and the scratchpad live in
 ~/Library/Application Support and are never exported.
@@ -16,13 +16,17 @@ import subprocess
 import sys
 
 DOMAIN = "com.vorssaint.utils"
-SKIP_PREFIXES = ("featureAvailable.", "settingsWindow")
+# NS*: window/panel sizes and menu-bar icon position. brightnessDDC*/...Paths: probes of this
+# Mac's display hardware (IOService paths). cleanerLast*/whatsNew*: run bookkeeping.
+SKIP_PREFIXES = ("featureAvailable.", "settingsWindow", "NSNavPanel", "NSWindow Frame",
+                 "NSStatusItem Preferred Position", "brightnessDDC", "cleanerLast", "whatsNew")
 SKIP_KEYS = {
     "commandBarQueryHabitKey", "shelfItems", "lastUpdateIntroVersion",
     "supportUpdateIntroVersion", "updateHighlightsSeenVersion",
     "bluetoothSleepRestorePending", "onboardingStep",
     "appUpdatesLastCheck", "appUpdatesLastCount", "appUpdatesNotifiedIDs",
     "commandBarQueryHabits", "commandBarUsage", "screenshotLastTool",
+    "brightnessExtendedDimmingPaths", "brightnessForcedSoftwarePaths",
 }
 HOME = os.path.expanduser("~")
 

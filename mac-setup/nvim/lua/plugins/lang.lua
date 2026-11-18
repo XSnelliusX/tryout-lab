@@ -36,6 +36,28 @@ return {
         ["markdownlint-cli2"] = {
           args = { "--config", vim.fn.stdpath("config") .. "/.markdownlint.yaml", "-" },
         },
+        -- nvim-lint picks golangci-lint's dir or file mode once, from nvim's cwd, when the
+        -- linter first loads. Under a different Go module that fails (exit 5 / 7), so lint
+        -- the buffer's file on every run instead.
+        golangcilint = function()
+          local linter = vim.deepcopy(require("lint.linters.golangcilint"))
+          linter.args = {
+            "run",
+            "--output.json.path=stdout",
+            "--output.text.path=",
+            "--output.tab.path=",
+            "--output.html.path=",
+            "--output.checkstyle.path=",
+            "--output.code-climate.path=",
+            "--output.junit-xml.path=",
+            "--output.teamcity.path=",
+            "--output.sarif.path=",
+            "--issues-exit-code=0",
+            "--show-stats=false",
+            "--path-mode=abs",
+          }
+          return linter
+        end,
       },
     },
   },

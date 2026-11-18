@@ -46,9 +46,12 @@ for f in "$HOME"/.config/cmux/sidebars/*.js; do pull "$f" "$here/cmux/config/cmu
 while IFS= read -r f; do pull "$HOME/.config/nvim/$f" "$here/nvim/$f"; done < <(
   cd "$HOME/.config/nvim" 2>/dev/null &&
     find . -type f \( -name '*.lua' -o -name '*.json' -o -name '*.toml' -o -name '*.yaml' \) | sed 's#^\./##' | sort)
-# The AI gateway plugin for opencode (the folder setup.sh installs) and the global asdf versions.
+# The AI gateway plugin for opencode (../ai-gateway, installed by its install.sh), its Claude Code commands, and the global asdf versions.
 for f in index.ts tui.ts check_gateway.py claude_usage.py dashboard.html package.json; do
-  pull "$HOME/.config/opencode/plugins/ai-gateway/$f" "$here/ai-gateway/$f"
+  pull "$HOME/.config/opencode/plugins/ai-gateway/$f" "$repo/ai-gateway/$f"
+done
+for d in "$repo"/ai-gateway/claude-skills/*/; do
+  n="$(basename "$d")"; pull "$HOME/.claude/skills/$n/SKILL.md" "$d/SKILL.md"
 done
 pull "$HOME/.tool-versions" "$here/asdf/tool-versions"
 

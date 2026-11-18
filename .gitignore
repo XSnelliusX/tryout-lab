@@ -8,3 +8,7 @@ golang/Udemy/Concurrency/report_*.txt
 
 # personal learning notes (not part of the setup)
 mac-setup/nvim/learning.md
+
+# Python bytecode
+__pycache__/
+*.pyc

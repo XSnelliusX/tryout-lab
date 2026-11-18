@@ -41,25 +41,26 @@ cd mac-setup/claude-code      # from the repo root
 
 ## Gateway commands
 
-`install.sh` also copies three skills to `~/.claude/skills/`, so Claude Code has the same commands as OpenCode:
+The [AI gateway module](../../ai-gateway/README.md) installs four skills to `~/.claude/skills/` (`ai-gateway/install.sh --only claude`, also run by `setup.sh --only gateway`), so Claude Code has the same commands as OpenCode. This folder's `install.sh` no longer touches them:
 
 | Command | Does |
 |---|---|
 | `/usage-dashboard` | logs the latest Claude Code calls (`claude_usage.py --flush`), updates the usage data and opens `~/.gateway-cost/dashboard.html` |
 | `/gateway-refresh` | re-reads the API key, reloads the model list and prices, rewrites `~/.gateway-cost/models.json` and `models.csv` |
 | `/gateway-status` | gateway URL, key file, a quick check that the gateway answers, the time of the last model refresh |
+| `/model-comparison` | syncs public benchmark data with the gateway's models and opens the comparison dashboard (`~/.gateway-cost/model-comparison/index.html`) |
 
-They run the ai-gateway plugin's own code (`node ~/.config/opencode/plugins/ai-gateway/index.ts refresh|dashboard|status`), so they need the plugin (`setup.sh --only gateway`) and Node 23.6+ (`setup.sh --only asdf`). Each command runs its shell part first and Claude only shows the output, a short reply. Claude never runs them on its own (`disable-model-invocation`).
+They run the ai-gateway plugin's own code (`node ~/.config/opencode/plugins/ai-gateway/index.ts refresh|dashboard|compare|status`), so they need the plugin (`setup.sh --only gateway`) and Node 23.6+ (`setup.sh --only asdf`). Each command runs its shell part first and Claude only shows the output, a short reply. Claude never runs them on its own (`disable-model-invocation`).
 
 ## Usage and cost tracking
 
-`install.sh` also registers a hook (`Stop`, `SubagentStop`, `SessionEnd`) that runs `claude_usage.py` from the ai-gateway opencode plugin (`~/.config/opencode/plugins/ai-gateway/`). The plugin is set up with `mac-setup/setup.sh --only gateway`. It reads the new API calls from Claude Code's transcripts and appends them to `~/.gateway-cost/usage.jsonl`, the log OpenCode and Neovim write too, so `~/.gateway-cost/dashboard.html` shows all AI usage together:
+The same AI gateway installer registers a hook (`Stop`, `SubagentStop`, `SessionEnd`) that runs `claude_usage.py` from the ai-gateway opencode plugin (`~/.config/opencode/plugins/ai-gateway/`). It reads the new API calls from Claude Code's transcripts and appends them to `~/.gateway-cost/usage.jsonl`, the log OpenCode and Neovim write too, so `~/.gateway-cost/dashboard.html` shows all AI usage together:
 
 - `tool`: `claude-code`, or `claude-desktop` for sessions started from the desktop app
 - `agent`: `main`, or the subagent type (`general-purpose`, `Explore`, ...)
 - `billing`: `subscription`. The Enterprise seat is not billed per token, so `cost` is the **API equivalent** (tokens × Anthropic prices from the gateway catalog). Useful against the monthly limit (`monthlyLimitUSD` in `~/.gateway-cost/config.js`), not an invoice.
 
-The first run imports the whole history; every call is logged once (deduplicated by request id). The hook is silent and always exits 0; problems go to `~/.gateway-cost/claude-usage.log`. Run it by hand with `python3 ~/.config/opencode/plugins/ai-gateway/claude_usage.py` (`--dry-run` to preview). Without the plugin installed, `install.sh` skips the hook. A hook left over from the plugin's old folder name is repointed to `ai-gateway` on the next run, so re-running `install.sh` after the rename is enough; it does nothing until the plugin exists.
+The first run imports the whole history; every call is logged once (deduplicated by request id). The hook is silent and always exits 0; problems go to `~/.gateway-cost/claude-usage.log`. Run it by hand with `python3 ~/.config/opencode/plugins/ai-gateway/claude_usage.py` (`--dry-run` to preview). A hook left over from the plugin's old folder name is repointed to `ai-gateway` on the next run of `ai-gateway/install.sh --only claude`; it does nothing until the plugin exists. This folder's `install.sh` only sets `statusLine` in `settings.json` and keeps the hooks as they are.
 
 The statusline's `$` is Claude Code's own session cost; the dashboard's Claude Code numbers come from the transcripts and leave out Claude Code's small background calls (titles, classifiers), so they can be slightly lower.
 

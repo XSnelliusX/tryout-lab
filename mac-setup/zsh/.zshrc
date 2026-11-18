@@ -12,8 +12,17 @@ fi
 export ZSH="$HOME/.oh-my-zsh"
 DEFAULT_USER=$USER
 
-# Extra completion definitions (must be in fpath BEFORE oh-my-zsh runs compinit)
-fpath+=${ZSH_CUSTOM:-$ZSH/custom}/plugins/zsh-completions/src
+# Completion directories must be in fpath BEFORE oh-my-zsh runs compinit.
+# Login shells get Homebrew's path from brew shellenv; interactive non-login
+# shells don't read ~/.zprofile, so include it explicitly there as well.
+if [[ -d /opt/homebrew/share/zsh/site-functions ]] &&
+   (( ! ${fpath[(Ie)/opt/homebrew/share/zsh/site-functions]} )); then
+  fpath=(/opt/homebrew/share/zsh/site-functions $fpath)
+fi
+fpath+=("${ZSH_CUSTOM:-$ZSH/custom}/plugins/zsh-completions/src")
+
+# Let Powerlevel10k display the active venv instead of venv modifying PS1.
+export VIRTUAL_ENV_DISABLE_PROMPT=1
 
 # Plugin settings (before sourcing oh-my-zsh)
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=6'
@@ -33,7 +42,8 @@ plugins=(
 
 source $ZSH/oh-my-zsh.sh   # this runs compinit for you, so don't call it yourself
 
-# fzf keybindings: Ctrl-R history, Ctrl-T files, Ctrl+F cd
+# fzf keybindings: Ctrl-R history, Ctrl-T files, Ctrl+F cd. Its Tab widget
+# delegates ordinary completion to fzf-tab and handles the ** trigger itself.
 source <(fzf --zsh)
 
 # Up/Down search history by what you've typed
@@ -84,7 +94,7 @@ bindkey '^F' fzf-cd-widget    # Ctrl-F opens the folder jump
 #######                                  ALIASSES                                     ######
 ############################################################################################
 
-### Vim Aliasses
+### Vim aliases
 alias vim="nvim"
 alias vi="nvim"
 
@@ -111,10 +121,6 @@ export NVM_DIR="$HOME/.nvm"
   [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
   [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
-### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
-export PATH="$HOME/.rd/bin:$PATH"
-### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
-
 ### ASDF Shims dir
 export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
 
@@ -129,6 +135,23 @@ if (( $+commands[helm] )); then
   source <(helm completion zsh)
 fi
 
+# These tools don't install native zsh completion files into Homebrew's fpath.
+# Register pip's native completion lazily so the active Python environment is used.
+_local_pip_completion() {
+  local -a completions
+  completions=(${(f)"$(COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT - 1)) \
+    PIP_AUTO_COMPLETE=1 "${words[1]}" 2>/dev/null)"})
+  compadd -a completions
+}
+compdef _local_pip_completion -P 'pip[0-9.]#'
+
+# AWS CLI supplies a bash-style completer, including for the local installation.
+if (( $+commands[aws_completer] )); then
+  autoload -Uz bashcompinit
+  bashcompinit
+  complete -C "${commands[aws_completer]}" aws
+fi
+
 # AI gateway settings (GATEWAY_BASE_URL, key file), written by mac-setup/setup.sh --only gateway
 [[ -r "$HOME/.config/ai-gateway/env" ]] && source "$HOME/.config/ai-gateway/env"
 
@@ -136,3 +159,11 @@ source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# Personal Claude Code aliases
+alias claude-personal='CLAUDE_CONFIG_DIR="$HOME/.claude-personal" command claude'
+alias clp='CLAUDE_CONFIG_DIR="$HOME/.claude-personal" command claude'
+
+# User-local binaries (Claude Code native installer, herdr-core hc, cc-* scripts).
+# ~/.zprofile only covers login shells, so add it here too.
+export PATH="$HOME/.local/bin:$PATH"

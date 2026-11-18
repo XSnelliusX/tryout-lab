@@ -47,7 +47,7 @@ The last line of a run names the backup folder, if the run replaced anything.
 |---|---|
 | `xcode` | Command Line Tools (compiler, make, git), waits until installed |
 | `brew` | Homebrew, `brew shellenv` in `~/.zprofile`, and gum |
-| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `rancher cmux vorssaint`. Only the missing ones are installed |
+| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `orbstack cmux vorssaint` (OrbStack provides docker and kubectl). Only the missing ones are installed |
 | `apps` | optional GUI casks from a multi-select, Google Chrome, Postman and Claude preselected. Apps already in `/Applications` are left out. Rectangle and Maccy are offered but not preselected, Vorssaint does snapping and clipboard history |
 | `shell` | oh-my-zsh and the plugins from [zsh/README.md](zsh/README.md) |
 | `font` | MesloLGS NF into `~/Library/Fonts` (prompt icons) |
@@ -56,9 +56,9 @@ The last line of a run names the backup folder, if the run replaced anything.
 | `github` | `gh auth login` in the browser, then `gh auth setup-git` as credential helper; optional Enterprise host |
 | `ssh` | lists existing keys to reuse, or creates an ed25519 key with passphrase; adds it to the Keychain and `~/.ssh/config`; optionally uploads the **public** key with `gh ssh-key add` |
 | `aws` | **Optional**, not preselected in the menu. Installs the AWS CLI and the Session Manager plugin the way the AWS guides recommend, not with Homebrew, only the missing ones and only after their signatures check out ([how](#aws-cli-and-session-manager-plugin-how-they-are-verified)). Its own question defaults to no. It does not sign you in or write any profile |
-| `claude` | Claude Code via the native installer (updates itself), plus the [statusline](claude-code/README.md) and the usage hook that logs Claude Code to `~/.gateway-cost` |
+| `claude` | Claude Code via the native installer (updates itself), plus the [statusline](claude-code/README.md) and keybindings. The gateway commands and the usage hook come from the `gateway` step |
 | `opencode` | OpenCode via the official installer (`~/.opencode/bin`), skipped when `opencode` is already found |
-| `gateway` | the AI gateway plugin for OpenCode, its env file and API key, see below |
+| `gateway` | the [AI gateway module](../ai-gateway/README.md): OpenCode plugin, env file and API key, Claude Code commands and usage hook, model comparison, see below |
 | `cmux` | [cmux config](cmux/README.md): settings, sidebars, Ghostty |
 | `vorssaint` | restores the Vorssaint settings (below) |
 | `neovim` | [LazyVim config](nvim/README.md) into `~/.config/nvim` (an older non-LazyVim config is moved to the backup folder), plugins at the locked versions |
@@ -74,26 +74,14 @@ The [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/get
 - **AWS CLI:** the AWS CLI Team's public key is kept in [aws/awscli-public-key.asc](aws/awscli-public-key.asc). The script first compares its fingerprint with the one printed in the guide (`FB5D B77F D5C1 18B8 0511 ADA8 A631 0ACC 4672 475C`), imports it into a throwaway keyring (`~/.gnupg` is not touched), downloads `install.sh` and `install.sh.sig`, and runs `gpg --verify`. Only then does it run `install.sh`, which checks the AWS CLI package itself (PGP signature and `pkgutil` team ID) and installs for your user only, into `~/.local`. This needs `gpg`; the guide installs it with Homebrew too (`brew install gnupg`), and the script asks first. Without `gpg` the CLI is not installed. The key expires in 2027, after that, copy the renewed key from the guide into the file.
 - **Session Manager plugin:** AWS publishes no checksum or signature file for it, so the script prints the SHA-256 of the download and checks the package instead: `pkgutil --check-signature` (Developer ID signed, notarized, Amazon's Apple Developer Team ID `94KV3E626L`, the team AWS pins for its own CLI package), `spctl --assess`, and `pkgutil --expand`, which fails when a payload checksum does not match. After that `sudo installer` runs and the `/usr/local/bin` link from the guide is created. The sudo password is asked by macOS, never by the script.
 
-## AI gateway (OpenCode plugin)
+## AI gateway
 
-The `gateway` step installs [ai-gateway/](ai-gateway/) to `~/.config/opencode/plugins/ai-gateway` (without its README), with the same rule as everything else: new files are copied, changed ones are shown and asked about.
-
-**Moving from an older install** is a rename, not a backup. An old folder `~/.config/opencode/plugins/*-gateway` that holds `claude_usage.py` is renamed to `ai-gateway`, and its files live on under the new name. If `ai-gateway` already exists, the files it lacks are copied across, and you are asked whether to remove the old folder (default: keep it; opencode would otherwise load two copies of the plugin). The repo version then replaces the old files, and the old ones go to `~/.setup_backup/<stamp>/.config/opencode/plugins/ai-gateway/` like any other overwrite. The old key file (the path in the old plugin's `DEFAULT_KEY_SPEC`, else `~/.keys/*opencode*.key`) is moved to the new key path when that one is missing, with no copy and no backup. If `opencode.json` still points at the old folder, the script prints the line and you change it by hand.
-
-It asks for:
-
-- the gateway base URL. The default is the current value from the env file (or the environment), else the URL of the old plugin. There is no built-in URL
-- the API key file, default `~/.keys/ai-gateway.key`. If that file is missing and an old key was found, you are asked to move it. Otherwise the key is asked for with hidden input and written with mode 600 into a 700 folder. It is never echoed or stored in the repo
-
-It then writes `~/.config/ai-gateway/env` with mode 600, through the same overwrite question:
-
-```bash
-export GATEWAY_BASE_URL="https://gateway.example.com"
-export GATEWAY_API_KEY_FILE="$HOME/.keys/ai-gateway.key"
-export GATEWAY_COST_DIR="..."   # only when it was set before
-```
-
-Then `check_gateway.py` runs once (a failure there does not stop the script). At the end it offers to re-run [claude-code/install.sh](claude-code/install.sh), which registers the usage hook for the new collector path.
+The `gateway` step runs [../ai-gateway/install.sh](../ai-gateway/README.md), the
+installer of the separate AI gateway module: the OpenCode plugin, the gateway URL
+and API key (`~/.config/ai-gateway/env`, never in the repo), the Claude Code
+commands (`/usage-dashboard`, `/model-comparison`, ...) with the usage hook, and
+the model comparison dashboard. Each part asks first. The module can also be
+installed without this script, see its README.
 
 ## Vorssaint, the central macOS tool
 

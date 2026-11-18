@@ -2,22 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSNavPanelExpandedSizeForOpenMode</key>
-	<string>{880, 448}</string>
-	<key>NSStatusItem Preferred Position VorssaintMenuBarItem</key>
-	<real>562.0</real>
 	<key>NSStatusItem VisibleCC VorssaintMenuBarItem</key>
 	<true/>
-	<key>NSWindow Frame NSSpellCheckerSpellingPanel</key>
-	<string>524 482 431 289 0 0 1800 1130 </string>
-	<key>NSWindow Frame NSSpellCheckerSubstitutionsPanel2</key>
-	<string>692 399 359 150 0 0 1800 1130 </string>
 	<key>appAppearance</key>
 	<string>dark</string>
 	<key>appOutputDevices</key>
 	<dict/>
 	<key>appVolumes</key>
 	<dict/>
+	<key>appVolumesArePositions</key>
+	<true/>
 	<key>autoQuitEnabled</key>
 	<false/>
 	<key>batteryLimitPercent</key>
@@ -26,10 +20,8 @@
 	<true/>
 	<key>brightnessControlEnabled</key>
 	<true/>
-	<key>brightnessDDCWriteOnlyPathsRechecked</key>
-	<true/>
 	<key>brightnessKeysEnabled</key>
-	<false/>
+	<true/>
 	<key>brightnessOSDEnabled</key>
 	<false/>
 	<key>brightnessUpdatePromptState</key>
@@ -77,7 +69,7 @@
 	<key>dimScreenOnLidClose</key>
 	<true/>
 	<key>diskImageInstallerRevealsApp</key>
-	<false/>
+	<true/>
 	<key>diskImageInstallerTrashesDownload</key>
 	<true/>
 	<key>diskImageInstallerUseUserApplications</key>
@@ -228,9 +220,17 @@
 	<dict/>
 	<key>minimalWindowPreviews</key>
 	<false/>
+	<key>mixerCallAppVolumeEnabled</key>
+	<array>
+		<string>com.microsoft.teams2</string>
+	</array>
+	<key>mixerHeadphonesDisconnectSilenceAllowed</key>
+	<true/>
 	<key>mixerHideInactiveApps</key>
 	<false/>
 	<key>mixerLowerVolumeOnHeadphonesDisconnect</key>
+	<false/>
+	<key>mixerShowFinder</key>
 	<false/>
 	<key>monitorAlertBatteryPercent</key>
 	<integer>15</integer>
@@ -252,6 +252,8 @@
 	<integer>5</integer>
 	<key>monitorMemoryMetric</key>
 	<string>used</string>
+	<key>monitorPwrPeripherals</key>
+	<false/>
 	<key>monitorPwrTemperature</key>
 	<true/>
 	<key>monitorSysCPU</key>
@@ -271,7 +273,7 @@
 	<key>notchAgentsDailyBudget</key>
 	<real>50.0</real>
 	<key>notchAgentsEnabled</key>
-	<true/>
+	<false/>
 	<key>notchAgentsLimitDisplay</key>
 	<string>used</string>
 	<key>notchAgentsLimitFocus</key>
@@ -323,9 +325,9 @@
 	<key>notchGesturesEnabled</key>
 	<true/>
 	<key>notchHiddenControls</key>
-	<string>commandBar,recording,scratchpad,screenshot,speedTest</string>
+	<string>commandBar,scratchpad</string>
 	<key>notchHiddenModules</key>
-	<string>clipboard</string>
+	<string>agents</string>
 	<key>notchHideInFullscreen</key>
 	<false/>
 	<key>notchHideMenuBarGap</key>
@@ -436,6 +438,8 @@
 	<true/>
 	<key>radialMenuEnabled</key>
 	<true/>
+	<key>recorderFrameRate</key>
+	<integer>30</integer>
 	<key>recorderMicrophone</key>
 	<true/>
 	<key>recorderSharingEnabled</key>
@@ -491,6 +495,8 @@
 	<key>screenshotShortcut</key>
 	<string>shift+command:1</string>
 	<key>screenshotShortcutEnabled</key>
+	<true/>
+	<key>scrollHorizontalEnabled</key>
 	<true/>
 	<key>scrollInverterHorizontalEnabled</key>
 	<false/>
@@ -564,6 +570,8 @@
 	<key>windowLayoutShortcutsEnabled</key>
 	<false/>
 	<key>windowMaximizeEnabled</key>
-	<true/>
+	<false/>
+	<key>windowReserveStageManagerSpace</key>
+	<false/>
 </dict>
 </plist>

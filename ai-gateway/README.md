@@ -1,19 +1,38 @@
-# AI gateway model discovery plugin for OpenCode
+# AI gateway
 
-An OpenCode plugin that discovers the models exposed by a LiteLLM-style gateway
-and registers them in OpenCode, one provider per upstream (`acc-bedrock`,
-`acc-azure`, `acc-databricks`, ...), with token limits, prices and capabilities.
-It also records per-step token usage and cost for every gateway model, in a log
-that Neovim and Claude Code (via `claude_usage.py`) write to as well, so one
-dashboard shows all AI usage by tool, agent, model and billing. Startup
-uses a cached inventory (no network), and the slow metadata endpoint is only
-called when the model set changes or the cache is more than 24 h old.
+Everything for working with a LiteLLM-style AI gateway from OpenCode and Claude
+Code, in one module that installs on its own (or from `mac-setup`):
 
-Source of truth is `index.ts` (server half) and `tui.ts` (TUI half: notifications
-and `/gateway-status`). This folder is a plugin package (`package.json` ->
-`index.ts`, `./tui` -> `tui.ts`) that OpenCode loads as-is: no build step, no
-dependencies. `claude_usage.py` ships in the same folder but is run by Claude
-Code (see "Claude Code usage").
+| Part | What it does | Use it with |
+|---|---|---|
+| OpenCode plugin (`index.ts`, `tui.ts`) | Discovers the gateway's models and registers them in OpenCode, one provider per upstream (`acc-bedrock`, `acc-azure`, ...), with limits, prices and capabilities. Logs per-step tokens and cost | the model picker, `/gateway-status`, `/gateway-refresh` |
+| Usage dashboard (`dashboard.html`) | All AI usage by tool, agent, model and billing, from one log that OpenCode, Neovim and Claude Code write to | `/usage-dashboard` |
+| Model comparison (`model-comparison/`) | Joins the gateway's models with public Artificial Analysis benchmarks: intelligence and capability indices, raw scores, speed and price per model, side by side | `/model-comparison` |
+| Claude Code commands (`claude-skills/`) and usage hook (`claude_usage.py`) | The same commands in Claude Code, and Claude Code's usage in the shared log | `/usage-dashboard`, `/model-comparison`, ... |
+| `check_gateway.py` | Tests the URL and key, lists models | `python3 check_gateway.py` |
+
+The gateway URL and the API key are configured on the machine
+(`~/.config/ai-gateway/env`, `~/.keys/ai-gateway.key`) and never stored in this
+repo. Every other tool here reads the gateway's models from the catalog the
+plugin writes (`~/.gateway-cost/models.json`), so nothing else talks to the
+gateway or hardcodes it.
+
+```text
+ai-gateway/
+├── install.sh            # installs every part below (asks per part)
+├── index.ts, tui.ts      # the OpenCode plugin (package.json -> index.ts)
+├── dashboard.html        # usage dashboard, copied to ~/.gateway-cost/
+├── claude_usage.py       # Claude Code usage hook
+├── check_gateway.py      # connectivity check
+├── claude-skills/        # /gateway-refresh, /gateway-status, /usage-dashboard, /model-comparison for Claude Code
+└── model-comparison/     # benchmark comparison dashboard (Go + Node build), see its README
+```
+
+Startup uses a cached inventory (no network), and the slow metadata endpoint is
+only called when the model set changes or the cache is more than 24 h old.
+Source of truth for the plugin is `index.ts` (server half) and `tui.ts` (TUI
+half: notifications and `/gateway-status`). OpenCode loads the plugin folder
+as-is: no build step, no dependencies.
 
 ## How the plugin works
 
@@ -91,17 +110,32 @@ Code (see "Claude Code usage").
 Install from the repo, not by hand. From the `tryout_lab` checkout:
 
 ```sh
-mac-setup/setup.sh --only gateway
+ai-gateway/install.sh             # every part, each asks first
+ai-gateway/install.sh --dry-run   # only report what would change
+ai-gateway/install.sh --only plugin|env|claude|compare
 ```
 
-The step does four things:
+`mac-setup/setup.sh --only gateway` runs the same script. It uses the prompt and
+backup helpers in `mac-setup/lib.sh`, so clone the whole repo, but nothing else
+from `mac-setup` is needed. Requirements: Node 23.6+ (runs `index.ts` as is),
+Python 3, and for the model comparison also Go 1.24+ and npm.
 
-1. Copies this folder to `~/.config/opencode/plugins/ai-gateway/`. OpenCode loads
-   every folder in its plugins directory automatically, so `opencode.json` needs
-   no entry for it.
-2. Writes `~/.config/ai-gateway/env` with `GATEWAY_BASE_URL` (see "Configuration").
-3. Stores the API key in `~/.keys/ai-gateway.key` (`chmod 600`).
-4. Runs `check_gateway.py` to test the gateway URL and the key.
+| Part | What it does |
+|---|---|
+| `plugin` | Copies the plugin files to `~/.config/opencode/plugins/ai-gateway/` (not this README, `install.sh`, `claude-skills/` or `model-comparison/`). OpenCode loads every folder in its plugins directory, so `opencode.json` needs no entry. An older `*-gateway` folder is migrated (see below) |
+| `env` | Asks for the gateway URL and the key file and writes `~/.config/ai-gateway/env` (mode 600, see "Configuration"). A missing key is asked for with hidden input and stored in `~/.keys/ai-gateway.key` (mode 600). Then runs `check_gateway.py` |
+| `claude` | Copies `claude-skills/*` to `~/.claude/skills/` and registers the usage hook in `~/.claude/settings.json` (Stop, SubagentStop, SessionEnd -> `claude_usage.py`); everything else in that file is kept. Imports the existing Claude Code history once |
+| `compare` | Builds `model-comparison/` (Go binary + web app) and installs the result to `~/.config/opencode/plugins/ai-gateway/model-comparison/` |
+
+Changed files are shown with a one-line summary and you choose overwrite, show
+diff or skip. Replaced files go to `~/.setup_backup/<stamp>/` first.
+
+**Moving from an older install** is a rename, not a backup: an old folder
+`~/.config/opencode/plugins/*-gateway` holding `claude_usage.py` becomes
+`ai-gateway`. If both exist, the missing files are copied across and you are
+asked whether to remove the old one. An old key file is offered to be moved to
+the new key path. If `opencode.json` still points at the old folder, the line is
+printed and you change it by hand.
 
 Then restart OpenCode. Check with `opencode api get /api/plugin`
 (`gateway-models` should be `active`), then type `/usage-dashboard`.
@@ -113,7 +147,7 @@ Plugin IDs must be unique. The plugin ID is `gateway-models`, so a second copy i
 the plugins directory (for example an older folder with another name) fails with
 `Duplicate plugin ID: gateway-models` and never runs. Remove any such copy first.
 
-**Updating.** Run the same command again. It replaces the copy in the plugins
+**Updating.** Run `ai-gateway/install.sh` again. It replaces the copy in the plugins
 folder. The usage history is not in the plugin folder (see "Output files"), so it
 is kept.
 
@@ -145,7 +179,7 @@ watches that file:
 | Gateway error (other HTTP status), non-JSON or empty answer | error, warning with cached models | Catalog is not replaced by an empty one. |
 | Model details unavailable (`/model/info`) | warning | Models stay listed (without prices if none were cached). |
 | Integration not connected | warning | Models still work; `/models` may not group by provider. |
-| Not configured (`GATEWAY_BASE_URL` empty or missing) | error | Nothing is registered. Run `mac-setup/setup.sh --only gateway` or fix the env file (see "Configuration"). |
+| Not configured (`GATEWAY_BASE_URL` empty or missing) | error | Nothing is registered. Run `ai-gateway/install.sh --only env` or fix the env file (see "Configuration"). |
 | Model cache, catalog report, usage log/summary, dashboard, browser, event stream | warning | Write/read failures in the cost directory or OpenCode storage. |
 
 The TUI ignores a `status.json` whose writer process is gone. When the TUI
@@ -339,6 +373,29 @@ prices are used when the gateway provides them. Reasoning tokens are billed at
 the output price. `reported_cost` is OpenCode's own figure, kept as a
 cross-check.
 
+## Model comparison
+
+Type **`/model-comparison`** in OpenCode or Claude Code. It fetches the current
+public benchmark data from [Artificial Analysis](https://artificialanalysis.ai)
+(cached for 24 h), matches it to every model in the gateway catalog the plugin
+wrote, and opens `~/.gateway-cost/model-comparison/index.html`: intelligence and
+capability indices, raw benchmark scores, all reasoning-effort variants, speed,
+and the gateway's own prices next to each other.
+
+From a terminal:
+
+```sh
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare              # refreshes a catalog older than 24 h first
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare --refresh    # refetch the benchmarks now
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare --offline    # cached benchmarks only
+```
+
+The benchmark data is fetched on demand and cached under
+`~/.cache/ai-gateway/model-comparison/`; it is never part of this repo.
+Artificial Analysis' terms restrict redistributing it, so keep the generated
+dashboard for your own use. How matching works, the data flow and
+troubleshooting are in [model-comparison/README.md](model-comparison/README.md).
+
 ## Claude Code usage: `claude_usage.py`
 
 Claude Code does not go through the gateway, so it cannot be seen there. Its
@@ -361,7 +418,7 @@ for each of `Stop`, `SubagentStop` and `SessionEnd`:
   "command": "[ -f \"$HOME/.config/opencode/plugins/ai-gateway/claude_usage.py\" ] && python3 -I \"$HOME/.config/opencode/plugins/ai-gateway/claude_usage.py\"; true" }] }
 ```
 
-(`mac-setup/claude-code/install.sh` in tryout_lab does this.) As a hook it is
+(`ai-gateway/install.sh --only claude` does this.) As a hook it is
 silent, takes ~0.2 s, and always exits 0; errors go to `claude-usage.log`.
 
 How it counts:
@@ -427,7 +484,7 @@ sure the key file exists (`GATEWAY_API_KEY_FILE`). Run `check_gateway.py --fast`
 to test the endpoint and the key directly.
 
 **"Not configured" toast.** `GATEWAY_BASE_URL` is empty in the environment and in
-the env file. Run `mac-setup/setup.sh --only gateway`, or add the line to
+the env file. Run `ai-gateway/install.sh --only env`, or add the line to
 `~/.config/ai-gateway/env`. Restart OpenCode afterwards, because the plugin reads
 its settings at startup.
 

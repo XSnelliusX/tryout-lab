@@ -40,7 +40,7 @@
 import type { Model, Plugin, Provider } from "@opencode/plugin"
 import type { Registration } from "@opencode/plugin/promise/registration"
 import { spawn } from "node:child_process"
-import { type FSWatcher, readFileSync, realpathSync, watch } from "node:fs"
+import { existsSync, type FSWatcher, readFileSync, realpathSync, watch } from "node:fs"
 import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { basename, dirname, join } from "node:path"
@@ -84,7 +84,7 @@ const DASHBOARD_SRC = join(dirname(fileURLToPath(import.meta.url)), "dashboard.h
 
 // GATEWAY_BASE_URL has no default. Empty means not configured: setup() then registers nothing.
 const BASE_URL = setting("GATEWAY_BASE_URL", "").trim().replace(/\/+$/, "")
-const NOT_CONFIGURED = "GATEWAY_BASE_URL is not set. Run mac-setup/setup.sh --only gateway, or add it to the env file (~/.config/ai-gateway/env, or $GATEWAY_ENV_FILE)."
+const NOT_CONFIGURED = "GATEWAY_BASE_URL is not set. Run ai-gateway/install.sh --only env (or mac-setup/setup.sh --only gateway), or add it to the env file (~/.config/ai-gateway/env, or $GATEWAY_ENV_FILE)."
 const COMPLETIONS_BASE = `${BASE_URL}/aiendpoint/v1`
 const FAST_URL = `${BASE_URL}/aiendpoint/v1/models`
 const INFO_URL = `${BASE_URL}/aiendpoint/v1/model/info`
@@ -1284,6 +1284,33 @@ window.GATEWAY_CONFIG = {
 }
 `
 
+// Model comparison (model-comparison/ in this folder, built by install.sh): joins the gateway catalog this
+// plugin writes to COST_DIR/models.json with Artificial Analysis benchmarks (fetched on demand, cached
+// outside the repo) and opens COST_DIR/model-comparison/index.html. Runs as a separate Node process.
+const COMPARE_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "model-comparison", "compare.mjs")
+const COMPARE_HINT = "model comparison is not installed: run ai-gateway/install.sh --only compare (needs Go and Node)"
+
+function runCompare(args: string[]): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    let output = ""
+    let child
+    try {
+      child = spawn("node", [COMPARE_SCRIPT, ...args], {
+        env: { ...process.env, GATEWAY_COST_DIR: COST_DIR },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      })
+    } catch (err) {
+      resolve({ code: 1, output: `could not start node: ${errText(err)}` })
+      return
+    }
+    child.stdout?.on("data", (d) => (output += d))
+    child.stderr?.on("data", (d) => (output += d))
+    child.on("error", (err) => resolve({ code: 1, output: `could not start node: ${errText(err)}` }))
+    child.on("close", (code) => resolve({ code: code ?? 1, output: output.trim() }))
+  })
+}
+
 // Default browser on every OS. explorer.exe takes a path with spaces as one argument,
 // which `cmd /c start` does not.
 function openInBrowser(target: string): void {
@@ -1687,6 +1714,17 @@ export default {
           },
         })
         editor.add({
+          name: "model-comparison",
+          description: "Sync Artificial Analysis benchmarks with the gateway models and open the comparison dashboard",
+          execute: async () => {
+            if (!existsSync(COMPARE_SCRIPT)) return setIssue("compare", "warning", "Model comparison", COMPARE_HINT)
+            if (!existsSync(join(COST_DIR, "models.json"))) await loop.run() // the catalog it compares against
+            const r = await runCompare(["--quiet"]) // compare.mjs opens the page itself
+            if (r.code === 0) clearIssue("compare")
+            else setIssue("compare", "warning", "Model comparison failed", r.output.split("\n").slice(-3).join(" ") || `exit ${r.code}`)
+          },
+        })
+        editor.add({
           name: "gateway-refresh",
           description: "Re-read the gateway API key and reload the model list now",
           execute: () => loop.run(),
@@ -1716,9 +1754,11 @@ export default {
 // -----------------------------------------------------------------------------
 //   node index.ts refresh    re-read the key, reload models and prices, rewrite models.json/models.csv
 //   node index.ts dashboard  update the usage data and open dashboard.html
+//   node index.ts compare    sync AA benchmarks with the gateway catalog, open the model comparison
+//                            (extra flags go to model-comparison/compare.mjs: --refresh, --offline, --no-open)
 //   node index.ts status     settings, key, a quick gateway check and the last refresh
-// Needs Node 23.6+ (runs TypeScript as is). Claude Code's /gateway-refresh, /usage-dashboard and
-// /gateway-status skills (mac-setup/claude-code/skills) call it. Exit code 1 when something failed.
+// Needs Node 23.6+ (runs TypeScript as is). Claude Code's /gateway-refresh, /usage-dashboard,
+// /model-comparison and /gateway-status skills (claude-skills/ in this folder) call it. Exit code 1 when something failed.
 // =============================================================================
 
 async function cli(cmd: string): Promise<number> {
@@ -1734,6 +1774,24 @@ async function cli(cmd: string): Promise<number> {
     openInBrowser(target)
     await new Promise((r) => setTimeout(r, 300)) // let open(1) start before the process exits
     out(`Opened ${displayPath(target)}`)
+  } else if (cmd === "compare") {
+    if (!existsSync(COMPARE_SCRIPT)) {
+      out(COMPARE_HINT)
+      return 1
+    }
+    // A catalog older than a day (or none) is reloaded first, so the comparison shows today's models and prices.
+    const age = await stat(join(COST_DIR, "models.json")).then((s) => Date.now() - s.mtimeMs, () => Infinity)
+    if (age > 24 * 3600_000) {
+      if (!BASE_URL) {
+        out(NOT_CONFIGURED)
+        return 1
+      }
+      const r = await refresh(ctx)
+      out(r === "ok" ? `Gateway catalog refreshed: ${source.catalog.length} models` : `Gateway refresh: ${r} (comparing against the last catalog)`)
+    }
+    const r = await runCompare(process.argv.slice(3))
+    if (r.output) out(r.output)
+    if (r.code !== 0) return 1
   } else if (cmd === "refresh" || cmd === "status") {
     out(`Gateway: ${BASE_URL || "not configured"}`)
     out(`API key: ${KEY_SOURCE}`)
@@ -1761,7 +1819,7 @@ async function cli(cmd: string): Promise<number> {
       if (running?.issues?.length) out(`OpenCode plugin reports ${running.issues.length} problem(s), see /gateway-status in OpenCode`)
     }
   } else {
-    out("usage: node index.ts refresh|dashboard|status")
+    out("usage: node index.ts refresh|dashboard|compare|status")
     return 2
   }
   for (const i of health.issues.values()) {
