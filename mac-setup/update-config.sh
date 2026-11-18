@@ -42,8 +42,22 @@ pull "$HOME/.claude/statusline.py"                   "$here/claude-code/statusli
 pull "$HOME/.config/cmux/cmux.json"                  "$here/cmux/config/cmux/cmux.json"
 pull "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty" "$here/cmux/config/ghostty/config.ghostty"
 for f in "$HOME"/.config/cmux/sidebars/*.js; do pull "$f" "$here/cmux/config/cmux/sidebars/$(basename "$f")"; done
+# Herdr app: settings, keys, and the layouts and mods Herdr did not ship (herdr/user_files.py decides).
+# Layouts are copied without the live Commander terminal block, which changes on every restart.
+herdr_dir="$HOME/.config/herdr-app"
+if [ -d "$herdr_dir" ]; then
+  while IFS= read -r f <&3; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      layouts/*.json)
+        lt="$(mktemp)"; python3 "$here/herdr/user_files.py" layout "$herdr_dir/$f" "$lt"
+        pull "$lt" "$here/herdr/config/$f"; rm -f "$lt" ;;
+      *) pull "$herdr_dir/$f" "$here/herdr/config/$f" ;;
+    esac
+  done 3< <(python3 "$here/herdr/user_files.py" list "$herdr_dir")
+fi
 # Neovim (LazyVim): every config file, including lazy-lock.json (plugin versions after :Lazy update).
-while IFS= read -r f; do pull "$HOME/.config/nvim/$f" "$here/nvim/$f"; done < <(
+while IFS= read -r f <&3; do pull "$HOME/.config/nvim/$f" "$here/nvim/$f"; done 3< <(
   cd "$HOME/.config/nvim" 2>/dev/null &&
     find . -type f \( -name '*.lua' -o -name '*.json' -o -name '*.toml' -o -name '*.yaml' \) | sed 's#^\./##' | sort)
 # The AI gateway plugin for opencode (../ai-gateway, installed by its install.sh), its Claude Code commands, and the global asdf versions.

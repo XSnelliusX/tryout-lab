@@ -1,6 +1,6 @@
 # cmux Setup [https://cmux.com](https://cmux.com)
 
-Terminal: [cmux](https://cmux.com) — a native macOS terminal built on **libghostty** (same core as Ghostty), made for running coding agents. It replaced [Supacode](https://supacode.sh) + [herdr](https://herdr.dev), because herdr could not add tabs. The full config lives in [config/](config/) — it is the source of truth, this note explains how to rebuild the same setup on a new machine.
+Terminal: [cmux](https://cmux.com) — a native macOS terminal built on **libghostty** (same core as Ghostty), made for running coding agents. It replaced [Supacode](https://supacode.sh) + the [herdr](https://herdr.dev) TUI, because the TUI could not add tabs (the Herdr desktop app I use now has them, see [herdr/README.md](../herdr/README.md)). The full config lives in [config/](config/) — it is the source of truth, this note explains how to rebuild the same setup on a new machine.
 
 Source: [github.com/manaflow-ai/cmux](https://github.com/manaflow-ai/cmux) · Docs: [cmux.com/docs](https://cmux.com/docs/concepts)
 

@@ -14,7 +14,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # BASH_SOURCE: also right
 repo="$(dirname "$here")"
 . "$here/lib.sh"
 
-STEPS=(xcode brew packages apps shell font zshrc git github ssh aws claude opencode gateway cmux vorssaint neovim asdf macos)
+STEPS=(xcode brew packages apps shell font zshrc git github ssh aws claude opencode gateway cmux herdr vorssaint neovim asdf macos)
 MENU=()   # the steps the menu offers: everything after xcode and brew, which always run first
 for s in "${STEPS[@]}"; do case "$s" in xcode|brew) ;; *) MENU+=("$s") ;; esac; done
 OPTIONAL=(aws)   # offered in the menu but not preselected: tick it to install, its own question defaults to no
@@ -26,8 +26,8 @@ AWS_CLI_INSTALL_URL="https://awscli.amazonaws.com/v2/install.sh"
 SSM_PLUGIN_PKG_URL="https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg"
 
 # openssl@3/readline/xz/sqlite are build deps for asdf python; fd/lazygit/tree-sitter-cli for LazyVim;
-# gum draws the menus; herdr is the terminal agent multiplexer.
-FORMULAE=(git gh fzf eza bat watch jq ripgrep fd lazygit asdf openssl@3 readline xz sqlite nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr)
+# gum draws the menus. The Herdr desktop app is installed by the herdr step (cask herdr-app), not the herdr TUI formula.
+FORMULAE=(git gh fzf eza bat watch jq ripgrep fd lazygit asdf openssl@3 readline xz sqlite nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum)
 CASKS=(orbstack cmux vorssaint)
 # cask|app bundle|menu text (no commas)|preselected. Names checked with brew info --cask.
 # Rectangle and Maccy are not preselected: Vorssaint already does window snapping and clipboard history.
@@ -55,7 +55,7 @@ PLUGINS=(
 
 describe() { # the menu text of a step
   case "$1" in
-    packages) echo "Homebrew CLI tools (gum herdr asdf fzf ...) and the casks orbstack cmux vorssaint, missing ones only" ;;
+    packages) echo "Homebrew CLI tools (gum asdf fzf neovim ...) and the casks orbstack cmux vorssaint, missing ones only" ;;
     apps) echo "Optional GUI apps from a list with Chrome and Postman preselected" ;;
     shell) echo "oh-my-zsh and the zsh plugins" ;;
     font) echo "MesloLGS NF font for the prompt icons" ;;
@@ -68,6 +68,7 @@ describe() { # the menu text of a step
     opencode) echo "OpenCode CLI from the official installer" ;;
     gateway) echo "AI gateway module (../ai-gateway): OpenCode plugin, env file and key, Claude Code commands, model comparison" ;;
     cmux) echo "cmux config with sidebars and Ghostty" ;;
+    herdr) echo "Herdr desktop app (cask herdr-app) with its settings, keys, layouts and mods" ;;
     vorssaint) echo "Vorssaint menu bar settings" ;;
     neovim) echo "LazyVim config at the locked plugin versions" ;;
     asdf) echo "Global runtimes node go python via asdf" ;;
@@ -115,7 +116,12 @@ install_cask() { # install_cask <cask>: skips casks brew installed and apps that
     for d in /Applications "$HOME/Applications"; do
       if [ -z "$found" ] && [ -e "$d/$app" ]; then found="$d/$app"; fi
     done
-  done < <(brew info --cask "$c" 2>/dev/null | sed -n 's/^\(.*\.app\) (App)$/\1/p')
+  done < <(brew info --cask --json=v2 "$c" 2>/dev/null | python3 -c '
+import json, sys   # the app bundles of the cask; the JSON stays stable where the text output of brew info changed
+for k in json.load(sys.stdin).get("casks", []):
+    for a in k.get("artifacts", []):
+        for x in (a.get("app") or []) if isinstance(a, dict) else []:
+            if isinstance(x, str): print(x)' 2>/dev/null || true)
   if [ -n "$found" ]; then info "already installed outside Homebrew: $found (brew leaves it alone)"; return 0; fi
   run brew install --cask "$c" || info "could not install $c, skipped (brew install --cask $c to retry)"
 }
@@ -341,6 +347,13 @@ set_default() { # set_default <domain> <key> <-bool|-int> <value>: writes only w
   DEFAULTS_CHANGED=1
   if dry; then info "would set $1 $2 to $val (now: ${cur:-not set})"; return 0; fi
   defaults write "$1" "$2" "$3" "$val"; info "set $1 $2 to $val (was: ${cur:-not set})"
+}
+
+step_herdr() {
+  bold "Herdr desktop app (cask herdr-app) and its config (settings, keys, layouts, mods)"
+  ask "Install it?" || return 0
+  install_cask herdr-app   # the app, not the herdr TUI formula; skipped when Herdr.app is already there
+  "$here/herdr/install.sh"
 }
 
 step_vorssaint() {

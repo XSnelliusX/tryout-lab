@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for setup.sh and the installers in cmux/ and claude-code/. Sourced, never run.
+# Shared helpers for setup.sh and the installers in cmux/, claude-code/ and herdr/. Sourced, never run.
 # Plain bash 3.2 (macOS /bin/bash). A file that gets replaced is copied to $BACKUP_DIR first,
 # never next to the original. Nothing here deletes a file.
 

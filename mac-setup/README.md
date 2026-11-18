@@ -33,7 +33,7 @@ The menus and questions use [gum](https://github.com/charmbracelet/gum), which t
 Re-running is safe and quiet. Each step compares what is on the Mac with the repo:
 
 - **Packages and casks** install only what is missing. Nothing is upgraded.
-- **Config files** (`.zshrc`, `.p10k.zsh`, `~/.tool-versions`, cmux and Ghostty, the statusline and `settings.json`, the gateway env file, the Neovim config): a file that matches prints `unchanged`. A file that differs shows a one-line summary (`+N/-M lines`) and asks **Overwrite**, **Show diff** or **Skip**. A new file is just copied.
+- **Config files** (`.zshrc`, `.p10k.zsh`, `~/.tool-versions`, cmux and Ghostty, the Herdr app config, the statusline and `settings.json`, the gateway env file, the Neovim config): a file that matches prints `unchanged`. A file that differs shows a one-line summary (`+N/-M lines`) and asks **Overwrite**, **Show diff** or **Skip**. A new file is just copied.
 - **Backups:** an overwritten file goes to `~/.setup_backup/<stamp>/` first, at the path it had under your home folder (`~/.zshrc` becomes `~/.setup_backup/<stamp>/.zshrc`). One folder per run, created only when something was replaced. **Nothing is deleted** except an old gateway folder, and only after you confirm removing it (see the gateway section). Files that exist only on the Mac stay where they are.
 - **Neovim:** the plugins are restored on the first install, or after you confirm that `lazy-lock.json` changed. A different (non-LazyVim) config moves to the backup folder with its plugin data.
 - **Vorssaint:** the live settings are exported and compared with the repo. Before an import, the live export is saved to `~/.setup_backup/<stamp>/vorssaint/`.
@@ -47,7 +47,7 @@ The last line of a run names the backup folder, if the run replaced anything.
 |---|---|
 | `xcode` | Command Line Tools (compiler, make, git), waits until installed |
 | `brew` | Homebrew, `brew shellenv` in `~/.zprofile`, and gum |
-| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum herdr` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `orbstack cmux vorssaint` (OrbStack provides docker and kubectl). Only the missing ones are installed |
+| `packages` | `git gh fzf eza bat watch jq ripgrep fd lazygit asdf nvm neovim k9s tree-sitter-cli yarn powerlevel10k gum` (+ `openssl@3 readline xz sqlite` to build asdf Python), casks `orbstack cmux vorssaint` (OrbStack provides docker and kubectl). Only the missing ones are installed |
 | `apps` | optional GUI casks from a multi-select, Google Chrome, Postman and Claude preselected. Apps already in `/Applications` are left out. Rectangle and Maccy are offered but not preselected, Vorssaint does snapping and clipboard history |
 | `shell` | oh-my-zsh and the plugins from [zsh/README.md](zsh/README.md) |
 | `font` | MesloLGS NF into `~/Library/Fonts` (prompt icons) |
@@ -60,6 +60,7 @@ The last line of a run names the backup folder, if the run replaced anything.
 | `opencode` | OpenCode via the official installer (`~/.opencode/bin`), skipped when `opencode` is already found |
 | `gateway` | the [AI gateway module](../ai-gateway/README.md): OpenCode plugin, env file and API key, Claude Code commands and usage hook, model comparison, see below |
 | `cmux` | [cmux config](cmux/README.md): settings, sidebars, Ghostty |
+| `herdr` | the [Herdr desktop app](herdr/README.md) (cask `herdr-app`, not the herdr TUI formula) and its settings, keys, Command Center layouts and mods in `~/.config/herdr-app` |
 | `vorssaint` | restores the Vorssaint settings (below) |
 | `neovim` | [LazyVim config](nvim/README.md) into `~/.config/nvim` (an older non-LazyVim config is moved to the backup folder), plugins at the locked versions |
 | `asdf` | global `~/.tool-versions` from [asdf/tool-versions](asdf/tool-versions) (nodejs 26.11.1, golang 1.27.1, python 3.13.16), plugins added, `asdf install` in home and in the repo ([.tool-versions](../.tool-versions)) |
@@ -114,13 +115,13 @@ brew uninstall --cask vorssaint
 ./update-config.sh --yes        # take over everything
 ```
 
-It covers `.zshrc`, the p10k prompt, the Neovim config (every file in `~/.config/nvim`, including `lazy-lock.json`), the Claude Code statusline, the cmux and Ghostty configs, the Vorssaint settings, the gateway plugin files (`~/.config/opencode/plugins/ai-gateway`) and `~/.tool-versions`. Your home path is rewritten to `$HOME`, and the gateway URL to `$GATEWAY_BASE_URL` (read from the environment or `~/.config/ai-gateway/env`), so the real URL never reaches the repo. The API key file is never opened. Review with `git diff` and commit.
+It covers `.zshrc`, the p10k prompt, the Neovim config (every file in `~/.config/nvim`, including `lazy-lock.json`), the Claude Code statusline, the cmux and Ghostty configs, the Herdr app files (settings, keys, and the layouts and mods Herdr did not ship), the Vorssaint settings, the gateway plugin files (`~/.config/opencode/plugins/ai-gateway`) and `~/.tool-versions`. Your home path is rewritten to `$HOME`, and the gateway URL to `$GATEWAY_BASE_URL` (read from the environment or `~/.config/ai-gateway/env`), so the real URL never reaches the repo. The API key file is never opened. Review with `git diff` and commit.
 
 ## Checklist for things the script cannot do
 
 - Sign in to the App Store, iCloud, Teams/Slack and your browser
 - Turn on FileVault and the firewall (System Settings → Privacy & Security / Network)
-- Grant permissions to cmux and Vorssaint when macOS asks
+- Grant permissions to cmux, Herdr and Vorssaint when macOS asks, and launch Herdr once so it creates `~/.config/herdr-app` before the `herdr` step copies the config
 - Session Manager plugin: its installer asks for your administrator password (sudo), so the `aws` step can only finish it in a terminal you are at
 - AWS CLI sign-in and profiles: the `aws` step installs the tools only. Configure your own credentials or [AWS CLI SSO profile](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) locally and keep them out of this repo
 - Add the new SSH key's passphrase to the Keychain once (`ssh-add --apple-use-keychain`, the script does this)
