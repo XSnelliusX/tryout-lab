@@ -4,7 +4,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createService } from "../service.js"
-import { resolveGatewaySettings } from "../usage.js"
+import { resetBenchmarkCache } from "../benchmarks.js"
+import { isolateGatewayEnv, makeGatewayDir } from "./fixtures.js"
+
+isolateGatewayEnv()
 
 const GRILL_JSON = JSON.stringify({
   diagnosis: "Auth flow and test expectations are ambiguous.",
@@ -39,7 +42,7 @@ const REWRITE_JSON = JSON.stringify({
   warnings: [],
 })
 
-function fixture({ busy = false, sessionModel, modelsList, gatewaySettings, generate, onProgress } = {}) {
+function fixture({ busy = false, sessionModel, modelsList, gatewaySettings, generate, onProgress, options = {} } = {}) {
   let activeModel = sessionModel ?? { providerID: "openai", id: "gpt-4o-mini" }
   const prompts = []
   const switches = []
@@ -50,7 +53,7 @@ function fixture({ busy = false, sessionModel, modelsList, gatewaySettings, gene
   sessions.set("ses_other", { id: "ses_other", title: "Other window", model: activeModel, time: { busy: 1, idle: 2 } })
 
   const ctx = {
-    options: {},
+    options,
     location: { directory: "/repo" },
     session: {
       get: async ({ sessionID }) => {
@@ -362,89 +365,102 @@ test("models RPC lists normalized UI models and provider failures never leak sec
   )
 })
 
-test("service defaults base rewrite model to terra on low and logs gateway usage.jsonl", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "rw-svc-"))
+const GW_MODELS = [
+  { providerID: "gw-alpha", id: "model-a", name: "Model A", variants: ["none", "low", "medium", "high"], cost: { input: 1, output: 5 } },
+  { providerID: "gw-alpha", id: "model-b", name: "Model B", cost: { input: 0.1, output: 0.5 } },
+  { providerID: "gw-beta", id: "model-c", name: "Model C", cost: { input: 5, output: 17 } },
+]
+
+function rewriteJson() {
+  return JSON.stringify({
+    rewritten_prompt: "Add unit test coverage for auth callback.",
+    improvements: ["Added unit test scope"],
+    recommendation: { route_id: "r1", task_tier: "quick", reason: "Best performance-cost value for a focused task." },
+    warnings: [],
+  })
+}
+
+test("service uses the session model by default (no built-in rewrite model), reads the gateway catalog and logs usage.jsonl", async () => {
+  const g = makeGatewayDir()
   try {
-    const gatewaySettings = resolveGatewaySettings({
-      GATEWAY_COST_DIR: dir,
-      GATEWAY_ENV_FILE: join(dir, "missing.env"),
-    })
+    resetBenchmarkCache()
     let step = 0
     const f = await fixture({
-      sessionModel: { providerID: "acc-anthropic", id: "claude-5.5-opus-anthropic" },
-      modelsList: [
-        {
-          providerID: "acc-openai",
-          id: "gpt-6.1-terra-openai",
-          name: "GPT 6.1 Terra",
-          variants: ["none", "low", "medium", "high", "xhigh", "max"],
-          cost: { input: 1, output: 5 },
-        },
-        {
-          providerID: "acc-anthropic",
-          id: "claude-5.5-haiku-anthropic",
-          name: "Claude 5.5 Haiku",
-          cost: { input: 0.1, output: 0.5 },
-        },
-        {
-          providerID: "acc-anthropic",
-          id: "claude-5.5-opus-anthropic",
-          name: "Claude 5.5 Opus",
-          cost: { input: 5, output: 17 },
-        },
-      ],
-      gatewaySettings,
-      generate: async () => ({
-        text: step++ === 0
-          ? GRILL_JSON
-          : JSON.stringify({
-              rewritten_prompt: "Add unit test coverage for auth callback.",
-              improvements: ["Added unit test scope"],
-              recommendation: {
-                route_id: "r1",
-                task_tier: "quick",
-                reason: "Best performance-cost value for a focused task.",
-              },
-              warnings: [],
-            }),
-      }),
+      sessionModel: { providerID: "gw-beta", id: "model-c" },
+      modelsList: GW_MODELS,
+      gatewaySettings: g.settings,
+      generate: async () => ({ text: step++ === 0 ? GRILL_JSON : rewriteJson() }),
     })
 
     const modelsResp = await f.service.models()
-    assert.equal(modelsResp.defaultRewriteModel, "acc-openai/gpt-6.1-terra-openai#low")
-    assertStrictJson(modelsResp, "terraModels")
+    assert.equal(modelsResp.defaultRewriteModel, "openai/gpt-4o-mini", "falls back to the host default model")
+    assertStrictJson(modelsResp, "gwModels")
 
     const grillRes = await f.service.grill({
       targetKey: "session:ses_test",
       sessionID: "ses_test",
       text: "add tests",
-      requestID: "req_terra_grill_1",
+      requestID: "req_gw_grill_1",
     })
-    assert.equal(grillRes.model, "acc-openai/gpt-6.1-terra-openai#low")
-    assert.deepEqual(f.calls[0].model, { providerID: "acc-openai", id: "gpt-6.1-terra-openai", variant: "low" })
+    assert.equal(grillRes.model, "gw-beta/model-c")
+    assert.deepEqual(f.calls[0].model, { providerID: "gw-beta", id: "model-c" })
     assert.ok(grillRes.usage.costUSD > 0)
+    assert.equal(grillRes.usage.billing, "gateway")
 
     const rewriteRes = await f.service.rewrite({
       targetKey: "session:ses_test",
       sessionID: "ses_test",
       text: "add tests",
       grillID: grillRes.id,
-      requestID: "req_terra_rw_1",
+      requestID: "req_gw_rw_1",
     })
-    assert.equal(rewriteRes.model, "acc-openai/gpt-6.1-terra-openai#low")
-    assert.equal(rewriteRes.route.id, "claude-5.5-haiku-anthropic")
+    assert.equal(rewriteRes.model, "gw-beta/model-c")
+    assert.equal(rewriteRes.route.id, "model-a")
     assert.ok(rewriteRes.routeBenchmark?.perfScore > 30)
-    assertStrictJson(rewriteRes, "terraRewrite")
+    assert.deepEqual(rewriteRes.warnings, [], "no hint when benchmark scores are available")
+    assertStrictJson(rewriteRes, "gwRewrite")
 
-    const lines = readFileSync(gatewaySettings.usageLogPath, "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    const lines = readFileSync(g.settings.usageLogPath, "utf8").trim().split("\n").map((l) => JSON.parse(l))
     assert.equal(lines.length, 2)
     assert.equal(lines[0].tool, "prompt-rewriter")
     assert.equal(lines[0].agent, "grill")
-    assert.equal(lines[0].model_id, "gpt-6.1-terra-openai")
-    assert.equal(lines[1].tool, "prompt-rewriter")
+    assert.equal(lines[0].model_id, "model-c")
+    assert.equal(lines[0].gateway, true)
     assert.equal(lines[1].agent, "rewrite")
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    g.cleanup()
+    resetBenchmarkCache()
+  }
+})
+
+test("service honors the `model` option and hints at /model-comparison when benchmark scores are missing", async () => {
+  const g = makeGatewayDir({ comparison: null })
+  try {
+    resetBenchmarkCache()
+    const f = await fixture({
+      sessionModel: { providerID: "gw-beta", id: "model-c" },
+      modelsList: GW_MODELS,
+      gatewaySettings: g.settings,
+      options: { model: "gw-alpha/model-b", preferredProviders: "gw-alpha, gw-beta" },
+      generate: async () => ({ text: rewriteJson() }),
+    })
+    const modelsResp = await f.service.models()
+    assert.equal(modelsResp.defaultRewriteModel, "gw-alpha/model-b")
+
+    const rewriteRes = await f.service.rewrite({
+      targetKey: "session:ses_test",
+      sessionID: "ses_test",
+      text: "add tests",
+      requestID: "req_gw_rw_2",
+    })
+    assert.equal(rewriteRes.model, "gw-alpha/model-b")
+    assert.equal(rewriteRes.warnings.length, 1)
+    assert.match(rewriteRes.warnings[0], /run \/model-comparison for benchmark scores/)
+    assert.equal(rewriteRes.routeBenchmark?.perfScore, undefined)
+    assert.ok(rewriteRes.routeBenchmark?.blended3to1Per1M > 0, "catalog-only prices still available")
+  } finally {
+    g.cleanup()
+    resetBenchmarkCache()
   }
 })
 

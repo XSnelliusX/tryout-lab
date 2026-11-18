@@ -1,10 +1,11 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { resetBenchmarkCache } from "../benchmarks.js"
+import { isolateGatewayEnv, makeGatewayDir } from "./fixtures.js"
 import {
   candidateRoutes,
   compactModelName,
   extractJsonObject,
-  findDefaultRewriteModel,
   findModel,
   formatRoutesForPrompt,
   makeGrillMessages,
@@ -19,6 +20,8 @@ import {
   serializeModelsForUI,
   variants,
 } from "../core.js"
+
+isolateGatewayEnv()
 
 const MODELS = [
   {
@@ -303,44 +306,45 @@ test("parseProposal validates improvements, routes, variants, alternatives and w
   )
 })
 
-test("findDefaultRewriteModel selects terra on low and includes benchmark metrics in prompt routes", () => {
-  const catalog = [
-    {
-      providerID: "acc-openai",
-      id: "gpt-6.1-terra-openai",
-      name: "GPT 6.1 Terra",
-      variants: ["none", "low", "medium", "high", "xhigh", "max"],
-      cost: { input: 1, output: 5 },
-    },
-    {
-      providerID: "acc-anthropic",
-      id: "claude-5.5-haiku-anthropic",
-      name: "Claude 5.5 Haiku",
-      cost: { input: 0.1, output: 0.5 },
-    },
-    {
-      providerID: "acc-anthropic",
-      id: "claude-5.5-opus-anthropic",
-      name: "Claude 5.5 Opus",
-      variants: ["low", "high"],
-      cost: { input: 5, output: 17 },
-    },
-  ]
+test("candidateRoutes include benchmark metrics from the runtime db in prompt routes", () => {
+  const g = makeGatewayDir()
+  const prev = { dir: process.env.GATEWAY_COST_DIR, env: process.env.GATEWAY_ENV_FILE }
+  process.env.GATEWAY_COST_DIR = g.dir
+  process.env.GATEWAY_ENV_FILE = g.settings.envFile
+  resetBenchmarkCache()
+  try {
+    const catalog = [
+      { providerID: "gw-alpha", id: "model-a", name: "Model A", variants: ["none", "low", "high"], cost: { input: 1, output: 5 } },
+      { providerID: "gw-alpha", id: "model-b", name: "Model B", cost: { input: 0.1, output: 0.5 } },
+      { providerID: "gw-beta", id: "model-c", name: "Model C", variants: ["low", "high"], cost: { input: 5, output: 17 } },
+    ]
 
-  const def = findDefaultRewriteModel(catalog)
-  assert.deepEqual(def, { providerID: "acc-openai", id: "gpt-6.1-terra-openai", variant: "low" })
+    // No built-in default rewrite model: only an explicit option is marked as the default route.
+    const routes = candidateRoutes(catalog, { providerID: "gw-beta", id: "model-c" }, 40, {
+      defaultRewrite: { providerID: "gw-alpha", id: "model-b" },
+    })
+    assert.equal(routes.length, 3)
 
-  // Object-map variants (OpenCode provider catalog shape) are handled cleanly alongside arrays
-  assert.deepEqual(
-    variants({ providerID: "p", id: "m", variants: { none: {}, low: {}, high: { disabled: true }, x: false } }),
-    ["none", "low"],
-  )
+    // Object-map variants (OpenCode provider catalog shape) are handled cleanly alongside arrays
+    assert.deepEqual(
+      variants({ providerID: "p", id: "m", variants: { none: {}, low: {}, high: { disabled: true }, x: false } }),
+      ["none", "low"],
+    )
 
-  const routes = candidateRoutes(catalog, { providerID: "acc-anthropic", id: "claude-5.5-opus-anthropic" })
-  const promptRoutes = formatRoutesForPrompt(routes)
-  const haikuRoute = promptRoutes.find((r) => r.model === "acc-anthropic/claude-5.5-haiku-anthropic")
-  assert.ok(haikuRoute)
-  assert.ok(typeof haikuRoute.perfScore === "number")
-  assert.ok(typeof haikuRoute.balanceScore === "number")
-  assert.ok(typeof haikuRoute.blended3to1USDPer1M === "number")
+    const promptRoutes = formatRoutesForPrompt(routes)
+    const modelA = promptRoutes.find((r) => r.model === "gw-alpha/model-a")
+    assert.ok(modelA)
+    assert.equal(modelA.perfScore, 45)
+    assert.ok(typeof modelA.balanceScore === "number")
+    assert.ok(typeof modelA.blended3to1USDPer1M === "number")
+    assert.match(modelA.variantsSummary, /low perf 30/)
+    assert.equal(promptRoutes.find((r) => r.model === "gw-beta/model-c").deprecated, true)
+  } finally {
+    if (prev.dir === undefined) delete process.env.GATEWAY_COST_DIR
+    else process.env.GATEWAY_COST_DIR = prev.dir
+    if (prev.env === undefined) delete process.env.GATEWAY_ENV_FILE
+    else process.env.GATEWAY_ENV_FILE = prev.env
+    resetBenchmarkCache()
+    g.cleanup()
+  }
 })

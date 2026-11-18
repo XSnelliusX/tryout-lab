@@ -11,6 +11,10 @@ import {
   resolveGatewaySettings,
   resolveModelPricing,
 } from "../usage.js"
+import { isGatewayProvider, loadGatewayCatalog } from "../gateway.js"
+import { isolateGatewayEnv } from "./fixtures.js"
+
+isolateGatewayEnv()
 
 test("extractTokenCounts uses reported usage when available and estimates otherwise", () => {
   const exact = extractTokenCounts(
@@ -40,10 +44,10 @@ test("resolveModelPricing applies gateway catalog prices including context tiers
       JSON.stringify({
         rows: [
           {
-            provider_id: "acc-openai",
-            model_id: "gpt-6.1-terra-openai",
-            model_name: "GPT 6.1 Terra",
-            upstream_provider: "openai",
+            provider_id: "gw-alpha",
+            model_id: "model-a",
+            model_name: "Model A",
+            upstream_provider: "alpha",
             input_per_1M: 1,
             output_per_1M: 5,
             cache_read_per_1M: 0.05,
@@ -55,7 +59,7 @@ test("resolveModelPricing applies gateway catalog prices including context tiers
     )
 
     const base = resolveModelPricing(
-      { providerID: "acc-openai", id: "gpt-6.1-terra-openai" },
+      { providerID: "gw-alpha", id: "model-a" },
       10000,
       { catalogModelsPath: modelsPath },
     )
@@ -64,7 +68,7 @@ test("resolveModelPricing applies gateway catalog prices including context tiers
     assert.equal(base.billing, "gateway")
 
     const tiered = resolveModelPricing(
-      { providerID: "acc-openai", id: "gpt-6.1-terra-openai" },
+      { providerID: "gw-alpha", id: "model-a" },
       300000,
       { catalogModelsPath: modelsPath },
     )
@@ -84,15 +88,19 @@ test("buildUsageStats and recordGatewayUsage log gateway-compatible JSONL under 
     })
     assert.equal(settings.costDir, dir)
     assert.equal(settings.usageDisabled, false)
+    writeFileSync(
+      settings.catalogModelsPath,
+      JSON.stringify({ rows: [{ provider_id: "gw-alpha", model_id: "model-a", input_per_1M: 1, output_per_1M: 5 }] }),
+    )
 
     const stats = buildUsageStats({
       generated: { text: "improved prompt", usage: { inputTokens: 10000, outputTokens: 2000, reasoningTokens: 500 } },
       promptText: "draft",
       outputText: "improved prompt",
       model: {
-        providerID: "acc-openai",
-        id: "gpt-6.1-terra-openai",
-        name: "GPT 6.1 Terra",
+        providerID: "gw-alpha",
+        id: "model-a",
+        name: "Model A",
         cost: { input: 1, output: 5, cache: { read: 0.05, write: 1.25 } },
       },
       settings,
@@ -125,6 +133,34 @@ test("buildUsageStats and recordGatewayUsage log gateway-compatible JSONL under 
     assert.equal(row.output_tokens, 2000)
     assert.equal(row.reasoning_tokens, 500)
     assert.equal(row.cost, 0.0225)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("gateway membership comes from the catalog's providers or the configured prefix, never a hardcoded id", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rw-gwm-"))
+  try {
+    const env = { GATEWAY_COST_DIR: dir, GATEWAY_ENV_FILE: join(dir, "env"), GATEWAY_PROVIDER_PREFIX: "" }
+    writeFileSync(join(dir, "env"), "export GATEWAY_PROVIDER_PREFIX=gwx\n# comment\n")
+    writeFileSync(
+      join(dir, "models.json"),
+      JSON.stringify({ base_url: "https://invalid.example", rows: [{ provider_id: "gw-alpha", model_id: "model-a" }] }),
+    )
+    const settings = resolveGatewaySettings(env)
+    assert.equal(settings.providerPrefix, "gwx", "env file supplies GATEWAY_PROVIDER_PREFIX when the env var is empty")
+    assert.equal(resolveGatewaySettings({ ...env, GATEWAY_PROVIDER_PREFIX: "other-" }).providerPrefix, "other")
+    const catalog = loadGatewayCatalog(settings.catalogModelsPath)
+
+    assert.equal(isGatewayProvider("gw-alpha", catalog, settings), true, "listed in catalog")
+    assert.equal(isGatewayProvider("gwx-new", catalog, settings), true, "configured prefix")
+    assert.equal(isGatewayProvider("native", catalog, settings), false)
+    assert.equal(isGatewayProvider("gw-other", catalog, { providerPrefix: "" }), false, "no prefix configured")
+
+    const priced = resolveModelPricing({ providerID: "gw-other", id: "m", cost: { input: 1, output: 2 } }, 0, { catalog, settings })
+    assert.equal(priced.billing, "other")
+    const viaPrefix = resolveModelPricing({ providerID: "gwx-new", id: "m", cost: { input: 1, output: 2 } }, 0, { catalog, settings })
+    assert.equal(viaPrefix.billing, "gateway")
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -58,7 +58,7 @@ JOB 2 — RECOMMEND THE WORKING MODEL & EFFORT (PERFORMANCE-COST BALANCED):
 Choose the best model (and optional variant/effort level from that model's listed variants) from routing.available_choices, or "keep" for routing.current_model.
 - Optimize for PERFORMANCE-COST BALANCE for the task in rewritten_prompt — NOT to the model performing this rewrite, and do NOT default to the most expensive frontier model when a fast high-value model handles the task reliably.
 - Evaluate each candidate using its quantitative benchmark and pricing fields when present:
-  * perfScore (AA Intelligence Index ~0-100; codingScore / reasoningScore when available)
+  * perfScore (intelligence index, ~0-100 scale; codingScore / reasoningScore when available)
   * blended3to1USDPer1M (blended 3:1 input/output USD per 1M tokens)
   * balanceScore (utility = perf / price^0.35; higher = better sweet spot) and valueRatio (perf / price)
   * outputSpeedTokPerSec, variantsSummary (effort trade-offs including TTFT latency), and deprecated (avoid deprecated models when an active peer exists)
@@ -184,48 +184,6 @@ function isChatModel(model) {
   return model?.enabled !== false && (!model?.type || model.type === "chat")
 }
 
-export function findDefaultRewriteModel(models) {
-  const eligible = (models ?? []).filter(isChatModel)
-  if (eligible.length === 0) return null
-
-  const pickPreferredEffort = (m) => {
-    const vars = variants(m)
-    if (vars.includes("low")) return "low"
-    if (vars.includes("none")) return "none"
-    return undefined
-  }
-
-  const exact = eligible.find((m) => m.providerID === "acc-openai" && m.id === "gpt-6.1-terra-openai")
-  if (exact) {
-    const effort = pickPreferredEffort(exact)
-    return { providerID: exact.providerID, id: exact.id, ...(effort ? { variant: effort } : {}) }
-  }
-
-  const scoreTerra = (m) => {
-    const id = String(m.id || "").toLowerCase()
-    const name = String(m.name || "").toLowerCase()
-    let score = 0
-    if (id.includes("gpt-6.1-terra")) score += 100
-    else if (id.includes("terra") || name.includes("terra")) score += 40
-    if (score === 0) return -1
-    if (m.providerID === "acc-openai" || m.providerID === "openai") score += 20
-    if (id.endsWith("-openai")) score += 10
-    if (id.includes("5.6") || id.includes("legacy")) score -= 25
-    if (variants(m).includes("low")) score += 5
-    return score
-  }
-
-  const ranked = eligible
-    .map((m) => ({ m, score: scoreTerra(m) }))
-    .filter((x) => x.score >= 0)
-    .sort((a, b) => b.score - a.score || modelRef(a.m).localeCompare(modelRef(b.m)))
-
-  if (ranked.length === 0) return null
-  const chosen = ranked[0].m
-  const effort = pickPreferredEffort(chosen)
-  return { providerID: chosen.providerID, id: chosen.id, ...(effort ? { variant: effort } : {}) }
-}
-
 function compactBenchmarkForMeta(bench) {
   if (!bench) return null
   const out = {}
@@ -280,7 +238,8 @@ export function candidateRoutes(models, currentModel, maxCandidates = 40, option
   const eligible = (models ?? []).filter(isChatModel)
   const selected = selectCandidateRoutes(eligible, currentModel, undefined, {
     limit: maxCandidates,
-    defaultRewrite: options.defaultRewrite ?? findDefaultRewriteModel(eligible),
+    defaultRewrite: options.defaultRewrite ?? null,
+    preferredProviders: options.preferredProviders,
   })
 
   return selected.map((item, index) => ({

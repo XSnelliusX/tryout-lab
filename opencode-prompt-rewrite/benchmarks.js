@@ -1,65 +1,356 @@
 import { readFileSync, statSync } from "node:fs"
-import { homedir } from "node:os"
-import { join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { expandHome, indexCatalog, resolveGatewaySettings } from "./gateway.js"
 
-const BUNDLED_BENCHMARKS_PATH = fileURLToPath(new URL("./data/model-benchmarks.json", import.meta.url))
+// Benchmark + pricing db, built at runtime from two files the ai-gateway module maintains:
+//   (a) the gateway model catalog       $GATEWAY_COST_DIR/models.json
+//   (b) the model-comparison snapshot   $GATEWAY_COST_DIR/model-comparison/data/models.json
+//       (written by `/model-comparison`; scores originate from Artificial Analysis,
+//        fetched by the ai-gateway module, never bundled here)
+// See ../ai-gateway/README.md. PROMPT_REWRITE_BENCHMARKS_FILE may point at a prebuilt db instead.
 
-let cachedPath = null
-let cachedMtime = -1
-let cachedDb = null
+export const BENCHMARK_HINT = "run /model-comparison for benchmark scores"
 
-function expandHome(p) {
-  if (!p) return ""
-  const s = String(p).trim()
-  if (s === "~") return homedir()
-  if (s.startsWith("~/")) return join(homedir(), s.slice(2))
-  return s
-}
+const EMPTY_DB = () => ({
+  schemaVersion: 2,
+  indexVersion: null,
+  hasCatalog: false,
+  hasBenchmarks: false,
+  gatewayProviders: [],
+  models: {},
+  aliases: {},
+})
 
-function resolveBenchmarksPath(explicitPath) {
-  if (explicitPath) return expandHome(explicitPath)
-  const envFile = expandHome(process.env.PROMPT_REWRITE_BENCHMARKS_FILE || "")
-  if (envFile) return envFile
-  const costDir = expandHome(process.env.GATEWAY_COST_DIR || "~/.gateway-cost")
-  const overridePath = join(costDir, "aa-benchmarks.json")
+let cache = { signature: null, db: null }
+
+function statMtime(p) {
   try {
-    statSync(overridePath)
-    return overridePath
+    return statSync(p).mtimeMs
   } catch {
-    return BUNDLED_BENCHMARKS_PATH
+    return null
   }
 }
 
+function readJson(p) {
+  try {
+    return JSON.parse(readFileSync(p, "utf8"))
+  } catch {
+    return null
+  }
+}
+
+function anyScores(models) {
+  return Object.values(models).some((r) => r?.benchmark?.perfScore != null || r?.benchmark?.matched)
+}
+
+function loadPrebuilt(target, forceReload) {
+  const mtime = statMtime(target)
+  if (mtime == null) return EMPTY_DB()
+  const signature = `file:${target}:${mtime}`
+  if (!forceReload && cache.signature === signature) return cache.db
+  const parsed = readJson(target)
+  if (!parsed) return EMPTY_DB()
+  const models = parsed.models && typeof parsed.models === "object" ? parsed.models : {}
+  const db = {
+    schemaVersion: parsed.schemaVersion ?? 1,
+    indexVersion: parsed.indexVersion ?? null,
+    hasCatalog: Object.keys(models).length > 0,
+    hasBenchmarks: anyScores(models),
+    gatewayProviders: Array.isArray(parsed.gatewayProviders) ? parsed.gatewayProviders : [],
+    models,
+    aliases: parsed.aliases && typeof parsed.aliases === "object" ? parsed.aliases : {},
+  }
+  cache = { signature, db }
+  return db
+}
+
+/**
+ * Load the benchmark db. Cached by the mtimes of the catalog and comparison files.
+ * Options: { path, settings, forceReload }. `path` (or PROMPT_REWRITE_BENCHMARKS_FILE)
+ * selects a prebuilt db file instead of building from the gateway files.
+ */
 export function loadBenchmarks(opts = {}) {
-  const target = resolveBenchmarksPath(opts.path)
-  if (!target) return { schemaVersion: 1, models: {}, aliases: {} }
+  const override = expandHome(opts.path || process.env.PROMPT_REWRITE_BENCHMARKS_FILE || "")
+  if (override) return loadPrebuilt(override, opts.forceReload)
 
-  try {
-    const st = statSync(target)
-    if (!opts.forceReload && cachedDb && cachedPath === target && cachedMtime === st.mtimeMs) {
-      return cachedDb
-    }
-    const parsed = JSON.parse(readFileSync(target, "utf8"))
-    const db = {
-      schemaVersion: parsed?.schemaVersion ?? 1,
-      indexVersion: parsed?.indexVersion ?? null,
-      models: parsed?.models && typeof parsed.models === "object" ? parsed.models : {},
-      aliases: parsed?.aliases && typeof parsed.aliases === "object" ? parsed.aliases : {},
-    }
-    cachedPath = target
-    cachedMtime = st.mtimeMs
-    cachedDb = db
-    return db
-  } catch {
-    return { schemaVersion: 1, models: {}, aliases: {} }
-  }
+  const settings = opts.settings ?? resolveGatewaySettings()
+  const catalogMtime = statMtime(settings.catalogModelsPath)
+  const comparisonMtime = statMtime(settings.comparisonPath)
+  const signature = `gw:${settings.catalogModelsPath}:${catalogMtime}|${settings.comparisonPath}:${comparisonMtime}`
+  if (!opts.forceReload && cache.signature === signature) return cache.db
+
+  const catalogDoc = catalogMtime == null ? null : readJson(settings.catalogModelsPath)
+  const comparison = comparisonMtime == null ? null : readJson(settings.comparisonPath)
+  const db = catalogDoc || comparison ? buildBenchmarkDb({ catalog: catalogDoc, comparison }) : EMPTY_DB()
+  cache = { signature, db }
+  return db
 }
 
 export function resetBenchmarkCache() {
-  cachedPath = null
-  cachedMtime = -1
-  cachedDb = null
+  cache = { signature: null, db: null }
+}
+
+/** One-line hint for the UI's existing warning surface when scores are unavailable. */
+export function benchmarkHint(db = loadBenchmarks()) {
+  return db?.hasBenchmarks ? null : BENCHMARK_HINT
+}
+
+// ---------------------------------------------------------------------------
+// Pure db builder: gateway catalog + model-comparison snapshot -> lookup db
+// ---------------------------------------------------------------------------
+
+function weightedMean(pairs) {
+  let sum = 0
+  let wSum = 0
+  for (const [val, w] of pairs) {
+    if (val == null || !Number.isFinite(val)) continue
+    sum += val * w
+    wSum += w
+  }
+  return wSum > 0 ? sum / wSum : null
+}
+
+const CODING_WEIGHTS = {
+  terminal_bench_40: 2.2,
+  terminalbench_hard: 2.0,
+  frontier_code: 2.0,
+  scicode: 1.3,
+  livecodebench: 1.2,
+}
+const REASONING_WEIGHTS = {
+  hle: 2.0,
+  hle_diamond: 1.5,
+  gpqa: 1.4,
+  ifbench: 1.5,
+  lcr: 1.1,
+  tau2: 1.3,
+  critpt: 1.0,
+}
+
+function weighted(scores, weights) {
+  return weightedMean(Object.entries(weights).map(([id, w]) => [numOrNull(scores[id]), w]))
+}
+
+function summarizeVariant(m, capabilityIds) {
+  const scores = m?.scores && typeof m.scores === "object" ? m.scores : {}
+  const coding = weighted(scores, CODING_WEIGHTS)
+  const reasoning = weighted(scores, REASONING_WEIGHTS)
+  const evalScore = weightedMean([
+    [coding, 1.3],
+    [reasoning, 1.0],
+    [numOrNull(scores.ifbench), 0.7],
+  ])
+  const capabilities = {}
+  for (const id of capabilityIds) {
+    const v = numOrNull(scores[id])
+    if (v != null) capabilities[id] = round(v, 1)
+  }
+  const perf = m?.performance || {}
+  return {
+    effort: m.effort || (m.is_reasoning === false || m.non_reasoning ? "non-reasoning" : "default"),
+    isReasoning: m.is_reasoning !== false,
+    deprecated: m.release_deprecated === true,
+    intelligenceIndex: round(numOrNull(scores.intelligence), 1),
+    codingScore: round(coding, 1),
+    reasoningScore: round(reasoning, 1),
+    evalScore: round(evalScore, 1),
+    capabilities,
+    ifbench: round(numOrNull(scores.ifbench), 1),
+    gpqa: round(numOrNull(scores.gpqa), 1),
+    terminalBench: round(numOrNull(scores.terminal_bench_40) ?? numOrNull(scores.terminalbench_hard), 1),
+    outputSpeed: round(numOrNull(perf.output_tokens_per_second), 0),
+    ttft: round(numOrNull(perf.time_to_first_token_seconds), 2),
+    referenceInputPer1M: round(numOrNull(m?.pricing?.effective_input_per_1m), 4),
+    referenceOutputPer1M: round(numOrNull(m?.pricing?.effective_output_per_1m), 4),
+  }
+}
+
+// Performance score on an index-like 0-100 scale. Uses the published intelligence index when present;
+// otherwise maps the raw eval composite conservatively so unindexed models stay comparable (flagged estimated).
+function unifiedPerf(summary) {
+  if (summary.intelligenceIndex != null) return summary.intelligenceIndex
+  if (summary.evalScore == null) return null
+  return round(Math.max(2, summary.evalScore * 0.85 - 12), 1)
+}
+
+const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+
+function isFirstParty(creator, providerName, upstreamProvider) {
+  const c = norm(creator)
+  if (c.length < 3) return false
+  return [providerName, upstreamProvider].some((v) => {
+    const n = norm(v)
+    return n.length >= 3 && (n === c || n.includes(c) || c.includes(n))
+  })
+}
+
+function pickRelease(models) {
+  const groups = new Map()
+  for (const m of models) {
+    const k = m.release_slug || m.slug
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(m)
+  }
+  const score = (list) =>
+    (list.some((m) => numOrNull(m?.scores?.intelligence) != null) ? 2 : 0) + (list.some((m) => m.is_primary) ? 1 : 0)
+  return [...groups.values()].sort(
+    (a, b) =>
+      score(b) - score(a) ||
+      String(b[0].release_date || "").localeCompare(String(a[0].release_date || "")) ||
+      String(a[0].slug).localeCompare(String(b[0].slug)),
+  )[0]
+}
+
+/**
+ * Pure. Build the lookup db from a gateway catalog document ({rows}) and an optional
+ * model-comparison snapshot ({models, metrics, source}). Either may be null.
+ * Catalog rows define the keys (`provider/model`); the comparison supplies scores per effort variant.
+ */
+export function buildBenchmarkDb({ catalog, comparison } = {}) {
+  const idx = indexCatalog(catalog)
+  const rows = idx.rows.filter((r) => !r.mode || r.mode === "chat" || r.mode === "responses")
+
+  const compModels = Array.isArray(comparison?.models) ? comparison.models : []
+  const capabilityIds = (Array.isArray(comparison?.metrics) ? comparison.metrics : [])
+    .filter((x) => x?.kind === "capability" && x.id)
+    .map((x) => x.id)
+
+  const byGatewayId = new Map()
+  for (const m of compModels) {
+    for (const id of m?.gateway_ids ?? []) {
+      if (!byGatewayId.has(id)) byGatewayId.set(id, [])
+      byGatewayId.get(id).push(m)
+    }
+  }
+
+  // Tokens that commonly trail a route id (derived from the catalog's own provider fields).
+  const routeTokens = new Set()
+  for (const r of rows) {
+    for (const v of [r.provider_id, r.provider_name, r.upstream_provider]) {
+      for (const t of String(v || "").toLowerCase().split(/[^a-z0-9]+/)) if (t.length >= 3) routeTokens.add(t)
+    }
+  }
+
+  const models = {}
+  const aliases = {}
+  const setAlias = (alias, key) => {
+    const k = String(alias || "").trim().toLowerCase()
+    if (k && !aliases[k]) aliases[k] = key
+  }
+  const sortedRows = [...rows].sort((a, b) => `${a.provider_id}/${a.model_id}`.localeCompare(`${b.provider_id}/${b.model_id}`))
+
+  for (const gw of sortedRows) {
+    const key = `${gw.provider_id}/${gw.model_id}`
+    const candidates = (byGatewayId.get(gw.model_id) ?? []).filter(
+      (m) => !Array.isArray(m.gateway_providers) || m.gateway_providers.length === 0 || m.gateway_providers.includes(gw.provider_id),
+    )
+    const release = candidates.length ? pickRelease(candidates) : []
+
+    const variantsMap = {}
+    const primaryKeys = new Set()
+    for (const m of release) {
+      const s = summarizeVariant(m, capabilityIds)
+      const perf = unifiedPerf(s)
+      const vIn = numOrNull(gw.input_per_1M) ?? s.referenceInputPer1M
+      const vOut = numOrNull(gw.output_per_1M) ?? s.referenceOutputPer1M
+      const vBlend = blended3to1(vIn, vOut)
+      const { valueRatio, balanceScore } = computeValueMetrics(perf, vBlend)
+      const entry = { ...s, perfScore: perf, blended3to1Per1M: round(vBlend, 4), valueRatio, balanceScore }
+      const effortKey = String(s.effort || "default").toLowerCase()
+      const prev = variantsMap[effortKey]
+      if (!prev || (entry.perfScore ?? -1) > (prev.perfScore ?? -1)) variantsMap[effortKey] = entry
+      if (m.is_primary) primaryKeys.add(effortKey)
+    }
+    const vList = Object.values(variantsMap)
+    const best = (list) => [...list].sort((a, b) => (b.perfScore ?? 0) - (a.perfScore ?? 0))[0] || null
+    const bestVariant = best(vList)
+    const primarySummary = best(vList.filter((v) => primaryKeys.has(String(v.effort || "default").toLowerCase()))) || bestVariant
+
+    const refIn = bestVariant?.referenceInputPer1M
+    const refOut = bestVariant?.referenceOutputPer1M
+    const effIn = numOrNull(gw.input_per_1M) ?? refIn
+    const effOut = numOrNull(gw.output_per_1M) ?? refOut
+    const blended = blended3to1(effIn, effOut)
+    const perfScore = bestVariant?.perfScore ?? null
+    const intel = bestVariant?.intelligenceIndex ?? null
+    const { valueRatio, balanceScore } = computeValueMetrics(perfScore, blended)
+    const first = release[0]
+
+    const record = {
+      key,
+      providerID: gw.provider_id,
+      id: gw.model_id,
+      name: gw.model_name || gw.model_id,
+      providerName: gw.provider_name || null,
+      upstreamProvider: gw.upstream_provider || null,
+      aliases: Array.isArray(gw.aliases) ? gw.aliases : [],
+      releaseName: first?.release_name || null,
+      releaseSlug: first?.release_slug || null,
+      releaseDate: first?.release_date || null,
+      creator: first?.creator || null,
+      firstParty: isFirstParty(first?.creator, gw.provider_name, gw.upstream_provider),
+      deprecated: release.length > 0 && release.every((m) => m.release_deprecated === true),
+      maxInputTokens: numOrNull(gw.max_input_tokens),
+      maxOutputTokens: numOrNull(gw.max_output_tokens),
+      effortLevels: Array.isArray(gw.effort_levels) ? gw.effort_levels : [],
+      capabilities: {
+        tools: gw.tools === true,
+        vision: gw.vision === true,
+        pdf: gw.pdf === true,
+        audio: gw.audio === true,
+        video: gw.video === true,
+      },
+      pricing: {
+        inputPer1M: round(effIn, 4),
+        outputPer1M: round(effOut, 4),
+        cacheReadPer1M: round(numOrNull(gw.cache_read_per_1M), 4),
+        cacheWritePer1M: round(numOrNull(gw.cache_write_per_1M), 4),
+        blended3to1Per1M: round(blended, 4),
+        tiers: Array.isArray(gw.tiers) ? gw.tiers : [],
+      },
+      benchmark: {
+        matched: release.length > 0,
+        intelligenceIndex: intel,
+        intelligenceEstimated: intel == null && perfScore != null,
+        perfScore,
+        codingScore: bestVariant?.codingScore ?? null,
+        reasoningScore: bestVariant?.reasoningScore ?? null,
+        ifbench: bestVariant?.ifbench ?? null,
+        gpqa: bestVariant?.gpqa ?? null,
+        terminalBench: bestVariant?.terminalBench ?? null,
+        capabilities: bestVariant?.capabilities ?? {},
+        outputSpeed: bestVariant?.outputSpeed ?? null,
+        ttft: bestVariant?.ttft ?? null,
+        valueRatio,
+        balanceScore,
+        primaryEffort: primarySummary?.effort || null,
+        bestEffort: bestVariant?.effort || null,
+        variants: variantsMap,
+      },
+    }
+    models[key] = record
+
+    setAlias(gw.model_id, key)
+    for (const a of record.aliases) setAlias(a, key)
+    if (record.releaseSlug) setAlias(record.releaseSlug, key)
+    const last = /^(.*)-([a-z0-9]+)$/i.exec(String(gw.model_id))
+    if (last && routeTokens.has(last[2].toLowerCase())) setAlias(last[1], key)
+  }
+
+  const providers = [...idx.providerIds].sort()
+  const scored = Object.values(models).some((r) => r.benchmark.perfScore != null)
+  return {
+    schemaVersion: 2,
+    generatedAt: new Date().toISOString(),
+    attribution: comparison?.source?.attribution || null,
+    indexVersion: comparison?.intelligence_index_version_label ?? comparison?.intelligence_index_version ?? null,
+    hasCatalog: rows.length > 0,
+    hasBenchmarks: scored,
+    gatewayProviders: providers,
+    count: rows.length,
+    matchedCount: Object.values(models).filter((r) => r.benchmark.matched).length,
+    models,
+    aliases,
+  }
 }
 
 function numOrNull(v) {
@@ -136,11 +427,8 @@ function resolveRecord(parsed, db) {
   const stripped = stripModelDecorators(id)
   if (aliases[stripped] && models[aliases[stripped]]) return models[aliases[stripped]]
 
-  // Normalize version separator differences (e.g. 4-5 vs 4.5, remove vendor suffix like -openai / -anthropic)
-  const looseCandidates = [
-    stripped.replace(/-(openai|anthropic|vertex|bedrock|aws|azure|google)$/, ""),
-    stripped.replace(/(\d)-(\d)/g, "$1.$2"),
-  ]
+  // Normalize version separator differences (e.g. 4-5 vs 4.5)
+  const looseCandidates = [stripped.replace(/(\d)-(\d)/g, "$1.$2"), stripped.replace(/(\d)\.(\d)/g, "$1-$2")]
   for (const cand of looseCandidates) {
     if (aliases[cand] && models[aliases[cand]]) return models[aliases[cand]]
   }
@@ -278,12 +566,15 @@ export function formatVariantsNote(model, db = loadBenchmarks()) {
     .join(" | ")
 }
 
-function dedupeProviderPriority(providerID, preferredProviderID) {
+// Lower is better. Order: the session's own provider, then user-configured preferred providers
+// (plugin option `preferredProviders`, in order), then routes served by the model's own creator
+// (derived from catalog/comparison data), then everything else.
+function dedupeProviderPriority(providerID, preferredProviderID, preferredProviders, record) {
   if (preferredProviderID && providerID === preferredProviderID) return 0
-  if (providerID === "acc-openai" || providerID === "acc-anthropic" || providerID === "acc-vertex-ai") return 1
-  if (providerID === "openai" || providerID === "anthropic" || providerID === "google") return 2
-  if (providerID === "acc-3rd-party" || providerID === "acc-aws-bedrock" || providerID === "acc-azure") return 3
-  return 4
+  const idx = preferredProviders.indexOf(providerID)
+  if (idx >= 0) return 1 + idx / 1000
+  if (record?.firstParty) return 2
+  return 3
 }
 
 export function selectCandidateRoutes(models, currentModel, db = loadBenchmarks(), options = {}) {
@@ -292,6 +583,7 @@ export function selectCandidateRoutes(models, currentModel, db = loadBenchmarks(
   const currentKey = currentModel ? `${currentModel.providerID}/${currentModel.id}` : ""
   const defaultKey = defaultRewrite ? `${defaultRewrite.providerID}/${defaultRewrite.id}` : ""
   const preferredProvider = currentModel?.providerID || ""
+  const preferredProviders = Array.isArray(options.preferredProviders) ? options.preferredProviders : []
 
   // Step 1: enrich every candidate model with live/benchmark metrics
   const enriched = models.map((m) => {
@@ -305,7 +597,7 @@ export function selectCandidateRoutes(models, currentModel, db = loadBenchmarks(
       variantsNote,
       isCurrent: key === currentKey,
       isDefaultRewrite: key === defaultKey,
-      priority: dedupeProviderPriority(m.providerID, preferredProvider),
+      priority: dedupeProviderPriority(m.providerID, preferredProvider, preferredProviders, db?.models?.[key]),
     }
   })
 

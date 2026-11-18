@@ -1,92 +1,9 @@
-import { appendFileSync, mkdirSync, readFileSync, statSync } from "node:fs"
-import { homedir } from "node:os"
-import { dirname, join } from "node:path"
-import { lookupBenchmark } from "./benchmarks.js"
+import { appendFileSync, mkdirSync } from "node:fs"
+import { dirname } from "node:path"
+import { loadBenchmarks, lookupBenchmark } from "./benchmarks.js"
+import { isGatewayProvider, loadGatewayCatalog, resolveGatewaySettings } from "./gateway.js"
 
-let cachedCatalogPath = null
-let cachedCatalogMtime = -1
-let cachedCatalog = null
-
-function expandHome(p) {
-  if (!p) return ""
-  const s = String(p).trim()
-  if (s === "~") return homedir()
-  if (s.startsWith("~/")) return join(homedir(), s.slice(2))
-  return s
-}
-
-function parseEnvFile(filePath) {
-  const vars = {}
-  if (!filePath) return vars
-  try {
-    const raw = readFileSync(filePath, "utf8")
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith("#")) continue
-      const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(trimmed)
-      if (!match) continue
-      const key = match[1]
-      let val = match[2].trim()
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1)
-      }
-      vars[key] = val
-    }
-  } catch {
-    // Env file is optional
-  }
-  return vars
-}
-
-export function resolveGatewaySettings(env = process.env) {
-  const envFile = expandHome(env.GATEWAY_ENV_FILE || "~/.config/ai-gateway/env")
-  const fileVars = parseEnvFile(envFile)
-  const get = (name, fallback = "") => {
-    const v = env[name]
-    if (v !== undefined && String(v).trim() !== "") return String(v).trim()
-    const fv = fileVars[name]
-    if (fv !== undefined && String(fv).trim() !== "") return String(fv).trim()
-    return fallback
-  }
-
-  const costDir = expandHome(get("GATEWAY_COST_DIR", "~/.gateway-cost"))
-  const disabledRaw = get("GATEWAY_USAGE_DISABLED", "").toLowerCase()
-  const usageDisabled = disabledRaw === "1" || disabledRaw === "true" || disabledRaw === "yes"
-
-  return {
-    envFile,
-    costDir,
-    usageDisabled,
-    usageLogPath: join(costDir, "usage.jsonl"),
-    catalogModelsPath: join(costDir, "models.json"),
-  }
-}
-
-export function loadGatewayCatalog(catalogPath) {
-  if (!catalogPath) return { byKey: new Map(), byId: new Map() }
-  try {
-    const st = statSync(catalogPath)
-    if (cachedCatalog && cachedCatalogPath === catalogPath && cachedCatalogMtime === st.mtimeMs) {
-      return cachedCatalog
-    }
-    const doc = JSON.parse(readFileSync(catalogPath, "utf8"))
-    const byKey = new Map()
-    const byId = new Map()
-    for (const row of doc?.rows ?? []) {
-      if (!row?.provider_id || !row?.model_id) continue
-      const key = `${row.provider_id}/${row.model_id}`
-      byKey.set(key, row)
-      const lowerId = String(row.model_id).toLowerCase()
-      if (!byId.has(lowerId)) byId.set(lowerId, row)
-    }
-    cachedCatalogPath = catalogPath
-    cachedCatalogMtime = st.mtimeMs
-    cachedCatalog = { byKey, byId }
-    return cachedCatalog
-  } catch {
-    return { byKey: new Map(), byId: new Map() }
-  }
-}
+export { loadGatewayCatalog, resolveGatewaySettings }
 
 function num(v, fallback = 0) {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback
@@ -102,7 +19,7 @@ export function resolveModelPricing(model, inputTokens = 0, opts = {}) {
   const modelID = String(model?.id || "unknown")
   const key = `${providerID}/${modelID}`
 
-  const catalog = opts.catalog || loadGatewayCatalog(opts.catalogModelsPath)
+  const catalog = opts.catalog || loadGatewayCatalog(opts.catalogModelsPath ?? opts.settings?.catalogModelsPath)
   const gwRow = catalog.byKey.get(key) || catalog.byId.get(modelID.toLowerCase()) || null
 
   const liveIn = typeof model?.cost?.input === "number" ? model.cost.input : null
@@ -129,9 +46,9 @@ export function resolveModelPricing(model, inputTokens = 0, opts = {}) {
     }
   }
 
-  // Fallback to bundled AA/catalog benchmarks pricing if runtime model lacks cost fields
+  // Fall back to catalog pricing from the runtime benchmark db if runtime model lacks cost fields
   if (inputPer1M == null || outputPer1M == null) {
-    const bench = lookupBenchmark(model, model?.variant || null)
+    const bench = lookupBenchmark(model, model?.variant || null, opts.db ?? loadBenchmarks({ settings: opts.settings }))
     if (inputPer1M == null && typeof bench?.inputPer1M === "number") inputPer1M = bench.inputPer1M
     if (outputPer1M == null && typeof bench?.outputPer1M === "number") outputPer1M = bench.outputPer1M
     if (cacheReadPer1M == null && typeof bench?.cacheReadPer1M === "number") cacheReadPer1M = bench.cacheReadPer1M
@@ -139,7 +56,7 @@ export function resolveModelPricing(model, inputTokens = 0, opts = {}) {
 
   const isGateway = Boolean(
     catalog.byKey.has(key) ||
-      providerID.startsWith("acc-") ||
+      isGatewayProvider(providerID, catalog, opts.settings) ||
       model?.provider?.source === "gateway" ||
       String(model?.provider?.name || "").toLowerCase().includes("gateway"),
   )
@@ -208,6 +125,7 @@ export function buildUsageStats({ generated, promptText, outputText, model, sett
   const pricing = resolveModelPricing(model, tokens.inputTokens, {
     catalogModelsPath: settings.catalogModelsPath,
     catalog,
+    settings,
   })
 
   // Reasoning tokens are billed at the output rate.

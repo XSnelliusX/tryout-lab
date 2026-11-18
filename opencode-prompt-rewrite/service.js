@@ -1,7 +1,6 @@
 import {
   candidateRoutes,
   compactModelName,
-  findDefaultRewriteModel,
   findModel,
   makeGrillMessages,
   makeRewriteMessages,
@@ -12,7 +11,7 @@ import {
   recentContext,
   serializeModelsForUI,
 } from "./core.js"
-import { lookupBenchmark } from "./benchmarks.js"
+import { benchmarkHint, loadBenchmarks, lookupBenchmark } from "./benchmarks.js"
 import { buildUsageStats, recordGatewayUsage, resolveGatewaySettings, toPublicUsageSummary } from "./usage.js"
 
 const unbox = (value) => value?.data ?? value
@@ -68,10 +67,26 @@ function pruneMap(map, maxSize) {
   }
 }
 
+function parsePreferredProviders(value) {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : []
+  return list.map((v) => String(v).trim()).filter(Boolean)
+}
+
 export async function createService(ctx, options = {}) {
   const configuredModel = ctx.options?.model === undefined ? undefined : parseModelRef(ctx.options.model)
+  const preferredProviders = parsePreferredProviders(ctx.options?.preferredProviders)
+  const routeOptions = () => ({
+    ...(configuredModel ? { defaultRewrite: configuredModel } : {}),
+    preferredProviders,
+  })
   const timeoutMs = options.timeoutMs ?? 90000
   const gatewaySettings = options.gatewaySettings ?? resolveGatewaySettings()
+  // Surface a missing benchmark source through the existing proposal warnings line.
+  const withBenchmarkHint = (warnings) => {
+    const hint = benchmarkHint(loadBenchmarks({ settings: gatewaySettings }))
+    const list = Array.isArray(warnings) ? warnings : []
+    return hint ? [...list, `No benchmark scores: ${hint}.`] : list
+  }
   const shouldLogUsage = options.gatewaySettings ? true : !options.disableUsageLog && !process.env.NODE_TEST_CONTEXT
   const pending = new Map() // targetKey -> { requestID, targetKey, sessionID, phase, model, startedAt, controller }
   const grills = new Map() // grillID -> stored grill entry
@@ -121,9 +136,10 @@ export async function createService(ctx, options = {}) {
     }
     if (controller.signal.aborted) throw new Error("cancelled")
 
-    const defaultRewrite = findDefaultRewriteModel(models)
+    // Rewrite model precedence: per-request override, plugin option `model`, then the session/default working model.
     const requestedModel = input.model === undefined ? undefined : parseModelRef(input.model)
-    const ref = requestedModel ?? configuredModel ?? defaultRewrite ?? session.model
+    const ref = requestedModel ?? configuredModel ?? session.model
+    const defaultRewrite = configuredModel ?? session.model
     if (!ref?.providerID || !ref?.id) {
       throw new Error("Choose a rewrite model or a working model before rewriting.")
     }
@@ -267,7 +283,7 @@ export async function createService(ctx, options = {}) {
       "Analyzing prompt for missing angles",
       async ({ session, models, messages, ref, resolvedModel, defaultRewrite, activeModel, startedAt, controller }) => {
         const recent = recentContext(messages)
-        const routes = candidateRoutes(models, session.model)
+        const routes = candidateRoutes(models, session.model, undefined, routeOptions())
         const messagesForModel = makeGrillMessages({
           text: input.text,
           context: recent,
@@ -335,7 +351,7 @@ export async function createService(ctx, options = {}) {
       isRefine ? "refining" : "rewriting",
       isRefine ? "Refining prompt" : "Crafting improved prompt",
       async ({ session, models, messages, ref, resolvedModel, defaultRewrite, activeModel, startedAt, controller }) => {
-        const routes = candidateRoutes(models, session.model)
+        const routes = candidateRoutes(models, session.model, undefined, routeOptions())
         const recent = recentContext(messages)
         const storedGrill = input.grillID ? grills.get(input.grillID)?.data : undefined
 
@@ -381,12 +397,14 @@ export async function createService(ctx, options = {}) {
           ? lookupBenchmark(
               findModelSafe(models, targetModelRef) || targetModelRef,
               targetModelRef.variant || null,
+              loadBenchmarks({ settings: gatewaySettings }),
             )
           : null
         const altBenchmark = proposal.alternative?.model
           ? lookupBenchmark(
               findModelSafe(models, proposal.alternative.model) || proposal.alternative.model,
               proposal.alternative.model.variant || null,
+              loadBenchmarks({ settings: gatewaySettings }),
             )
           : null
 
@@ -397,6 +415,7 @@ export async function createService(ctx, options = {}) {
           startModel: compactRef(session.model),
           original: input.text,
           ...proposal,
+          warnings: withBenchmarkHint(proposal.warnings),
           model: activeModel,
           defaultRewriteModel: defaultRewrite ? modelRef(defaultRewrite) : null,
           latencyMs: Date.now() - startedAt,
@@ -658,7 +677,15 @@ export async function createService(ctx, options = {}) {
 
   async function models() {
     const list = unbox(await ctx.model.list())
-    const defRef = configuredModel ?? findDefaultRewriteModel(list)
+    let defRef = configuredModel
+    if (!defRef) {
+      try {
+        const d = unbox(await ctx.model.default())
+        if (d?.providerID && d?.id) defRef = { providerID: d.providerID, id: d.id, ...(d.variant ? { variant: d.variant } : {}) }
+      } catch {
+        // No default working model yet.
+      }
+    }
     return toJsonValue({
       models: serializeModelsForUI(list),
       defaultRewriteModel: defRef ? modelRef(defRef) : null,

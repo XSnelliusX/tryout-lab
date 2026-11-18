@@ -72,9 +72,31 @@ Or add this directory as an OpenCode plugin in your OpenCode config (or symlink/
 
 Optional server plugin option:
 
-- `model`: `"provider/model[#variant]"` — default model used by the rewriter when not overridden via `--model` or the Draft model picker. When unset, uses the current session/default working model.
+- `model`: `"provider/model[#variant]"` — default model used by the rewriter when not overridden via `--model` or the Draft model picker. When unset, uses the current session/default working model (there is no built-in fallback model).
+- `preferredProviders`: list (or comma-separated string) of provider ids, e.g. `["provider-a", "provider-b"]`. When the same model is available from several providers at equal price, the recommendation list prefers the session's provider, then these (in order), then the provider that matches the model's creator. Default: none.
 
 No `npm install` or build step is required; OpenCode loads the zero-dependency ESM modules and `tui.tsx` directly (`solid-js`, `@opentui/solid`, and `@opencode/plugin/rpc` are provided by OpenCode at runtime).
+
+---
+
+## Gateway catalog & benchmark data
+
+The plugin ships **no** gateway values and **no** benchmark data. At runtime it reads two files that the sibling [`ai-gateway`](../ai-gateway/README.md) module maintains on your machine:
+
+| What | Provided by | File |
+|---|---|---|
+| Model catalog: provider ids, prices (incl. cache and context tiers), token limits, capabilities, effort levels | the **ai-gateway OpenCode plugin** (refreshes it automatically) | `$GATEWAY_COST_DIR/models.json` |
+| Benchmark scores: intelligence index, capability indices, coding/reasoning scores, speed/TTFT, per effort variant | the ai-gateway **`/model-comparison`** command (OpenCode or Claude Code) | `$GATEWAY_COST_DIR/model-comparison/data/models.json` |
+
+`GATEWAY_COST_DIR` defaults to `~/.gateway-cost`. It, `GATEWAY_PROVIDER_PREFIX` and `GATEWAY_USAGE_DISABLED` can be set in the environment or in the ai-gateway env file (`GATEWAY_ENV_FILE`, default `~/.config/ai-gateway/env`); see `.env.example`. The plugin joins both files at runtime (cached by file mtimes), so refreshing either one is picked up without reinstalling. A provider counts as part of the gateway when the catalog lists it (or it starts with `$GATEWAY_PROVIDER_PREFIX-`, if set).
+
+**Requirements:** the ai-gateway plugin installed (`../ai-gateway/install.sh --only plugin`) for prices/limits/capabilities, and a run of `/model-comparison` (`--only compare` installs it) for benchmark scores.
+
+**Without them:**
+- No comparison file: the plugin still works with catalog prices, limits and capabilities but no scores. Review Studio shows the warning "No benchmark scores: run /model-comparison for benchmark scores."
+- No catalog either: model recommendations rely only on what OpenCode reports (prices from the live model list, no scores); gateway usage is billed as "other".
+
+The scores originate from [Artificial Analysis](https://artificialanalysis.ai), fetched on demand by the ai-gateway module under their terms; nothing is copied into this repository. To use a prebuilt db instead, set `PROMPT_REWRITE_BENCHMARKS_FILE` to a JSON file with the same shape the plugin builds (`models`, `aliases`).
 
 ---
 
@@ -85,11 +107,15 @@ No `npm install` or build step is required; OpenCode loads the zero-dependency E
 | `index.js` | Server plugin entry: registers RPC methods (`grill`, `rewrite`, `cancel`, `submit`, `jobs`, `models`) and streams live `progress` events. |
 | `rpc.js` | Typed OpenCode RPC method schemas and `events.progress` contract. |
 | `core.js` | Prompt engineering templates (`GRILL_SYSTEM`, `REWRITE_SYSTEM`), CLI flag parsing, provider-balanced candidate routing (`maxCandidates = 40`), safe context filtering, robust JSON extraction, and response validation. |
+| `gateway.js` | Reads the ai-gateway data contract: env/env-file settings, catalog loading, and data-driven gateway-provider membership. |
+| `benchmarks.js` | Pure `buildBenchmarkDb` (catalog + model-comparison snapshot -> lookup db), mtime-cached `loadBenchmarks`, lookups, value metrics and candidate-route selection. |
+| `usage.js` | Token/cost accounting from the catalog and live model prices; writes the gateway usage log. |
 | `service.js` | Stateful server runtime: per-window concurrency, abort/timeout handling, TTL caches, live progress events, session model-switch guards, and single-use prompt submission. |
 | `store.js` | TUI client store: per-window state across session switches, Grill Me answer tracking, server job rehydration, elapsed timer formatting, and footer status summaries. |
 | `theme.js` | Defensive resolver for OpenCode V2 nested semantic theme tokens (plus legacy flat fallback tokens and `"none"` background handling). |
 | `tui.tsx` | OpenTUI/SolidJS Rewrite Studio modal, clickable buttons/chips, inline editor & diff/compare view, inline model picker, slash commands, and persistent footer status slots. |
-| `test/*.test.js` | Unit tests covering `core.js`, `service.js`, `store.js`, and `theme.js`. |
+| `scripts/install.mjs` | Mirrors the repo into OpenCode's share dir (removing files deleted here), writes loader shims, runs tests there. |
+| `test/*.test.js`, `test/fixtures.js` | Unit tests for `core.js`, `service.js`, `store.js`, `theme.js`, `usage.js`, `benchmarks.js`, using small synthetic gateway fixtures. |
 
 ---
 
@@ -101,4 +127,4 @@ Run the unit test suite (Node 20+ built-in test runner):
 node --test test/*.test.js
 ```
 
-Note: The automated tests validate pure logic, service state/concurrency/safety guards, store transitions, and theme token resolution using mocked OpenCode server contexts; live SolidJS/OpenTUI rendering and actual LLM provider calls require testing inside OpenCode itself.
+Note: The automated tests validate pure logic, service state/concurrency/safety guards, store transitions, and theme token resolution using mocked OpenCode server contexts and synthetic gateway data (they never read your real `~/.gateway-cost`); live SolidJS/OpenTUI rendering and actual LLM provider calls require testing inside OpenCode itself.

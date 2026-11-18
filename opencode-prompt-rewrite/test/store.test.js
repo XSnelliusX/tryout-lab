@@ -251,8 +251,8 @@ test("applyCancelled fallback stages, error handling and hydrateServerJobs behav
 
 test("store accumulates window cost without double-counting and stores base rewrite model", () => {
   const store = createRewriteStore()
-  store.setDefaultRewriteModel("acc-openai/gpt-6.1-terra-openai#low")
-  assert.equal(store.getDefaultRewriteModel(), "acc-openai/gpt-6.1-terra-openai#low")
+  store.setDefaultRewriteModel("gw-alpha/model-a#low")
+  assert.equal(store.getDefaultRewriteModel(), "gw-alpha/model-a#low")
 
   store.beginRun("session:c", {
     requestID: "req_c1",
@@ -290,7 +290,7 @@ test("store accumulates window cost without double-counting and stores base rewr
   store.applyProposalResult("session:c", {
     id: "req_c2",
     text: "Improved prompt",
-    route: { providerID: "acc-anthropic", id: "claude-5.5-haiku-anthropic" },
+    route: { providerID: "gw-beta", id: "model-b" },
     improvements: [],
     warnings: [],
     usage: { costUSD: 0.0028, totalTokens: 1400, estimated: true },
