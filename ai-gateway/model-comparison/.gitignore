@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+dist/
+bin/
+*.tsbuildinfo
+
+# Caches and generated data (never commit Artificial Analysis data or a real gateway catalog)
+.aa_cache/
+aa_output/
+.cache/
+*.cache
+web/public/data/
+data/*.json
+data/*.js
+*.tmp
+*.staging-*
+models.json
+models.js
+enriched.json
+aa_snapshot.json
+aa_run_metadata.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
