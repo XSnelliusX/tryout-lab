@@ -9,6 +9,7 @@
 #   PREFIX               install prefix for the scripts (default ~/.local -> ~/.local/bin)
 #   CC_CONFIG            config file (default ~/.config/command-center/models.json)
 #   HC_TEMPLATES_DIR     hc template folder (default ~/.config/herdr-core/templates)
+#   HC_CONFIG_FILE       hc settings file (default ~/.config/herdr-core/config.toml; draft_wait = 0 is added)
 #   SKILLS_DIR           skills folder (default ~/.agents/skills)
 #
 # Anything that would be replaced and differs is first copied to ~/.setup_backup/<stamp>/ (same convention as
@@ -22,7 +23,7 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -32,6 +33,7 @@ BIN_DIR="$PREFIX/bin"
 MODELS_JSON="${CC_CONFIG:-$HOME/.config/command-center/models.json}"
 case "$MODELS_JSON" in "~"/*) MODELS_JSON="$HOME/${MODELS_JSON#\~/}" ;; esac
 TEMPLATES_DIR="${HC_TEMPLATES_DIR:-$HOME/.config/herdr-core/templates}"
+HC_CONFIG="${HC_CONFIG_FILE:-$HOME/.config/herdr-core/config.toml}"
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.agents/skills}"
 LINK_DIRS="$HOME/.config/opencode/skills $HOME/.claude/skills"   # symlinked into only when they already exist
 SKILLS="herdr-commander herdr-model-router herdr-worker"
@@ -151,6 +153,19 @@ do_install() {
       info "skip links: $d does not exist"
     fi
   done
+
+  bold "hc settings -> $HC_CONFIG"
+  # Reports must reach the Commander at once, not wait up to 60 s for a draft typed into it.
+  # Only adds the key when it is missing, so a deliberate own value is kept.
+  if [ -e "$HC_CONFIG" ] && grep -qE '^[[:space:]]*draft_wait[[:space:]]*=' "$HC_CONFIG"; then
+    info "kept draft_wait in $HC_CONFIG ($(grep -E '^[[:space:]]*draft_wait' "$HC_CONFIG" | head -1 | tr -d ' '))"
+  elif dry; then
+    info "would set draft_wait = 0 in $HC_CONFIG"
+  else
+    backup "$HC_CONFIG"; mkdir -p "$(dirname "$HC_CONFIG")"
+    printf '# HerdrCommander: deliver hc send / parent notes without waiting for a typed draft\ndraft_wait = 0\n' >> "$HC_CONFIG"
+    info "set draft_wait = 0 in $HC_CONFIG"
+  fi
 
   bold "Config -> $MODELS_JSON"
   if [ -e "$MODELS_JSON" ]; then

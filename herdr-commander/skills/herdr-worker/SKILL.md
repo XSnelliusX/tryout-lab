@@ -30,6 +30,7 @@ You are a **scoped specialist agent** working inside a dedicated Herdr Task Spac
      hc run --bg --name my-ticket-subfix --cwd "$PWD" cc-verifier-fast "Diagnose failing test in ... Write summary to <ticketDir>/artifacts/sub-fix.md and report with: hc send $HC_TERMINAL_ID \"<result>\""
      hc wait --children all
      ```
+     If a wait returns `reason: message`, the report is queued in your input and only arrives **after your turn ends**: end your turn (no further tool calls, no second `hc wait`) and continue when the report arrives.
    - Never start recursive subagent trees unless your task explicitly allows it.
 3. **Write verbose output to artifacts, not chat.**
    - Save long diffs, test logs, or analysis to `<ticketDir>/artifacts/<role>-<topic>.md` (`artifacts/` if `$PWD` is the ticket root, `../artifacts/` if `$PWD` is a repo worktree).

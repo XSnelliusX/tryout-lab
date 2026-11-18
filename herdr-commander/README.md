@@ -2,7 +2,7 @@
 
 A small orchestration framework for Herdr and [OpenCode](https://opencode.ai): one cheap **Commander** agent that talks to you, and any number of scoped **worker** agents that each live in their own Herdr Space and git worktree. It is plain Python (stdlib only) plus a few markdown files; there is no daemon of its own.
 
-- **Commander**: decomposes your request, provisions a ticket folder with git worktrees, finds or creates the matching Herdr Space, picks a model tier per job, spawns/steers workers with `hc`, waits asynchronously and reports verified results. It never edits code itself.
+- **Commander**: decomposes your request, provisions a ticket folder with git worktrees, finds or creates the matching Herdr Space, picks a model tier per job, spawns/steers workers with `hc` and reports verified results. It never blocks on workers: it dispatches, ends its turn and reacts to each report as it arrives, so you can give it new tasks at any time (you are the CEO, it is the manager). It never edits code itself.
 - **Workers**: OpenCode sessions pinned to a role (`implementer`, `architect`, `verifier-deep`, ...) with a model, reasoning variant and permission set taken from one config file.
 - **Guardrails**: roles are cheap-by-default, tests run in a plain shell first, and an optional monthly budget downgrades the most expensive role automatically.
 
@@ -115,7 +115,7 @@ hc run --bg --keep --outlive-parent --name proj-123-impl \
   --label herdr.space=<space id> --label cc.role=implementer \
   --label cc.model="$(cc-agent implementer --model-label)" --label cc.ticket=PROJ-123 \
   cc-implementer "Ticket PROJ-123. Scope: ... Report back with: hc send commander \"<summary>\""
-hc wait --children any                                      # event-driven, no polling
+# then the Commander ends its turn; the report arrives later as <hc from="...">...</hc>
 hc ls --label cc.ticket=PROJ-123 --label cc.role=implementer --json   # find an existing worker
 ```
 
@@ -211,7 +211,7 @@ The log is the **optional** `ai-gateway` plugin's usage log (sibling folder `../
 
 Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 
-- **`herdr-commander`**: the Commander's protocol: delegate, one Space per ticket, idempotent provisioning, naming rules for `hc run --name`, labels (`cc.role`, `cc.model`, `cc.ticket`, `herdr.space`), finding existing workers, event-driven waiting, cleanup.
+- **`herdr-commander`**: the Commander's protocol: delegate, one Space per ticket, idempotent provisioning, naming rules for `hc run --name`, labels (`cc.role`, `cc.model`, `cc.ticket`, `herdr.space`), finding existing workers, event-driven reports (no blocking waits), cleanup.
 - **`herdr-model-router`**: tier-based routing policy (shell first, cheap for triage, strong only when needed) and how to read `cc-budget`. It is a *skill*: agents load it by name, it is not a command.
 - **`herdr-worker`**: the contract for workers: stay in the worktree, use `@explore`/`@reviewer`, write verbose output to `artifacts/`, report back with `hc send`.
 
@@ -223,7 +223,8 @@ Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 - **`cc-space` returns `name_match_folder_differs`**: a Space with that name already exists for another folder. Reuse it or choose a new name.
 - **`cc-commander --focus` reports `"focused": false`**: the Commander is an unlabeled hidden terminal; focusing needs a running Herdr window (`herdr-app status`).
 - **Worker name rejected by `hc run --name`**: names are 1-32 chars of `a-z0-9-_`, lowercase, unique among live terminals.
-- **`hc wait --children` returns immediately with `turn: 0`**: that is the startup idle event; keep waiting until a report arrives or `turn >= 1`.
+- **Commander ignores you or a report for minutes**: it is stuck in `hc wait`. OpenCode queues anything typed into a working agent until its turn ends, and a person's typing does not wake `hc wait`. The Commander must not wait on workers (see the `herdr-commander` skill); if an old Commander still does, re-run `install.sh` and `cc-commander --restart`.
+- **A report got glued onto text you were typing in the Commander**: `install.sh` sets `draft_wait = 0` in `~/.config/herdr-core/config.toml` so reports are delivered at once, even into a half-typed message. Raise it (seconds) if you prefer hc to hold reports while you type.
 - **`cc-ticket`: branch already checked out**: a worktree (or the base checkout) already holds that branch; pick another `--branch` or remove the old worktree.
 - **Budget shows `unknown`**: expected without a cost log or a cap. Set `budget.monthly_cap_usd` and install the ai-gateway plugin (or provide your own `usage_file`).
 - **Stale base**: `cc-ticket` fetches before branching; if the fetch failed you get a warning and local refs are used.
