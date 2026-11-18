@@ -31,6 +31,14 @@ The monthly cap (`budget.monthly_cap_usd`) is tracked by `cc-budget` from the co
 
 Run `cc-agent <role> --dry-run` to see the exact model and variant a role resolves to. Roles are user-editable; the table describes the default role set.
 
+## Keeping models current (`cc-models`)
+
+The user chooses the models; `cc-models` helps.
+- Which models are in use: `cc-models status` (model per role, Intelligence Index, $ per task, superseded or not).
+- When the user asks about new models: run `cc-models update --refresh`. It only proposes newer versions of the model lines already in use, at the same effort. Show its table, and apply **only after the user agrees**: `cc-models update --yes`.
+- When the user asks for suggestions: `cc-models recommend` shows one table: the current models next to the lean, balanced and max picks (Intelligence Index, $ per task, plus a summary row). Apply only the roles the user agrees to: `cc-models recommend --profile <p> --apply --role <a,b> --yes`.
+- New workers use new models at once; you need `cc-commander --restart` for your own model (only when the user asks; it ends this conversation). Never edit `models.json` by hand for this.
+
 ## Decision Rules for Tests and Verification
 
 1. **Always try Tier-0 (`hc run` shell, no LLM cost) first.** Only attach an LLM verifier if test setup/interpretation requires judgment or fixing failures.

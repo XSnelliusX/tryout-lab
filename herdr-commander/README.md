@@ -63,6 +63,7 @@ Pieces:
 | `cc-ticket` | Creates `<ticket_root>/<TICKET-ID>/` with `TASK.md`, `artifacts/` and one git worktree per repo. |
 | `cc-space` | Finds or creates the Herdr Space for a ticket, idempotently. |
 | `cc-budget` | Month-to-date spend vs. the cap, from the optional cost log. |
+| `cc-models` | Recommends a model per role for a budget profile (`recommend`, `--apply`) and moves roles to newer versions of their models (`update`). |
 | `templates/cc-*.md` | `hc` templates, so `hc run cc-implementer "task"` starts the right role. |
 | `skills/` | Three agent skills that teach the Commander and the workers the protocol. |
 
@@ -92,7 +93,7 @@ What it does:
 - Creates `~/.config/command-center/models.json` from `config/models.example.json` **only if it is missing**. An existing config is never touched.
 - Any existing file that differs is summarised in one line (`+N/-M lines`) and copied to `~/.setup_backup/<timestamp>/` before it is replaced.
 
-After a first install, edit `~/.config/command-center/models.json` and replace each `<provider>/<model>` placeholder with a model id from `opencode models`. `cc-agent` refuses to start while placeholders remain.
+On a first install the config still has `<provider>/<model>` placeholders; in a terminal the installer runs `cc-models recommend --apply` right away (see [Choosing models](#choosing-models-cc-models)). Without benchmark data, replace the placeholders by hand with ids from `opencode models`. `cc-agent` and `cc-commander` refuse to start while placeholders remain.
 
 Environment overrides for the installer: `PREFIX`, `CC_CONFIG`, `HC_TEMPLATES_DIR`, `SKILLS_DIR`. Uninstall keeps your `models.json` and `~/.local/state/command-center/`.
 
@@ -137,6 +138,32 @@ cc-agent implementer -- --session abc   # everything after -- goes to opencode u
 
 `cc-space` statuses: `existing`, `created` (always with a `space` id), `not_found`, and `name_match_folder_differs` (a Space with that name exists for a different folder, nothing is created, exit code 3). `--folder` must be an existing directory; folders are compared by identity (`samefile`), not by lowercased strings.
 
+## Choosing models (`cc-models`)
+
+```sh
+cc-models status                            # table: each role's current model (II, $/task, superseded?)
+cc-models recommend                         # table: current models vs the lean, balanced and max picks
+cc-models recommend --profile lean --apply  # write a profile's picks (asks first; --yes to skip)
+cc-models recommend --profile max --apply --role architect,escalation   # only some roles
+cc-models update --refresh                  # new release: GPT-6.1 Sol -> 6.2 Sol, Opus 5 -> 5.5
+```
+
+```text
+role             current                    II     $  lean                    II     $  balanced             II     $  max                        II      $
+---------------  -----------------------  ----  ----  --------------------  ----  ----  -----------------  ----  ----  -----------------------  ----  -----
+commander        gpt-6.1-terra#low        29.4  0.07  =                     29.4  0.07  =                  29.4  0.07  gpt-6.2-sol#low          40.6   0.18
+architect        claude-5.5-opus#high     51.8  3.46  gpt-6.2-sol#xhigh     55.7  0.65  gpt-6.2-sol#xhigh  55.7  0.65  claude-5.2-fable#high    61.8   9.08
+---------------  -----------------------  ----  ----  --------------------  ----  ----  -----------------  ----  ----  -----------------------  ----  -----
+one task each                             43.2  9.17                        41.7  2.72                     43.6  6.35                           50.6  29.85
+```
+The last row is the average II and the cost of running one task on every role, per setup.
+
+- **`recommend`** picks per role and profile (`lean`, `balanced`, `max`) from the Intelligence Index (II) and the cost per task at gateway prices (AA's token counts, so a verbose model is not favoured by a low token price). Cheap roles (commander, explore, verifier-fast) get the cheapest model above an II floor, the faster one on a near tie; the others get the highest II under a cost cap. Effort `max` is never recommended. The rules are the `RULES` table at the top of `bin/cc-models`. Benchmarks are a starting point: they know nothing about how a model behaves on open-ended vs well-scoped work, so keep your own picks where you know better, and apply only the roles you want with `--role`.
+- **`update`** keeps your choices: it moves a role only to a newer version of the *same model line* (same maker and name, higher version, not deprecated) at the *same effort* (the nearest lower one if that effort is gone). A superseded model without a successor is flagged for you to decide.
+- **Data**: the ai-gateway plugin's model comparison (`~/.gateway-cost/model-comparison/data/models.json`) and gateway catalog (`~/.gateway-cost/models.json`: effort levels, tool support). `--refresh` rebuilds them (needs Node). Without the plugin, set models by hand.
+- **Optional `model_policy`** in `models.json`: `providers` (provider ids to pick from; default: those already in use) and `exclude` (model id patterns never to recommend, e.g. `"*astra*"`).
+- Only `model` and `variant` change; the old file goes to `~/.setup_backup/<timestamp>/`. New workers use the new models at once; the Commander after `cc-commander --restart`. Ask the Commander to "check for new models" and it runs `cc-models update` for you, applying only after you agree.
+
 ## Configuration reference
 
 File: `~/.config/command-center/models.json` (override the path with the `CC_CONFIG` environment variable). All path values accept `~` and `$HOME`/`$VARS`. JSON has no comments; unknown keys (such as `_comment`) are ignored. Every key is optional unless stated.
@@ -155,6 +182,7 @@ File: `~/.config/command-center/models.json` (override the path with the `CC_CON
 | `workspace.ticket_id_pattern` | none (permissive) | Optional regex; the ticket id must fully match it, e.g. `[A-Z]+-\\d+`. Without it any slug is accepted (characters outside `A-Za-z0-9._-` become `-`; `.`, `..`, `_repos` are rejected). |
 | `tools.hc`, `tools.herdr_app`, `tools.opencode` | auto | Explicit binary paths. Otherwise resolved with `PATH`, then the well-known locations `~/.local/bin/hc`, `~/.local/bin/herdr-app`, `~/.opencode/bin/opencode`. |
 | `roles.<name>` | required | One entry per role, see below. |
+| `model_policy` | none | Optional, for `cc-models`: `providers` (provider ids to pick from), `exclude` (model id patterns never to recommend). |
 
 Role keys:
 
@@ -217,7 +245,8 @@ Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 
 ## Troubleshooting
 
-- **`cc-agent`: role still has a placeholder model**: edit `models.json` and use real ids from `opencode models`.
+- **`cc-agent` / `cc-commander`: role still has a placeholder model**: run `cc-models recommend --apply`, or edit `models.json` with real ids from `opencode models`.
+- **`cc-models`: no comparison data**: install the ai-gateway plugin's model comparison (`ai-gateway/install.sh --only compare`), then `cc-models recommend --refresh`.
 - **`command not found: cc-agent`**: `~/.local/bin` is not on `PATH`; the installer prints the line to add.
 - **Commander runs but `hc` inside it cannot connect**: `HC_SOCKET` is derived from `HC_TERMINAL_SOCKET` or `$XDG_STATE_HOME/herdr-core/<session>/<session>.sock`. Launch roles through `cc-agent`, not `opencode` directly, so it is pinned.
 - **`cc-space` returns `name_match_folder_differs`**: a Space with that name already exists for another folder. Reuse it or choose a new name.

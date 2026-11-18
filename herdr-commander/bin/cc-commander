@@ -152,6 +152,11 @@ def main():
                     print(json.dumps(out))
                     return
 
+            unset = [name for name, spec in (CFG.get("roles") or {}).items() if "<" in str(spec.get("model", ""))]
+            if not CFG or unset:
+                why = f"roles without a model: {', '.join(unset)}" if unset else "no config"
+                print(json.dumps({"error": f"{why}. Pick models first: cc-models recommend --apply"}), file=sys.stderr)
+                sys.exit(1)
             os.makedirs(TICKET_ROOT, exist_ok=True)
             r = subprocess.run(
                 [

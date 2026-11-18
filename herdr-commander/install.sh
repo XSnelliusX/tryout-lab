@@ -134,7 +134,7 @@ do_install() {
   check_deps
 
   bold "Scripts -> $BIN_DIR"
-  for f in "$here"/bin/*; do install_file "$f" "$BIN_DIR/$(basename "$f")" 755; done
+  for f in "$here"/bin/*; do [ -f "$f" ] || continue; install_file "$f" "$BIN_DIR/$(basename "$f")" 755; done
 
   bold "hc templates -> $TEMPLATES_DIR"
   tmp="$(mktemp -d)"
@@ -174,8 +174,15 @@ do_install() {
     info "would create $MODELS_JSON from config/models.example.json"
   else
     mkdir -p "$(dirname "$MODELS_JSON")"; cp "$here/config/models.example.json" "$MODELS_JSON"
-    info "created $MODELS_JSON from the example"
-    warn "edit it: replace each <provider>/<model> placeholder with an id from 'opencode models'"
+    info "created $MODELS_JSON from the example (no models chosen yet)"
+  fi
+  if ! dry && grep -q '"<provider>/' "$MODELS_JSON" 2>/dev/null; then
+    if [ -t 0 ] && [ -t 1 ]; then
+      bold "Models: balanced recommendation (other profiles: cc-models recommend --profile lean|max)"
+      "$BIN_DIR/cc-models" recommend --apply || warn "no models written: run 'cc-models recommend --apply' later, or edit $MODELS_JSON by hand"
+    else
+      warn "no models chosen yet: run 'cc-models recommend --apply' (or replace each <provider>/<model> placeholder by hand)"
+    fi
   fi
 
   case ":$PATH:" in
@@ -195,7 +202,7 @@ remove_file() { # remove_file <path> <src or empty>: back up then delete
 do_uninstall() {
   local f name d link
   bold "Removing scripts from $BIN_DIR"
-  for f in "$here"/bin/*; do remove_file "$BIN_DIR/$(basename "$f")"; done
+  for f in "$here"/bin/*; do [ -f "$f" ] || continue; remove_file "$BIN_DIR/$(basename "$f")"; done
   bold "Removing hc templates from $TEMPLATES_DIR"
   for f in "$here"/templates/*.md; do remove_file "$TEMPLATES_DIR/$(basename "$f")"; done
   bold "Removing skills"
