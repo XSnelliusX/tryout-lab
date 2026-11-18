@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Ensure a singleton Command Center Commander terminal exists and print its address as JSON.
+
+Usage: cc-commander [--focus] [--restart]
+  --focus    bring the Commander terminal into view in the Herdr window (agent.focus)
+  --restart  kill and remove the current Commander, then start a fresh one
+
+The Commander runs in workspace.ticket_root (created if missing). Config: ~/.config/command-center/models.json
+(override with $CC_CONFIG).
+"""
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+DEFAULT_CONFIG = "~/.config/command-center/models.json"
+LOCK_PATH = os.path.expanduser(os.environ.get("CC_STATE_DIR") or "~/.local/state/command-center") + "/commander.lock"
+
+
+def xp(p):
+    """Expand $VARS and a leading ~."""
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+
+def load_config():
+    try:
+        with open(xp(os.environ.get("CC_CONFIG") or DEFAULT_CONFIG)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+CFG = load_config()
+
+
+def resolve_tool(key, name, fallbacks):
+    configured = (CFG.get("tools") or {}).get(key)
+    if configured:
+        return xp(configured)
+    found = shutil.which(name)
+    if found:
+        return found
+    for fb in fallbacks:
+        fb = xp(fb)
+        if os.path.isfile(fb) and os.access(fb, os.X_OK):
+            return fb
+    return xp(fallbacks[0])
+
+
+def sibling(name):
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    return p if os.path.isfile(p) else (shutil.which(name) or p)
+
+
+HC_BIN = resolve_tool("hc", "hc", ["~/.local/bin/hc"])
+HERDR_APP_BIN = resolve_tool("herdr_app", "herdr-app", ["~/.local/bin/herdr-app"])
+CC_AGENT = sibling("cc-agent")
+TICKET_ROOT = xp((CFG.get("workspace") or {}).get("ticket_root") or "~/src")
+
+
+def hc_json(args):
+    r = subprocess.run([HC_BIN, *args, "--json"], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "hc failed").strip())
+    return json.loads(r.stdout)
+
+
+def find_commanders(include_finished=False):
+    # `hc ls --json` does not include labels, so ask hc to filter by label, then add name matches.
+    base = ["ls", "--all"] if include_finished else ["ls"]
+    labeled = hc_json(base + ["--label", "cc.role=commander"]).get("terminals", [])
+    seen = {t.get("address") for t in labeled}
+    named = []
+    try:  # an unlabeled terminal can still own the stable name; `hc get` resolves it
+        t = hc_json(["get", "commander"])
+        if t.get("address") not in seen:
+            named.append(t)
+    except Exception:
+        pass
+    return [t for t in labeled + named if include_finished or t.get("state") == "live"]
+
+
+def find_commander():
+    live = find_commanders(include_finished=False)
+    return live[0] if live else None  # labeled matches come first
+
+
+def stop_and_remove_commanders(timeout_s=8.0):
+    for t in find_commanders(include_finished=False):
+        addr = t["address"]
+        subprocess.run([HC_BIN, "kill", addr], capture_output=True, text=True)
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            r = subprocess.run([HC_BIN, "get", addr, "--json"], capture_output=True, text=True)
+            if r.returncode != 0:
+                break
+            try:
+                info = json.loads(r.stdout)
+                if info.get("state") != "live":
+                    break
+            except ValueError:
+                break
+            time.sleep(0.1)
+    for t in find_commanders(include_finished=True):
+        if t.get("state") != "live":
+            subprocess.run([HC_BIN, "rm", t["address"]], capture_output=True, text=True)
+
+
+def commander_model_label():
+    """Same format as `cc-agent commander --model-label`: <model id without provider>#<variant>."""
+    r = (CFG.get("roles") or {}).get("commander", {})
+    model, _, inline_var = (r.get("model") or "").partition("#")
+    variant = r.get("variant") or inline_var
+    mid = model.split("/", 1)[-1]
+    return f"{mid}#{variant}" if variant else mid
+
+
+def focus_terminal(addr):
+    """The Commander is started unlabeled (no herdr.space), so it has no pane: `agent.focus` shows it.
+    Fall back to pane.focus in case a user placed it in a pane themselves."""
+    for cmd in (["do", "agent.focus", "--terminal", addr], ["do", "pane.focus", "--terminal", addr]):
+        try:
+            r = subprocess.run([HERDR_APP_BIN, *cmd], capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if r.returncode == 0 and '"error"' not in r.stdout:
+            return True
+    return False
+
+
+def main():
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return
+    os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
+    with open(LOCK_PATH, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+
+        try:
+            want_focus = "--focus" in sys.argv
+            if "--restart" in sys.argv:
+                stop_and_remove_commanders()
+            else:
+                existing = find_commander()
+                if existing:
+                    out = {"status": "existing", "address": existing["address"], "terminal": existing}
+                    if want_focus:
+                        out["focused"] = focus_terminal(existing["address"])
+                    print(json.dumps(out))
+                    return
+
+            os.makedirs(TICKET_ROOT, exist_ok=True)
+            r = subprocess.run(
+                [
+                    HC_BIN, "run", "--bg", "--keep", "--no-parent",
+                    "--name", "commander",
+                    "--cwd", TICKET_ROOT,
+                    "--label", "cc.role=commander",
+                    "--label", "cc.tier=0",
+                    "--label", f"cc.model={commander_model_label()}",
+                    "--json", "--",
+                    CC_AGENT, "commander",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if r.returncode != 0:
+                print(json.dumps({"error": (r.stderr or r.stdout).strip()}), file=sys.stderr)
+                sys.exit(1)
+            created = json.loads(r.stdout)
+            addr = created.get("address") or created.get("terminal")
+            out = {"status": "created", "address": addr, "created": created}
+            if want_focus and addr:
+                out["focused"] = focus_terminal(addr)
+            print(json.dumps(out))
+        except Exception as e:
+            print(json.dumps({"error": str(e)}), file=sys.stderr)
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Compute current calendar-month gateway spend vs the configured monthly cap.
+
+Reads the optional `budget` section of the Command Center config (default
+~/.config/command-center/models.json, override with $CC_CONFIG). The cost log
+is written by the optional ai-gateway OpenCode plugin. If the log or the cap is
+missing, the status is "unknown" and nothing downstream ever downgrades a role.
+
+Usage: cc-budget [--short]
+"""
+import calendar
+import datetime
+import json
+import os
+import sys
+from collections import defaultdict
+
+DEFAULT_CONFIG = "~/.config/command-center/models.json"
+DEFAULT_USAGE_FILE = "~/.gateway-cost/usage.jsonl"
+
+
+def xp(p):
+    """Expand $VARS and a leading ~."""
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+
+def config_path():
+    return xp(os.environ.get("CC_CONFIG") or DEFAULT_CONFIG)
+
+
+def load_config():
+    try:
+        with open(config_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def num(value, default=None):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def unknown(reason, usage_file=None, cap=None):
+    out = {"status": "unknown", "reason": reason}
+    if usage_file:
+        out["usage_file"] = usage_file
+    if cap:
+        out["cap_usd"] = round(cap, 2)
+    return out
+
+
+def compute():
+    cfg = load_config().get("budget") or {}
+    usage_file = xp(cfg.get("usage_file") or DEFAULT_USAGE_FILE)
+    cap = num(cfg.get("monthly_cap_usd"))
+    warn_pct = num(cfg.get("soft_warn_pct"), 75.0)
+    cap_t3_pct = num(cfg.get("auto_cap_tier3_pct"), 85.0)
+
+    if not cap or cap <= 0:
+        return unknown("no budget.monthly_cap_usd configured", usage_file)
+    if not os.path.isfile(usage_file):
+        return unknown("cost log not found", usage_file, cap)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    month_prefix = now.strftime("%Y-%m")
+    today_prefix = now.strftime("%Y-%m-%d")
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_elapsed = max(1, now.day)
+
+    spent = 0.0
+    today_spent = 0.0
+    by_tool = defaultdict(float)
+    by_model = defaultdict(float)
+    steps = 0
+
+    try:
+        with open(usage_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(d, dict):
+                    continue
+                ts = d.get("ts") or ""
+                if not isinstance(ts, str) or not ts.startswith(month_prefix):
+                    continue
+                # Subscription rows (e.g. Claude Code on a plan) are logged too but cost nothing on the gateway.
+                if d.get("billing", "gateway") != "gateway" or d.get("gateway") is False:
+                    continue
+                cost = num(d.get("cost"), 0.0)
+                spent += cost
+                steps += 1
+                if ts.startswith(today_prefix):
+                    today_spent += cost
+                by_tool[d.get("tool") or "unknown"] += cost
+                by_model[f"{d.get('provider_id', '?')}/{d.get('model_id', '?')}"] += cost
+    except OSError as e:
+        return unknown(f"cost log unreadable: {e}", usage_file, cap)
+
+    pct = spent / cap * 100.0
+    remaining = max(0.0, cap - spent)
+    days_left = max(1, days_in_month - now.day + 1)
+    daily_burn = spent / days_elapsed
+    projected = daily_burn * days_in_month
+    daily_allowance = remaining / days_left
+
+    if pct >= 100.0:
+        status = "exceeded"
+    elif pct >= cap_t3_pct:
+        status = "cap_tier3"
+    elif pct >= warn_pct:
+        status = "warn"
+    else:
+        status = "ok"
+
+    return {
+        "month": month_prefix,
+        "spent_usd": round(spent, 2),
+        "today_usd": round(today_spent, 2),
+        "cap_usd": round(cap, 2),
+        "remaining_usd": round(remaining, 2),
+        "pct_used": round(pct, 1),
+        "daily_burn_usd": round(daily_burn, 2),
+        "daily_allowance_usd": round(daily_allowance, 2),
+        "projected_usd": round(projected, 2),
+        "days_elapsed": days_elapsed,
+        "days_in_month": days_in_month,
+        "steps": steps,
+        "status": status,
+        "by_tool": {k: round(v, 2) for k, v in sorted(by_tool.items(), key=lambda x: -x[1])},
+        "top_models": [{"model": k, "cost_usd": round(v, 2)} for k, v in sorted(by_model.items(), key=lambda x: -x[1])[:8]],
+    }
+
+
+def main():
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return
+    out = compute()
+    if "--short" in sys.argv[1:]:
+        if out["status"] == "unknown":
+            print(f"budget unknown ({out['reason']}) [unknown]")
+        else:
+            print(
+                f"${out['spent_usd']:.2f}/${out['cap_usd']:.0f} ({out['pct_used']:.0f}%) "
+                f"proj ${out['projected_usd']:.0f} [{out['status']}]"
+            )
+    else:
+        print(json.dumps(out, indent=2))
+
+
+if __name__ == "__main__":
+    main()

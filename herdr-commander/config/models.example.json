@@ -1,0 +1,119 @@
+{
+  "_comment": "Replace every <provider>/<model> placeholder with a model id from `opencode models`. Values may use ~ and $HOME. See README.md for every key.",
+  "version": 1,
+  "budget": {
+    "monthly_cap_usd": 250,
+    "soft_warn_pct": 75,
+    "auto_cap_tier3_pct": 85,
+    "usage_file": "~/.gateway-cost/usage.jsonl"
+  },
+  "workspace": {
+    "ticket_root": "~/src",
+    "repo_cache": "~/src/_repos",
+    "repo_search_roots": [
+      "~/src/_repos",
+      "~/src",
+      "~/dev"
+    ],
+    "default_branch_prefix": "feat",
+    "ticket_id_pattern": ""
+  },
+  "tools": {
+    "hc": "",
+    "herdr_app": "",
+    "opencode": ""
+  },
+  "roles": {
+    "commander": {
+      "tier": 0,
+      "mode": "primary",
+      "short": "cmd",
+      "model": "<provider>/<default-model>",
+      "variant": "low",
+      "auto": true,
+      "description": "Central Chief-of-Staff dispatcher: decomposes tasks, creates ticket spaces, chooses worker models, monitors via hc, synthesizes results.",
+      "prompt": "You are the Herdr Command Center Chief of Staff. Load the `herdr-commander` and `herdr-model-router` skills before acting. Never edit repository code directly or run long builds/tests in your own shell: always reuse or provision a Ticket Space (`cc-ticket init ...` + `cc-space ensure <name> --folder <dir>` \u2014 never open duplicate spaces for existing work), reuse idle existing workers via `hc send` or spawn scoped workers (`hc run --bg --keep --outlive-parent --name <lowercase-max32> ... cc-<role> \"...\"` or `-- cc-agent <role> --prompt \"...\"`), wait asynchronously (`hc wait --children any`, verifying `turn >= 1` / report received), and report concise verified results."
+    },
+    "explore": {
+      "tier": 1,
+      "mode": "subagent",
+      "short": "explore",
+      "model": "<provider>/<fast-model>",
+      "variant": "medium",
+      "auto": true,
+      "read_only": true,
+      "description": "Ultra-cheap read-only codebase explorer and file/symbol finder."
+    },
+    "reviewer": {
+      "tier": 2,
+      "mode": "subagent",
+      "short": "review",
+      "model": "<provider>/<default-model>",
+      "variant": "high",
+      "auto": true,
+      "read_only": true,
+      "description": "Read-only code/diff reviewer checking correctness, edge cases, and regressions."
+    },
+    "verifier-fast": {
+      "tier": 1,
+      "mode": "primary",
+      "short": "verify-fast",
+      "model": "<provider>/<default-model>",
+      "variant": "low",
+      "auto": true,
+      "description": "Fast, low-cost test triage, lint/unit validation, and concise log summarization.",
+      "prompt": "You are a scoped fast verification agent. Load the `herdr-worker` skill. Run the assigned test/lint commands, write verbose logs to the ticket artifacts directory, and report pass/fail counts plus root failure lines back to your parent via `hc send`."
+    },
+    "implementer": {
+      "tier": 2,
+      "mode": "primary",
+      "short": "impl",
+      "model": "<provider>/<default-model>",
+      "variant": "medium",
+      "auto": true,
+      "description": "Token-efficient default coding specialist for standard bugfixes and features.",
+      "prompt": "You are a scoped implementation specialist. Load the `herdr-worker` skill. Work strictly inside your assigned ticket worktree, delegate codebase search to `@explore`, run verification before reporting, and send a concise summary + changed files to your parent via `hc send`."
+    },
+    "implementer-pro": {
+      "tier": 2,
+      "mode": "primary",
+      "short": "impl-pro",
+      "model": "<provider>/<strong-model>",
+      "variant": "medium",
+      "auto": true,
+      "description": "Stronger coding specialist for complex multi-file refactors or subtle concurrency/logic bugs.",
+      "prompt": "You are a senior implementation specialist. Load the `herdr-worker` skill. Work strictly inside your assigned ticket worktree, keep changes minimal and verified, and report concise findings via `hc send`."
+    },
+    "architect": {
+      "tier": 3,
+      "mode": "primary",
+      "short": "arch",
+      "model": "<provider>/<strong-model>",
+      "variant": "high",
+      "auto": true,
+      "description": "High-reasoning architect/planner for specs, cross-repo designs, and hard root-cause diagnosis.",
+      "prompt": "You are a principal architect/planner. Load the `herdr-worker` skill. Produce crisp specs, boundary contracts, and task plans inside `<ticketDir>/TASK.md`, using `@explore` for read-only discovery."
+    },
+    "verifier-deep": {
+      "tier": 3,
+      "mode": "primary",
+      "short": "verify-deep",
+      "model": "<provider>/<strong-model>",
+      "variant": "high",
+      "auto": true,
+      "description": "Deep security/correctness verifier and flaky-integration-test root-cause investigator.",
+      "prompt": "You are a deep verification and security review specialist. Load the `herdr-worker` skill. Independently verify diffs, edge cases, and integration tests, write detailed evidence to `<ticketDir>/artifacts/`, and report results via `hc send`."
+    },
+    "escalation": {
+      "tier": 3,
+      "mode": "primary",
+      "short": "opus",
+      "model": "<provider>/<top-model>",
+      "variant": "high",
+      "auto": true,
+      "fallback_role": "architect",
+      "description": "Last-resort escalation model; automatically downgraded to `architect` when budget exceeds auto_cap_tier3_pct.",
+      "prompt": "You are an escalation specialist brought in for an unusually hard problem. Load the `herdr-worker` skill, resolve the blocker concisely, document evidence, and report via `hc send`."
+    }
+  }
+}

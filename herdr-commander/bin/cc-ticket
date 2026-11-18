@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Provision a ticket workspace folder with git worktrees: <ticket_root>/<TICKET-ID>/<repo>.
+
+  cc-ticket init PROJ-123 --repo my-service [--repo other] [--branch feat/PROJ-123] [--base origin/main] [--title "..."]
+
+Config (workspace section of ~/.config/command-center/models.json, override with $CC_CONFIG):
+  ticket_root, repo_cache, repo_search_roots, default_branch_prefix, ticket_id_pattern (optional regex).
+Output is JSON on stdout; exit code 1 when `errors` is non-empty.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+DEFAULT_CONFIG = "~/.config/command-center/models.json"
+GIT_ENV = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+
+
+def xp(p):
+    """Expand $VARS and a leading ~."""
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+
+def load_workspace_cfg():
+    try:
+        with open(xp(os.environ.get("CC_CONFIG") or DEFAULT_CONFIG)) as f:
+            return json.load(f).get("workspace") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def git(args, cwd=None, timeout=120):
+    """Run git; never raises. Returns (returncode, stdout, stderr). 127 = git missing."""
+    try:
+        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=GIT_ENV)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except FileNotFoundError:
+        return 127, "", "git executable not found"
+    except subprocess.TimeoutExpired:
+        return 124, "", f"git {' '.join(args[:2])} timed out after {timeout}s"
+    except OSError as e:
+        return 126, "", str(e)
+
+
+def is_git_repo(path):
+    return os.path.isdir(path) and os.path.exists(os.path.join(path, ".git"))
+
+
+def main_checkout(path):
+    """Resolve a linked worktree to its main checkout (so name/path hits never create worktrees of worktrees)."""
+    rc, common, _ = git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=path)
+    if rc == 0 and os.path.basename(common.rstrip("/")) == ".git":
+        return os.path.dirname(common.rstrip("/"))
+    rc, top, _ = git(["rev-parse", "--show-toplevel"], cwd=path)
+    return top if rc == 0 and top else path
+
+
+def looks_like_url(arg):
+    return "://" in arg or arg.startswith("git@") or re.match(r"^[\w.-]+@[\w.-]+:", arg) is not None
+
+
+def looks_like_path(arg):
+    return "/" in arg or arg.startswith(("~", "."))
+
+
+def find_base_repo(repo_arg, search_roots, repo_cache, state):
+    """Returns (path, error). Resolution order: URL (clone into repo_cache) -> explicit path -> bare name in search roots."""
+    if looks_like_url(repo_arg):
+        name = re.split(r"[/:]", repo_arg.rstrip("/"))[-1]
+        name = name[:-4] if name.endswith(".git") else name
+        if not name or name in (".", ".."):
+            return None, f"cannot derive a repo name from '{repo_arg}'"
+        dest = os.path.join(repo_cache, name)
+        if is_git_repo(dest):
+            return main_checkout(dest), None
+        if os.path.exists(dest) and os.listdir(dest):
+            return None, f"{dest} exists and is not a git repository"
+        try:
+            os.makedirs(repo_cache, exist_ok=True)
+        except OSError as e:
+            return None, f"cannot create repo cache {repo_cache}: {e}"
+        rc, _, err = git(["clone", repo_arg, dest], timeout=900)
+        if rc != 0:
+            return None, f"git clone of '{repo_arg}' failed: {err or 'unknown error'}"
+        state["fresh"].add(dest)
+        return dest, None
+
+    if looks_like_path(repo_arg):
+        p = os.path.abspath(xp(repo_arg))
+        if not is_git_repo(p):
+            return None, f"'{repo_arg}' is not a git repository ({p})"
+        return main_checkout(p), None
+
+    for root in search_roots:
+        candidate = os.path.join(root, repo_arg)
+        if is_git_repo(candidate):
+            return main_checkout(candidate), None
+    return None, f"Base repository '{repo_arg}' not found in {search_roots}"
+
+
+def worktree_branches(base_repo):
+    """{abs worktree path: branch or None} from `git worktree list --porcelain`."""
+    rc, out, _ = git(["worktree", "list", "--porcelain"], cwd=base_repo)
+    res, cur = {}, None
+    if rc != 0:
+        return res
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            cur = os.path.realpath(line[9:])
+            res[cur] = None
+        elif line.startswith("branch ") and cur:
+            ref = line[7:]
+            res[cur] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
+    return res
+
+
+def ref_exists(repo, ref):
+    return git(["rev-parse", "--verify", "--quiet", ref + "^{commit}"], cwd=repo)[0] == 0
+
+
+def update_task_md(task_md, ticket_id, title, ticket_dir, artifacts_dir, worktrees):
+    """Create TASK.md on first run; afterwards add worktrees that are not listed yet."""
+    def line(w):
+        return f"- `{w['repo']}`: `{w['path']}` (branch `{w['branch']}`)"
+
+    usable = [w for w in worktrees if w["status"] in ("created", "existing")]
+    if not os.path.exists(task_md):
+        title_line = f" - {title}" if title else ""
+        wt_lines = "\n".join(line(w) for w in usable) or "- (none yet)"
+        with open(task_md, "w") as f:
+            f.write(
+                f"# {ticket_id}{title_line}\n\n"
+                f"## Worktrees\n{wt_lines}\n\n"
+                f"## Agents & Subagents\n- (updated by Commander)\n\n"
+                f"## Artifacts\n- `{artifacts_dir}/`\n\n"
+                f"## Status Log\n- Initialized\n"
+            )
+        return
+    with open(task_md) as f:
+        text = f.read()
+    new_lines = [line(w) for w in usable if f"`{w['path']}`" not in text]
+    if not new_lines:
+        return
+    text = text.replace("- (none yet)\n", "", 1)
+    m = re.search(r"^## Worktrees[ \t]*\n", text, re.M)
+    if m:
+        nxt = re.search(r"^## ", text[m.end():], re.M)
+        end = m.end() + nxt.start() if nxt else len(text)
+        body = text[m.end():end].rstrip("\n")
+        body = (body + "\n" if body else "") + "\n".join(new_lines) + "\n\n"
+        text = text[:m.end()] + body + text[end:]
+    else:
+        text = text.rstrip("\n") + "\n\n## Worktrees\n" + "\n".join(new_lines) + "\n"
+    with open(task_md, "w") as f:
+        f.write(text)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Create or inspect <ticket_root>/<TICKET-ID>/ with git worktrees.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_init = sub.add_parser("init", help="Initialize ticket folder and optional repo worktrees")
+    p_init.add_argument("ticket", help="Ticket ID (e.g. PROJ-123 or an ad-hoc slug)")
+    p_init.add_argument("--repo", action="append", default=[], help="Repo name (looked up in repo_search_roots), path (contains / or starts with ~ or .), or git URL (repeatable)")
+    p_init.add_argument("--branch", help="Branch name (default: <default_branch_prefix>/<TICKET-ID>)")
+    p_init.add_argument("--base", help="Base ref to branch from (default: origin/HEAD after a fetch, else HEAD)")
+    p_init.add_argument("--title", default="", help="Short task title for TASK.md")
+
+    args = parser.parse_args()
+    ws = load_workspace_cfg()
+    ticket_root = os.path.abspath(xp(ws.get("ticket_root") or "~/src"))
+    repo_cache = os.path.abspath(xp(ws.get("repo_cache") or os.path.join(ticket_root, "_repos")))
+    roots = ws.get("repo_search_roots") or [repo_cache, ticket_root, "~/dev"]
+    search_roots = [os.path.abspath(xp(p)) for p in roots]
+    branch_prefix = ws.get("default_branch_prefix", "feat")
+    pattern = ws.get("ticket_id_pattern")
+
+    raw_ticket = args.ticket.strip()
+    if pattern:
+        try:
+            ok = re.fullmatch(pattern, raw_ticket) is not None
+        except re.error as e:
+            print(json.dumps({"error": f"invalid workspace.ticket_id_pattern: {e}"}), file=sys.stderr)
+            sys.exit(1)
+        if not ok:
+            print(json.dumps({"error": f"Ticket ID '{raw_ticket}' does not match workspace.ticket_id_pattern {pattern}"}), file=sys.stderr)
+            sys.exit(1)
+    safe_ticket = re.sub(r"[^A-Za-z0-9._-]+", "-", raw_ticket).strip("-")
+    if not safe_ticket or safe_ticket in (".", "..", "_repos") or not re.match(r"^[A-Za-z0-9]", safe_ticket):
+        print(json.dumps({"error": "Invalid ticket ID"}), file=sys.stderr)
+        sys.exit(1)
+
+    ticket_dir = os.path.join(ticket_root, safe_ticket)
+    artifacts_dir = os.path.join(ticket_dir, "artifacts")
+    try:
+        os.makedirs(artifacts_dir, exist_ok=True)
+    except OSError as e:
+        print(json.dumps({"error": f"cannot create {artifacts_dir}: {e}"}), file=sys.stderr)
+        sys.exit(1)
+
+    branch = args.branch or (f"{branch_prefix}/{safe_ticket}" if branch_prefix else safe_ticket)
+    worktrees, errors, warnings = [], [], []
+    state = {"fresh": set(), "fetched": {}}
+
+    if args.repo:
+        if not shutil.which("git"):
+            print(json.dumps({"error": "git executable not found"}), file=sys.stderr)
+            sys.exit(1)
+        rc, _, err = git(["check-ref-format", "--branch", branch])
+        if rc != 0:
+            print(json.dumps({"error": f"invalid branch name '{branch}': {err}"}), file=sys.stderr)
+            sys.exit(1)
+
+    for repo_arg in args.repo:
+        base_repo, err = find_base_repo(repo_arg, search_roots, repo_cache, state)
+        if not base_repo:
+            errors.append(err)
+            continue
+        repo_name = os.path.basename(base_repo.rstrip("/"))
+        wt_path = os.path.join(ticket_dir, repo_name)
+
+        # Existing path: it must be the root of a git worktree, and we report the branch it really has.
+        if os.path.lexists(wt_path):
+            rc, top, _ = git(["rev-parse", "--show-toplevel"], cwd=wt_path)
+            if rc != 0 or os.path.realpath(top) != os.path.realpath(wt_path):
+                errors.append(f"{wt_path} exists but is not a git worktree root; move it away or pick another ticket ID")
+                continue
+            _, actual, _ = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=wt_path)
+            entry = {"repo": repo_name, "path": wt_path, "branch": actual, "status": "existing"}
+            if actual != branch:
+                entry["expected_branch"] = branch
+                entry["branch_mismatch"] = True
+                warnings.append(f"{repo_name}: existing worktree is on '{actual}', not '{branch}'")
+            worktrees.append(entry)
+            continue
+
+        # The same branch can only be checked out once per repository.
+        for path, br in worktree_branches(base_repo).items():
+            if br == branch:
+                errors.append(
+                    f"{repo_name}: branch '{branch}' is already checked out at {path}; "
+                    f"remove that worktree or choose another --branch"
+                )
+                break
+        else:
+            # Fetch once per base repo (non-fatal), so the default base is not a stale local checkout.
+            fetch = "skipped"
+            if base_repo not in state["fresh"] and git(["remote", "get-url", "origin"], cwd=base_repo)[0] == 0:
+                if base_repo not in state["fetched"]:
+                    frc, _, ferr = git(["fetch", "--quiet", "origin"], cwd=base_repo, timeout=180)
+                    state["fetched"][base_repo] = "ok" if frc == 0 else f"failed: {ferr or frc}"
+                    if frc != 0:
+                        warnings.append(f"{repo_name}: git fetch failed ({ferr or frc}); using local refs")
+                fetch = state["fetched"][base_repo]
+
+            has_local = ref_exists(base_repo, f"refs/heads/{branch}")
+            has_remote = ref_exists(base_repo, f"refs/remotes/origin/{branch}")
+            base = args.base or ("origin/HEAD" if ref_exists(base_repo, "origin/HEAD") else "HEAD")
+            if has_local:
+                cmd, how = ["worktree", "add", wt_path, branch], "existing local branch"
+            elif has_remote:
+                cmd, how = ["worktree", "add", "--track", "-b", branch, wt_path, f"origin/{branch}"], "tracking origin/" + branch
+            else:
+                cmd, how = ["worktree", "add", "--no-track", "-b", branch, wt_path, base], f"new branch from {base}"
+            rc, out, err = git(cmd, cwd=base_repo)
+            if rc != 0:
+                errors.append(f"Failed worktree for {repo_name}: {err or out}")
+            else:
+                worktrees.append({"repo": repo_name, "path": wt_path, "branch": branch, "base": base_repo,
+                                  "from": how, "fetch": fetch, "status": "created"})
+
+    task_md = os.path.join(ticket_dir, "TASK.md")
+    try:
+        update_task_md(task_md, safe_ticket, args.title, ticket_dir, artifacts_dir, worktrees)
+    except OSError as e:
+        errors.append(f"cannot write {task_md}: {e}")
+
+    result = {
+        "ticket": safe_ticket,
+        "ticket_dir": ticket_dir,
+        "artifacts_dir": artifacts_dir,
+        "task_md": task_md,
+        "branch": branch,
+        "worktrees": worktrees,
+        "warnings": warnings,
+        "errors": errors,
+    }
+    print(json.dumps(result, indent=2))
+    if errors:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

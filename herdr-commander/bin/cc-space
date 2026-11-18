@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Idempotently find or create a Herdr Space for a ticket or folder.
+
+  cc-space ensure <name> [--folder DIR] [--focus]
+  cc-space find [--name NAME] [--folder DIR]
+
+Output is JSON. Statuses: existing, created, not_found, name_match_folder_differs
+(a Space with that name exists but points at another folder: nothing is created).
+"""
+import argparse
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+DEFAULT_CONFIG = "~/.config/command-center/models.json"
+LOCK_PATH = os.path.expanduser(os.environ.get("CC_STATE_DIR") or "~/.local/state/command-center") + "/space.lock"
+
+
+def xp(p):
+    """Expand $VARS and a leading ~."""
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+
+def herdr_app_bin():
+    try:
+        with open(xp(os.environ.get("CC_CONFIG") or DEFAULT_CONFIG)) as f:
+            configured = (json.load(f).get("tools") or {}).get("herdr_app")
+        if configured:
+            return xp(configured)
+    except (OSError, ValueError, AttributeError):
+        pass
+    found = shutil.which("herdr-app")
+    if found:
+        return found
+    return os.path.expanduser("~/.local/bin/herdr-app")
+
+
+HERDR_APP_BIN = herdr_app_bin()
+
+
+def abs_folder(path):
+    return os.path.abspath(xp(path)) if path else ""
+
+
+def same_folder(a, b):
+    """Compare two folders by identity when both exist (handles case-insensitive filesystems and symlinks),
+    otherwise by their resolved path strings. Never lowercases."""
+    if not a or not b:
+        return False
+    try:
+        if os.path.exists(a) and os.path.exists(b):
+            return os.path.samefile(a, b)
+    except OSError:
+        pass
+    ra = os.path.realpath(a).rstrip("/") or "/"
+    rb = os.path.realpath(b).rstrip("/") or "/"
+    return ra == rb
+
+
+def herdr_ls():
+    r = subprocess.run([HERDR_APP_BIN, "ls"], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "herdr-app ls failed").strip())
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"herdr-app ls returned invalid JSON: {e}") from e
+
+
+def local_spaces(spaces, machine=None):
+    return [sp for sp in spaces if (sp.get("machine") or None) == machine]
+
+
+def find_existing_space(spaces, name=None, folder=None, machine=None):
+    """Returns (space, match) where match is "folder", "name", "name_folder_differs" or None.
+    A folder match always wins. A name-only match is only accepted when no folder was requested."""
+    cands = local_spaces(spaces, machine)
+    target_folder = abs_folder(folder)
+    target_name = name.strip().lower() if name else ""
+
+    if target_folder:
+        for sp in cands:
+            if same_folder(abs_folder(sp.get("folder") or ""), target_folder):
+                return sp, "folder"
+
+    if target_name:
+        for sp in cands:
+            if (sp.get("name") or "").strip().lower() == target_name:
+                return (sp, "name") if not target_folder else (sp, "name_folder_differs")
+    return None, None
+
+
+def describe(sp):
+    return {
+        "space": sp["id"],
+        "name": sp.get("name"),
+        "folder": sp.get("folder"),
+        "tabs": sp.get("tabs", []),
+    }
+
+
+def emit(obj, code=0):
+    print(json.dumps(obj))
+    if code:
+        sys.exit(code)
+
+
+def fail(msg):
+    print(json.dumps({"error": msg}), file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Find or create a Herdr Space idempotently.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_ensure = sub.add_parser("ensure", help="Reuse an existing matching Space or create a new one")
+    p_ensure.add_argument("name", help="Space name (e.g. PROJ-123)")
+    p_ensure.add_argument("--folder", help="Space folder path (must exist), e.g. ~/src/PROJ-123")
+    p_ensure.add_argument("--focus", action="store_true", help="Focus/select the Space (default: false)")
+
+    p_find = sub.add_parser("find", help="Find an existing open Space by name or folder")
+    p_find.add_argument("--name", help="Space name")
+    p_find.add_argument("--folder", help="Space folder path")
+
+    args = parser.parse_args()
+
+    os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
+    with open(LOCK_PATH, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+
+        try:
+            data = herdr_ls()
+        except Exception as e:
+            fail(str(e))
+
+        spaces = data.get("spaces", [])
+
+        if args.cmd == "find":
+            sp, match = find_existing_space(spaces, name=args.name, folder=args.folder)
+            if not sp:
+                emit({"status": "not_found"}, 1)
+            if match == "name_folder_differs":
+                emit({"status": "name_match_folder_differs", **describe(sp), "requested_folder": abs_folder(args.folder)}, 3)
+            emit({"status": "existing", **describe(sp)})
+            return
+
+        folder = abs_folder(args.folder)
+        sp, match = find_existing_space(spaces, name=args.name, folder=folder)
+        if match == "name_folder_differs":
+            emit({
+                "status": "name_match_folder_differs",
+                **describe(sp),
+                "requested_folder": folder,
+                "hint": "Use a different Space name, or pass the folder this Space already uses.",
+            }, 3)
+        if sp:
+            if args.focus:
+                subprocess.run([HERDR_APP_BIN, "do", "space.select", "--id", sp["id"]], capture_output=True, check=False)
+            emit({"status": "existing", **describe(sp)})
+            return
+
+        if folder and not os.path.isdir(folder):
+            fail(f"folder does not exist or is not a directory: {folder} (create it first, e.g. with `cc-ticket init`)")
+
+        before = {s.get("id") for s in spaces}
+        cmd = [HERDR_APP_BIN, "do", "space.new", "--name", args.name]
+        if folder:
+            cmd.extend(["--folder", folder])
+        cmd.extend(["--focus", "true" if args.focus else "false"])
+
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            fail((r.stderr or r.stdout or "space.new failed").strip())
+
+        try:
+            created = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            fail(f"space.new returned non-JSON: {r.stdout.strip()}")
+        if not isinstance(created, dict):
+            created = {"result": created}
+
+        # space.new may not echo the space id; always resolve it from `herdr-app ls`.
+        if not created.get("space"):
+            try:
+                after = local_spaces(herdr_ls().get("spaces", []))
+                new = [s for s in after if s.get("id") not in before]
+                pick = [s for s in new if (s.get("name") or "").strip().lower() == args.name.strip().lower()] or new
+                if not pick and folder:
+                    pick = [s for s in after if same_folder(abs_folder(s.get("folder") or ""), folder)]
+                if pick:
+                    created["space"] = pick[0]["id"]
+            except Exception as e:
+                created["space_lookup_error"] = str(e)
+        emit({"status": "created", "name": args.name, "folder": folder or None, **created})
+
+
+if __name__ == "__main__":
+    main()

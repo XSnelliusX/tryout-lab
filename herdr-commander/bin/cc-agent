@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+"""Launch OpenCode pinned to a Command Center role.
+
+Roles, models and variants come from ~/.config/command-center/models.json
+(override the path with $CC_CONFIG). Everything after a literal `--` is passed
+to opencode untouched; unknown `--flags` (with one value) are forwarded too.
+
+Examples:
+  cc-agent implementer --cwd ~/src/PROJ-123/my-service --prompt "Fix the flaky test"
+  cc-agent commander --dry-run
+  cc-agent implementer --model-label          # prints the cc.model label value
+"""
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+DEFAULT_CONFIG = "~/.config/command-center/models.json"
+STATE_BASE = os.path.expanduser(os.environ.get("CC_STATE_DIR") or "~/.local/state/command-center")
+
+# Read-only roles may still inspect the repo. OpenCode permission rules are ordered, last match wins,
+# so: deny everything, allow a few inspection commands, then deny the flags that can run or write things.
+READ_ONLY_BASH = {
+    "*": "deny",
+    "git diff*": "allow",
+    "git log*": "allow",
+    "git show*": "allow",
+    "git status*": "allow",
+    "rg *": "allow",
+    "ls": "allow",
+    "ls *": "allow",
+    "rg *--pre *": "deny",
+    "rg *--pre=*": "deny",
+    "git *--output *": "deny",
+    "git *--output=*": "deny",
+}
+
+
+def xp(p):
+    """Expand $VARS and a leading ~."""
+    return os.path.expanduser(os.path.expandvars(str(p)))
+
+
+def die(msg, code=2):
+    print(f"[cc-agent] {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def config_path():
+    return xp(os.environ.get("CC_CONFIG") or DEFAULT_CONFIG)
+
+
+def load_config():
+    path = config_path()
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        die(f"config not found: {path} (run install.sh, or copy config/models.example.json there)")
+    except ValueError as e:
+        die(f"config is not valid JSON: {path}: {e}")
+
+
+def resolve_tool(cfg, key, name, fallbacks):
+    """tools.<key> from the config, else PATH, else well-known install locations."""
+    configured = (cfg.get("tools") or {}).get(key)
+    if configured:
+        return xp(configured)
+    found = shutil.which(name)
+    if found:
+        return found
+    for fb in fallbacks:
+        fb = xp(fb)
+        if os.path.isfile(fb) and os.access(fb, os.X_OK):
+            return fb
+    return xp(fallbacks[0])
+
+
+def sibling(name):
+    here = os.path.dirname(os.path.abspath(__file__))
+    p = os.path.join(here, name)
+    return p if os.path.isfile(p) else (shutil.which(name) or p)
+
+
+def get_budget_status():
+    """Never raises; anything unexpected is status "unknown", which never downgrades."""
+    try:
+        res = subprocess.run([sys.executable, sibling("cc-budget")], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            return json.loads(res.stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return {"status": "unknown"}
+
+
+def model_label(model, variant):
+    """Label value for `cc.model`: model id without provider, plus #variant (e.g. `my-model#medium`)."""
+    mid = (model or "").split("#", 1)[0].split("/", 1)[-1]
+    return f"{mid}#{variant}" if variant else mid
+
+
+def role_state_home(role_key):
+    safe_key = "".join(c if c.isalnum() or c in "-_" else "_" for c in role_key)
+    return os.path.join(STATE_BASE, safe_key)
+
+
+def ensure_role_state_home(role_key, model, variant):
+    """Create an isolated XDG_STATE_HOME per role+model+variant so OpenCode TUI
+    never inherits another model/variant from ~/.local/state/opencode/model.json."""
+    if "/" in model:
+        provider_id, model_id = model.split("/", 1)
+    else:
+        provider_id, model_id = "", model
+
+    state_home = role_state_home(role_key)
+    oc_state = os.path.join(state_home, "opencode")
+    os.makedirs(oc_state, exist_ok=True)
+
+    model_state = {
+        "recent": [{"providerID": provider_id, "modelID": model_id}],
+        "favorite": [],
+        "variant": {model: variant} if variant else {},
+    }
+    model_path = os.path.join(oc_state, "model.json")
+    desired = json.dumps(model_state)
+    try:
+        with open(model_path) as f:
+            if f.read() == desired:
+                return state_home
+    except OSError:
+        pass
+    tmp_path = f"{model_path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w") as f:
+        f.write(desired)
+    os.replace(tmp_path, model_path)
+    return state_home
+
+
+def split_extras(extra):
+    """Only `--flag [value]` extras are forwarded to opencode; a stray positional is an error
+    (it is almost always a prompt that was meant for --prompt)."""
+    out = []
+    prev_is_flag = False
+    for tok in extra:
+        if tok.startswith("--"):
+            out.append(tok)
+            prev_is_flag = "=" not in tok
+        elif prev_is_flag:
+            out.append(tok)  # value of the preceding flag
+            prev_is_flag = False
+        else:
+            die(f"unexpected argument '{tok}' (use --prompt \"...\" for a task; put raw opencode args after `--`)")
+    return out
+
+
+def main():
+    argv = sys.argv[1:]
+    passthrough = []
+    if "--" in argv:
+        i = argv.index("--")
+        argv, passthrough = argv[:i], argv[i + 1:]
+
+    parser = argparse.ArgumentParser(
+        description="Launch OpenCode configured for a Command Center role.",
+        epilog="Arguments after a literal `--` are passed to opencode unchanged.",
+    )
+    parser.add_argument("role", help="Role name in models.json (e.g. commander, implementer, verifier-fast)")
+    parser.add_argument("--cwd", help="Working directory")
+    parser.add_argument("--prompt", help="Initial prompt to send")
+    parser.add_argument("--model", help="Explicit provider/model override (may carry a #variant suffix)")
+    parser.add_argument("--variant", help="Explicit reasoning variant override (e.g. low, medium, high)")
+    parser.add_argument("--auto", dest="auto", action="store_true", default=None, help="Force auto-approve")
+    parser.add_argument("--no-auto", dest="auto", action="store_false", help="Disable auto-approve")
+    parser.add_argument("--mini", action="store_true", help="Use `opencode mini` instead of the full TUI")
+    parser.add_argument("--force", action="store_true", help="Bypass the budget-cap downgrade of the escalation role")
+    parser.add_argument("--dry-run", action="store_true", help="Print resolved command and env without executing")
+    parser.add_argument("--model-label", action="store_true", help="Print the cc.model label value for the role and exit")
+    args, extra = parser.parse_known_args(argv)
+    extra = split_extras(extra) + passthrough
+
+    cfg = load_config()
+    roles = cfg.get("roles") or {}
+    if args.role not in roles:
+        die(f"Unknown role '{args.role}'. Available: {', '.join(roles.keys())}")
+
+    effective_role = args.role
+    spec = dict(roles[effective_role])
+
+    # Budget guardrail: a role with `fallback_role` is downgraded when spend >= auto_cap_tier3_pct, unless --force.
+    # An unknown budget (no cost log, no cap) never downgrades anything.
+    if spec.get("fallback_role") and not args.force and not args.model and not args.model_label:
+        budget = get_budget_status()
+        if budget.get("status") in ("cap_tier3", "exceeded"):
+            fallback = spec["fallback_role"]
+            if fallback in roles:
+                print(
+                    f"[cc-agent] Budget {budget.get('spent_usd')}/{budget.get('cap_usd')} ({budget.get('pct_used')}%) -> downgrading '{effective_role}' to '{fallback}'. Pass --force to override.",
+                    file=sys.stderr,
+                )
+                effective_role = fallback
+                spec = dict(roles[effective_role])
+
+    model = args.model or spec.get("model")
+    if not model:
+        die(f"role '{effective_role}' has no model in {config_path()}")
+    variant = args.variant or spec.get("variant")
+    if "#" in model:
+        model, parsed_var = model.split("#", 1)
+        if not args.variant:
+            variant = parsed_var
+    if args.model_label:
+        print(model_label(model, variant))
+        return
+    for rname, rspec in roles.items():
+        m = args.model if (rname == effective_role and args.model) else rspec.get("model", "")
+        if "<" in m and ">" in m:
+            die(f"role '{rname}' still has a placeholder model '{m}'. Edit {config_path()} (see `opencode models` for ids).")
+    auto_mode = spec.get("auto", True) if args.auto is None else args.auto
+
+    # Build OpenCode agent map from the config roles.
+    oc_agents = {}
+    for rname, rspec in roles.items():
+        entry = {
+            "mode": rspec.get("mode", "primary"),
+            "model": model if rname == effective_role else rspec["model"].split("#", 1)[0],
+            "description": rspec.get("description", rname),
+        }
+        rvar = variant if rname == effective_role else (rspec.get("variant") or (rspec["model"].split("#", 1)[1] if "#" in rspec["model"] else None))
+        if rvar:
+            entry["variant"] = rvar
+        if rspec.get("prompt"):
+            entry["prompt"] = rspec["prompt"]
+        if rspec.get("read_only"):
+            entry["permission"] = {"*": "allow", "edit": "deny", "write": "deny", "bash": dict(READ_ONLY_BASH)}
+        elif auto_mode:
+            entry["permission"] = {"*": "allow"}
+        else:
+            entry["permission"] = {"*": "ask"}
+        oc_agents[rname] = entry
+
+    # Workaround: OpenCode v2.3 TUI `--prompt` submits turn 1 using agent "build"
+    # before switching to default_agent, so pin `build` to the active role's exact spec.
+    oc_agents[effective_role]["mode"] = "primary"  # default_agent must be a primary agent
+    oc_agents["build"] = dict(oc_agents[effective_role])
+
+    oc_config = {
+        "default_agent": effective_role,
+        "model": model,
+        "agent": oc_agents,
+    }
+
+    opencode_bin = resolve_tool(cfg, "opencode", "opencode", ["~/.opencode/bin/opencode", "~/.local/bin/opencode"])
+    state_key = f"{effective_role}-{model.replace('/', '-')}-{variant or 'default'}"
+    state_home = ensure_role_state_home(state_key, model, variant) if not args.dry_run else role_state_home(state_key)
+
+    env = os.environ.copy()
+    orig_state_home = env.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    # Pin HC_SOCKET before overriding XDG_STATE_HOME so `hc` inside the agent
+    # talks to the active Herdr Core daemon instead of deriving a >103-byte
+    # socket path under ~/.local/state/command-center/<role>-.../.
+    if not env.get("HC_SOCKET"):
+        if env.get("HC_TERMINAL_SOCKET"):
+            env["HC_SOCKET"] = env["HC_TERMINAL_SOCKET"]
+        else:
+            hc_session = env.get("HC_SESSION", "default")
+            env["HC_SOCKET"] = os.path.join(orig_state_home, "herdr-core", hc_session, f"{hc_session}.sock")
+    env["OPENCODE_CONFIG_CONTENT"] = json.dumps(oc_config)
+    env["XDG_STATE_HOME"] = state_home
+    env["CC_ROLE"] = effective_role
+    env["CC_MODEL"] = f"{model}#{variant}" if variant else model
+
+    if args.mini:
+        # `opencode mini --model` takes plain provider/model (no #variant); the variant is applied
+        # through the agent entry and the per-role state home instead.
+        cmd = [opencode_bin, "mini", "--model", model, "--agent", effective_role, "--standalone"]
+        if args.prompt:
+            cmd += ["--prompt", args.prompt]
+    else:
+        cmd = [opencode_bin, "--standalone"]
+        if auto_mode:
+            cmd.append("--auto")
+        if args.prompt:
+            cmd += ["--prompt", args.prompt]
+
+    cmd.extend(extra)
+
+    cwd = xp(args.cwd) if args.cwd else None
+    if args.dry_run:
+        print(json.dumps({
+            "role": effective_role,
+            "model": model,
+            "variant": variant,
+            "cc_model_label": model_label(model, variant),
+            "XDG_STATE_HOME": state_home,
+            "HC_SOCKET": env.get("HC_SOCKET"),
+            "cwd": cwd,
+            "cmd": cmd,
+            "OPENCODE_CONFIG_CONTENT": oc_config,
+        }, indent=2))
+        return
+
+    if cwd:
+        if not os.path.isdir(cwd):
+            die(f"--cwd is not a directory: {cwd}", 1)
+        os.chdir(cwd)
+
+    try:
+        os.execvpe(cmd[0], cmd, env)
+    except OSError as e:
+        die(f"cannot execute {cmd[0]}: {e}. Install opencode or set tools.opencode in {config_path()}", 127)
+
+
+if __name__ == "__main__":
+    main()
