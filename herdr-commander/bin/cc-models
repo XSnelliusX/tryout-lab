@@ -43,6 +43,7 @@ RULES = {
     "commander":       {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
     "explore":         {"lean": ("cheapest", 15), "balanced": ("cheapest", 18), "max": ("cheapest", 25)},
     "verifier-fast":   {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
+    "writer":          {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
     "implementer":     {"lean": ("best", 0.18), "balanced": ("best", 0.20), "max": ("best", 0.45)},
     "reviewer":        {"lean": ("best", 0.30), "balanced": ("best", 0.45), "max": ("best", 0.70)},
     "implementer-pro": {"lean": ("best", 0.42), "balanced": ("best", 0.60), "max": ("best", 0.70)},

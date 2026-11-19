@@ -2,7 +2,7 @@
 name: herdr-model-router
 description: >-
   Cost- and token-efficiency model routing policy for choosing which model tier
-  runs planning, coding, subagents, and test verification in the Herdr +
+  runs planning, coding, report drafting, meeting prep, and test verification in the Herdr +
   OpenCode Command Center, including the monthly budget guardrail.
 ---
 
@@ -20,6 +20,7 @@ The monthly cap (`budget.monthly_cap_usd`) is tracked by `cc-budget` from the co
 |---|---:|---|---|
 | *(plain shell)* `hc run` | 0 | none, no LLM cost | Running tests, linters, builds, `git diff`. **Always run tests in the shell first before spawning an LLM verifier.** |
 | `explore` (OpenCode subagent) | 1 | cheapest, medium | Read-only file/symbol search, log scanning, repo mapping. |
+| `writer` (`cc-writer` worker) | 1 | cheap, medium | Substantive reports, meeting prep, and other audience-facing drafts. |
 | `commander` | 0/1 | cheap, low | Central dispatcher; short crisp answers, keeps its context small. |
 | `verifier-fast` | 1 | cheap, low | Triaging unit/lint failures, checking schemas, summarizing logs. |
 | `implementer` | 2 | mid, medium | Default coding agent for single-repo bugfixes and standard features. |
@@ -38,6 +39,10 @@ The user chooses the models; `cc-models` helps.
 - When the user asks about new models: run `cc-models update --refresh`. It only proposes newer versions of the model lines already in use, at the same effort. Show its table, and apply **only after the user agrees**: `cc-models update --yes`.
 - When the user asks for suggestions: `cc-models recommend` shows one table: the current models next to the lean, balanced and max picks (Intelligence Index, $ per task, plus a summary row). Apply only the roles the user agrees to: `cc-models recommend --profile <p> --apply --role <a,b> --yes`.
 - New workers use new models at once; you need `cc-commander --restart` for your own model (only when the user asks; it ends this conversation). Never edit `models.json` by hand for this.
+
+## Writing delegation
+
+For substantive reports, meeting prep, and other audience-facing drafts, launch `cc-writer` like any other worker (see `herdr-commander`). Brief it with the audience, purpose, format, tone, source facts/paths, and a draft path under `artifacts/`. It is a primary worker, not an OpenCode subagent: never invoke it as `@writer`. If the template is missing (`hc templates`), use `-- cc-agent writer --prompt "..."`.
 
 ## Decision Rules for Tests and Verification
 

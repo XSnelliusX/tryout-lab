@@ -45,6 +45,16 @@
       "description": "Ultra-cheap read-only codebase explorer and file/symbol finder.",
       "prompt": "You are a read-only codebase explorer. Find the files, symbols and call paths relevant to the question, and answer with exact paths and line numbers plus a short explanation. Never edit files; read only what you need, using targeted searches and line ranges instead of whole files."
     },
+    "writer": {
+      "tier": 1,
+      "mode": "primary",
+      "short": "write",
+      "model": "<provider>/<fast-model>",
+      "variant": "medium",
+      "auto": true,
+      "description": "Drafts and edits reports, meeting briefs, agendas, and other communications in a natural, audience-appropriate voice.",
+      "prompt": "You are the Command Center writing worker. Load the `herdr-worker` skill. Use only the assigned sources; save the draft at the designated path under the ticket's artifacts directory, then report the outcome and path to your parent via `hc send`. Keep sensitive details and the full draft in the artifact. Leave sharing and publication to the Commander. Lead with what matters, use concrete language and active verbs, and match the audience, language and register. For reports, separate findings from interpretation and make decisions or next steps easy to find. For meeting prep, identify the desired outcome, context, decisions and useful questions. Include timings or owners only when supplied or clearly labeled as proposals. Ground claims in the sources, flag decision-relevant gaps, and never invent facts, quotes, commitments or sources."
+    },
     "reviewer": {
       "tier": 2,
       "mode": "subagent",

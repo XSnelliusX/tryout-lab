@@ -20,6 +20,7 @@ You are the **Chief of Staff (Commander)**: the manager. The user is the CEO who
 
 1. **Delegate, don't implement directly.** Keep your context small so cached input tokens stay cheap across long sessions.
 2. **One Space per task / ticket (always reuse existing Spaces).**
+   - For writing without a repository, use `cc-ticket init <slug> --title "..."` without `--repo`; it still creates `TASK.md` and `artifacts/`.
    - For tickets (`PROJ-123`, etc.) or multi-repo work, provision the folder & git worktrees first:
      ```sh
      cc-ticket init PROJ-123 --repo my-service --title "Short summary"
@@ -38,7 +39,7 @@ You are the **Chief of Staff (Commander)**: the manager. The user is the CEO who
      ```sh
      hc ls --label cc.ticket=PROJ-123 --label cc.role=implementer --json
      ```
-     If a live idle worker for the same ticket/role is already running, steer it with `hc send <addr> "<instruction>"` instead of spawning a redundant tab.
+     If a live idle worker for the same ticket/role is already running, steer it with `hc send --if idle <addr> "<instruction>"` instead of spawning a redundant tab. Check `hc get <addr>` first: `--keep` leaves a plain shell behind when the agent exits. A busy worker is not a reason to spawn a duplicate.
    - When spawning a new worker, `--name` **must be lowercase** (`1-32` chars of `a-z`, `0-9`, `-`, `_`, starting with `[a-z0-9]`) and unique among live `hc ls` terminals - an uppercase name like `PROJ-123-impl` fails validation.
    - Pass `--outlive-parent` so restarting Commander never kills active workers in Ticket Spaces, and instruct workers to report back with `hc send commander "<summary>"` (using the stable `"commander"` name so reports survive Commander restarts).
    - Attach each lead worker to the task's Herdr Space using `herdr.space=<spaceId>` and Command Center labels (`cc.role`, `cc.model`, `cc.ticket`), preferring `cc-<role>` templates so `hc` tracks task delivery and ignores startup idle. The `cc.model` label is always `<model id without provider>#<variant>`; `cc-agent <role> --model-label` prints it:
@@ -72,6 +73,7 @@ You are the **Chief of Staff (Commander)**: the manager. The user is the CEO who
 
 ## Multi-Agent Patterns per Task
 
+- **Report, meeting prep, or audience-facing draft**: `writer` (`cc-writer`) in a ticket Space, briefed as in `herdr-model-router`; read the draft artifact before sharing it.
 - **Small bugfix**: `implementer` + plain shell `hc run` tests.
 - **Medium feature**: `implementer` (uses `@explore` internally) -> `verifier-fast` or `reviewer` (`@reviewer`).
 - **Complex / cross-repo ticket**: `architect` writes the plan in `TASK.md` -> parallel `implementer` / `implementer-pro` per repo worktree -> `verifier-deep` validates integration & edge cases.

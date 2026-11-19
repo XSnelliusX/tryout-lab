@@ -97,6 +97,10 @@ On a first install the config still has `<provider>/<model>` placeholders; in a 
 
 Environment overrides for the installer: `PREFIX`, `CC_CONFIG`, `HC_TEMPLATES_DIR`, `SKILLS_DIR`. Uninstall keeps your `models.json` and `~/.local/state/command-center/`.
 
+### Add `writer` to an existing installation
+
+`install.sh` installs the `cc-writer` template and the updated skills but never touches an existing `models.json`. Copy `roles.writer` from `config/models.example.json` into yours, give it a model with `cc-models recommend --profile <lean|balanced|max> --apply --role writer`, then check it with `cc-agent writer --dry-run`. No Commander restart is needed: `cc-writer` reads the config when it starts.
+
 ## Daily usage
 
 Start (or find) the Commander and bring it into view:
@@ -138,6 +142,22 @@ cc-agent implementer -- --session abc   # everything after -- goes to opencode u
 
 `cc-space` statuses: `existing`, `created` (always with a `space` id), `not_found`, and `name_match_folder_differs` (a Space with that name exists for a different folder, nothing is created, exit code 3). `--folder` must be an existing directory; folders are compared by identity (`samefile`), not by lowercased strings.
 
+### Writing work
+
+Reports, meeting prep and other audience-facing drafts go to the `writer` role, run like any other worker. A ticket without `--repo` is enough when the draft is built from supplied facts:
+
+```sh
+cc-ticket init q3-review --title "Q3 review agenda"
+cc-space ensure q3-review --folder ~/src/q3-review
+hc run --bg --keep --outlive-parent --name q3-review-writer \
+  --cwd ~/src/q3-review \
+  --label herdr.space=<space id> --label cc.role=writer \
+  --label cc.model="$(cc-agent writer --model-label)" --label cc.ticket=q3-review \
+  cc-writer "Audience: project team. Goal: decide whether to extend the test window. Save the agenda to artifacts/agenda.md."
+```
+
+The writer saves the draft under `artifacts/` and reports its path to its parent via `hc send`; the Commander reads it before sharing.
+
 ## Choosing models (`cc-models`)
 
 ```sh
@@ -158,7 +178,7 @@ one task each                             43.2  9.17                        41.7
 ```
 The last row is the average II and the cost of running one task on every role, per setup.
 
-- **`recommend`** picks per role and profile (`lean`, `balanced`, `max`) from the Intelligence Index (II) and the cost per task at gateway prices (AA's token counts, so a verbose model is not favoured by a low token price). Cheap roles (commander, explore, verifier-fast) get the cheapest model above an II floor, the faster one on a near tie; the others get the highest II under a cost cap. Effort `max` is never recommended. The rules are the `RULES` table at the top of `bin/cc-models`. Benchmarks are a starting point: they know nothing about how a model behaves on open-ended vs well-scoped work, so keep your own picks where you know better, and apply only the roles you want with `--role`.
+- **`recommend`** picks per role and profile (`lean`, `balanced`, `max`) from the Intelligence Index (II) and the cost per task at gateway prices (AA's token counts, so a verbose model is not favoured by a low token price). Cheap roles (commander, explore, verifier-fast, writer) get the cheapest model above an II floor, the faster one on a near tie; the others get the highest II under a cost cap. Effort `max` is never recommended. The rules are the `RULES` table at the top of `bin/cc-models`. Benchmarks are a starting point: they know nothing about how a model behaves on open-ended vs well-scoped work, so keep your own picks where you know better, and apply only the roles you want with `--role`.
 - **`update`** keeps your choices: it moves a role only to a newer version of the *same model line* (same maker and name, higher version, not deprecated) at the *same effort* (the nearest lower one if that effort is gone). A superseded model without a successor is flagged for you to decide.
 - **Data**: the ai-gateway plugin's model comparison (`~/.gateway-cost/model-comparison/data/models.json`) and gateway catalog (`~/.gateway-cost/models.json`: effort levels, tool support). `--refresh` rebuilds them (needs Node). Without the plugin, set models by hand.
 - **Optional `model_policy`** in `models.json`: `providers` (provider ids to pick from; default: those already in use) and `exclude` (model id patterns never to recommend, e.g. `"*astra*"`).
@@ -205,12 +225,13 @@ Environment: `CC_CONFIG` (config path), `CC_STATE_DIR` (default `~/.local/state/
 
 ## Roles and tiers
 
-The example config ships nine roles. Tiers are about cost, not importance.
+The example config ships ten roles. Tiers are about cost, not importance.
 
 | Role | Tier | Mode | Purpose |
 |---|---:|---|---|
 | `commander` | 0/1 | primary | Dispatcher; cheap and concise. |
 | `explore` | 1 | subagent, read-only | File/symbol search and repo mapping. |
+| `writer` | 1 | primary | Reports, meeting prep and other audience-facing drafts. |
 | `verifier-fast` | 1 | primary | Test/lint triage and log summaries. |
 | `implementer` | 2 | primary | Default coding agent. |
 | `reviewer` | 2 | subagent, read-only | Diff review before reporting done. |
@@ -219,7 +240,7 @@ The example config ships nine roles. Tiers are about cost, not importance.
 | `verifier-deep` | 3 | primary | Security and integration verification. |
 | `escalation` | 3 | primary | Last resort; `fallback_role: architect` under budget pressure. |
 
-Each role except `explore` and `reviewer` has an `hc` template `cc-<role>` (installed by `install.sh`), so `hc run cc-<role> "task"` starts it with a task prompt and lets `hc` track task delivery. Rule of thumb: run tests in a plain shell (`hc run --bg ... "<cmd>"`, no LLM cost) before involving any model.
+Primary roles have an `hc` template `cc-<role>` (installed by `install.sh`), so `hc run cc-<role> "task"` starts one with a task prompt and lets `hc` track task delivery. Use `explore` and `reviewer` as OpenCode subagents in a Command Center session. Rule of thumb: run tests in a plain shell (`hc run --bg ... "<cmd>"`, no LLM cost) before involving any model.
 
 ## Budget guardrail
 
@@ -261,6 +282,7 @@ Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 ## Security notes
 
 - Workers run with **auto-approve permissions** by default (`"*": "allow"` in OpenCode, `--auto`). They can run any shell command and edit any file their user can. Use `--no-auto` or `"auto": false` on a role to get prompts, run in disposable worktrees (which `cc-ticket` already gives you), and keep secrets out of the ticket folders.
+- `writer` uses the same default tool permissions as other primary workers so it can save drafts and run `hc send`. Its instruction to edit only the draft and never publish is policy, not a sandbox.
 - `read_only` roles (`explore`, `reviewer`) deny edit/write and shell, except `git diff*`, `git log*`, `git show*`, `git status*`, `rg *`, `ls`. Flags that can execute programs or write files (`rg --pre`, `git ... --output`) are denied after the allows (OpenCode evaluates rules in order, the last match wins). This is a convenience guardrail, not a sandbox: a read-only role can still read anything the user can.
 - The Commander is told never to edit code, but that is policy, not enforcement; it runs auto-approved like the others.
 - Prompts and role definitions travel in the `OPENCODE_CONFIG_CONTENT` environment variable, visible to same-user processes.
