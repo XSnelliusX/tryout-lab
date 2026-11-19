@@ -8,8 +8,10 @@ cost-to-performance, using [Artificial Analysis](https://artificialanalysis.ai/)
   (`$GATEWAY_COST_DIR/models.json`). It never calls the gateway itself.
 - Fetches public AA pages (no API key), matches every catalog model to an AA
   release, and keeps **all** reasoning-effort variants.
-- Writes a self-contained dashboard to `$GATEWAY_COST_DIR/model-comparison/`
-  that opens straight from `file://`, with no server.
+- Opens a local dashboard immediately, showing the last snapshot while it
+  refreshes the gateway and then AA. A **Sync** button repeats both steps.
+- Runs a temporary server bound to `127.0.0.1` so the page can initiate syncs;
+  it exits after 30 minutes without page activity and no sync in progress.
 
 Data: Artificial Analysis. Model availability and prices: your gateway catalog.
 See [Attribution and terms](#attribution-and-terms).
@@ -35,7 +37,7 @@ which builds the Go joiner and the web app, then copies only the runtime files
 to `DEST`:
 
 ```text
-compare.mjs   parse_aa.mjs   aasync   web/
+server.mjs   compare.mjs   parse_aa.mjs   aasync   web/
 ```
 
 The command is idempotent. `make install DEST=<dir> DRY_RUN=1` prints what it
@@ -43,7 +45,19 @@ would do without changing anything.
 
 ## Use
 
-From the installed directory (or from the OpenCode / Claude Code command below):
+Use `/model-comparison` in OpenCode or Claude Code, or run:
+
+```sh
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare
+```
+
+The page opens before network work completes. Its sync indicator spins through
+the gateway refresh and a forced AA refresh; a failed refresh leaves the last
+snapshot in place and displays the error. AA can fall back to cached data if
+unreachable; the dashboard reports this. Reopen the command if the local
+server has shut down.
+
+For a standalone, one-shot snapshot build (without gateway refresh):
 
 ```sh
 node compare.mjs [--refresh] [--offline] [--no-open] [--quiet]
@@ -63,11 +77,10 @@ a stale cache exists, the stale data is used and the summary says so.
 
 ### The `/model-comparison` command
 
-In OpenCode and in Claude Code, `/model-comparison` is a thin wrapper that runs
-`compare.mjs` from the install directory and opens the dashboard; arguments such
-as `--refresh` or `--offline` are forwarded. (macOS opens the page with `open`,
-Linux with `xdg-open`.) See [`../README.md`](../README.md) for how the command
-is installed.
+In OpenCode and Claude Code, `/model-comparison` starts the local server and
+opens the page. The server performs a gateway refresh followed by an AA refresh
+in the background. It requires Node 23.6+ to run the plugin's TypeScript
+gateway refresh. The one-shot `compare.mjs` flags above apply only to that CLI.
 
 ## Data sources and cache locations
 
@@ -88,13 +101,18 @@ Optional environment: `GATEWAY_PROVIDER_PREFIX` (default `acc`) is a provider-id
 prefix that is stripped when a provider name has to be read out of
 `provider_id`. It is rarely needed.
 
-### How the dashboard works from `file://`
+### Local server and `file://` snapshots
 
 Browsers block `fetch()` of local files and Chrome blocks `<script type="module">`
 from `file://`. So the web build uses relative URLs (`base: "./"`), is one
 classic (IIFE) script, and reads its data from `data/models.js`, a classic script
 that sets `window.__MODEL_COMPARISON__`. Under `vite dev` there is no such file
 and the app falls back to fetching `data/models.json`.
+
+The interactive sync button requires the loopback server. It uses an
+unguessable URL and validates the request origin; it does not listen on other
+network interfaces. The one-shot file snapshot remains viewable without a
+server, but cannot perform a sync.
 
 ## What the data contains
 

@@ -16,16 +16,16 @@ declare global {
 // script that sets window.__MODEL_COMPARISON__, so the dashboard works when
 // opened from file:// (browsers block fetch() of local files). Under `vite dev`
 // there is no such script; fall back to fetching data/models.json.
-export function useSnapshot(url = "data/models.json"): SnapshotState {
+export function useSnapshot(url = "data/models.json", revision = 0): SnapshotState {
   const [state, setState] = useState<SnapshotState>(() => {
     const embedded = typeof window === "undefined" ? undefined : window.__MODEL_COMPARISON__;
     return embedded ? { status: "ready", snapshot: normalize(embedded) } : { status: "loading" };
   });
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.__MODEL_COMPARISON__) return;
+    if (revision === 0 && typeof window !== "undefined" && window.__MODEL_COMPARISON__) return;
     let cancelled = false;
-    fetch(url)
+    fetch(url, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<Snapshot>;
@@ -34,12 +34,12 @@ export function useSnapshot(url = "data/models.json"): SnapshotState {
         if (!cancelled) setState({ status: "ready", snapshot: normalize(raw) });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ status: "error", message: err instanceof Error ? err.message : String(err) });
+        if (!cancelled) setState((previous) => previous.status === "ready" ? previous : { status: "error", message: err instanceof Error ? err.message : String(err) });
       });
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, revision]);
 
   return state;
 }

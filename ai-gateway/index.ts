@@ -1288,14 +1288,15 @@ window.GATEWAY_CONFIG = {
 // plugin writes to COST_DIR/models.json with Artificial Analysis benchmarks (fetched on demand, cached
 // outside the repo) and opens COST_DIR/model-comparison/index.html. Runs as a separate Node process.
 const COMPARE_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "model-comparison", "compare.mjs")
+const COMPARE_SERVER = join(dirname(COMPARE_SCRIPT), "server.mjs")
 const COMPARE_HINT = "model comparison is not installed: run ai-gateway/install.sh --only compare (needs Go and Node)"
 
-function runCompare(args: string[]): Promise<{ code: number; output: string }> {
+function runCompare(args: string[], server = false): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     let output = ""
     let child
     try {
-      child = spawn("node", [COMPARE_SCRIPT, ...args], {
+      child = spawn("node", [server ? COMPARE_SERVER : COMPARE_SCRIPT, ...args], {
         env: { ...process.env, GATEWAY_COST_DIR: COST_DIR },
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -1717,9 +1718,8 @@ export default {
           name: "model-comparison",
           description: "Sync Artificial Analysis benchmarks with the gateway models and open the comparison dashboard",
           execute: async () => {
-            if (!existsSync(COMPARE_SCRIPT)) return setIssue("compare", "warning", "Model comparison", COMPARE_HINT)
-            if (!existsSync(join(COST_DIR, "models.json"))) await loop.run() // the catalog it compares against
-            const r = await runCompare(["--quiet"]) // compare.mjs opens the page itself
+            if (!existsSync(COMPARE_SERVER)) return setIssue("compare", "warning", "Model comparison", COMPARE_HINT)
+            const r = await runCompare([], true)
             if (r.code === 0) clearIssue("compare")
             else setIssue("compare", "warning", "Model comparison failed", r.output.split("\n").slice(-3).join(" ") || `exit ${r.code}`)
           },
@@ -1775,21 +1775,12 @@ async function cli(cmd: string): Promise<number> {
     await new Promise((r) => setTimeout(r, 300)) // let open(1) start before the process exits
     out(`Opened ${displayPath(target)}`)
   } else if (cmd === "compare") {
-    if (!existsSync(COMPARE_SCRIPT)) {
+    if (!existsSync(COMPARE_SERVER)) {
       out(COMPARE_HINT)
       return 1
     }
-    // A catalog older than a day (or none) is reloaded first, so the comparison shows today's models and prices.
-    const age = await stat(join(COST_DIR, "models.json")).then((s) => Date.now() - s.mtimeMs, () => Infinity)
-    if (age > 24 * 3600_000) {
-      if (!BASE_URL) {
-        out(NOT_CONFIGURED)
-        return 1
-      }
-      const r = await refresh(ctx)
-      out(r === "ok" ? `Gateway catalog refreshed: ${source.catalog.length} models` : `Gateway refresh: ${r} (comparing against the last catalog)`)
-    }
-    const r = await runCompare(process.argv.slice(3))
+    const args = process.argv.slice(3)
+    const r = args.length ? await runCompare(args) : await runCompare([], true)
     if (r.output) out(r.output)
     if (r.code !== 0) return 1
   } else if (cmd === "refresh" || cmd === "status") {

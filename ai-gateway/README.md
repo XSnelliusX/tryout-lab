@@ -375,19 +375,18 @@ cross-check.
 
 ## Model comparison
 
-Type **`/model-comparison`** in OpenCode or Claude Code. It fetches the current
-public benchmark data from [Artificial Analysis](https://artificialanalysis.ai)
-(cached for 24 h), matches it to every model in the gateway catalog the plugin
-wrote, and opens `~/.gateway-cost/model-comparison/index.html`: intelligence and
-capability indices, raw benchmark scores, all reasoning-effort variants, speed,
-and the gateway's own prices next to each other.
+Type **`/model-comparison`** in OpenCode or Claude Code. The local dashboard opens
+immediately with the last snapshot while it refreshes gateway models and then
+fetches current [Artificial Analysis](https://artificialanalysis.ai) benchmarks.
+The **Sync** button repeats both steps; errors and stale AA fallback are shown
+on the page. A temporary server listens only on the local machine.
 
 From a terminal:
 
 ```sh
-node ~/.config/opencode/plugins/ai-gateway/index.ts compare              # refreshes a catalog older than 24 h first
-node ~/.config/opencode/plugins/ai-gateway/index.ts compare --refresh    # refetch the benchmarks now
-node ~/.config/opencode/plugins/ai-gateway/index.ts compare --offline    # cached benchmarks only
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare              # open and sync in background
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare --refresh    # one-shot AA build from current catalog
+node ~/.config/opencode/plugins/ai-gateway/index.ts compare --offline    # one-shot build with cached AA data
 ```
 
 The benchmark data is fetched on demand and cached under

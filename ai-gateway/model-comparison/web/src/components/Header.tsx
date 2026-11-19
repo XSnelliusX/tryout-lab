@@ -1,19 +1,23 @@
 import type { Snapshot } from "../lib/types";
 import { Glass } from "open-glass-ui";
 import { formatAge, formatDateTime } from "../lib/format";
+import type { SyncState } from "../lib/useSync";
 
 interface Props {
-  snapshot: Snapshot;
+  snapshot?: Snapshot;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  syncState: SyncState;
+  onSync: () => void;
 }
 
-export function Header({ snapshot, theme, onToggleTheme }: Props) {
-  const generated = snapshot.generated_at;
-  const aaFetched = snapshot.aa_fetched_at ?? generated;
-  const gatewayFetched = snapshot.gateway_fetched_at ?? generated;
-  const age = ageHours(aaFetched);
+export function Header({ snapshot, theme, onToggleTheme, syncState, onSync }: Props) {
+  const generated = snapshot?.generated_at;
+  const aaFetched = snapshot?.aa_fetched_at ?? generated;
+  const gatewayFetched = snapshot?.gateway_fetched_at ?? generated;
+  const age = aaFetched ? ageHours(aaFetched) : null;
   const stale = age !== null && age > 24;
+  const busy = syncState.phase === "gateway" || syncState.phase === "aa";
 
   return (
     <header className="masthead">
@@ -26,16 +30,20 @@ export function Header({ snapshot, theme, onToggleTheme }: Props) {
           <a href="#overview">Explore</a><a href="#ranking">Models</a><a href="#compare">Compare</a>
         </nav>
         <div className="top-actions">
+          <button type="button" className="sync-button" onClick={onSync} disabled={busy || syncState.phase === "unavailable"} aria-describedby="sync-status">
+            <span className={busy ? "sync-icon spinning" : "sync-icon"} aria-hidden="true">↻</span>
+            <span>{busy ? "Syncing" : "Sync"}</span>
+          </button>
           <details className="snapshot-menu">
             <summary aria-label={age === null ? "Data date unavailable" : stale ? "Data needs refresh" : "Data updated"} className={stale || age === null ? "snapshot-trigger stale" : "snapshot-trigger"}>
               <span className="status-dot" /> <span>{age === null ? "Date unavailable" : stale ? "Data needs refresh" : "Data updated"}</span>
             </summary>
             <div className="snapshot-popover">
               <strong>Data snapshot</strong>
-              <p>Artificial Analysis: {formatDateTime(aaFetched)} ({formatAge(aaFetched)})</p>
-              <p>Gateway: {formatDateTime(gatewayFetched)}</p>
-              <p>Snapshot built: {formatDateTime(generated)}</p>
-              {stale && <p className="snapshot-warning">AA data is {Math.round(age!)}h old. Run <code>node compare.mjs --refresh</code> (or /model-comparison) to refresh.</p>}
+              <p>Artificial Analysis: {aaFetched ? `${formatDateTime(aaFetched)} (${formatAge(aaFetched)})` : "Not available"}</p>
+              <p>Gateway: {gatewayFetched ? formatDateTime(gatewayFetched) : "Not available"}</p>
+              <p>Snapshot built: {generated ? formatDateTime(generated) : "Not available"}</p>
+              {stale && <p className="snapshot-warning">AA data is {Math.round(age!)}h old. Use Sync to refresh.</p>}
               <a href="https://artificialanalysis.ai/" target="_blank" rel="noreferrer">Data by Artificial Analysis ↗</a>
             </div>
           </details>
@@ -44,6 +52,10 @@ export function Header({ snapshot, theme, onToggleTheme }: Props) {
           </button>
         </div>
       </Glass>
+      <div id="sync-status" className={syncState.error || syncState.warning ? "sync-status sync-warning" : "sync-status"} role="status" aria-live="polite">
+        {busy && <progress aria-label={syncState.message} className="sr-only" />}
+        {busy || syncState.error || syncState.warning || syncState.phase === "unavailable" ? <span>{syncState.error ? `${syncState.message}: ${syncState.error}` : syncState.warning || syncState.message}</span> : null}
+      </div>
     </header>
   );
 }

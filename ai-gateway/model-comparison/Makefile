@@ -46,6 +46,7 @@ else
 	@$(MAKE) --no-print-directory build
 	@mkdir -p "$(DEST)"
 	install -m 0644 compare.mjs "$(DEST)/compare.mjs"
+	install -m 0644 server.mjs "$(DEST)/server.mjs"
 	install -m 0644 parse_aa.mjs "$(DEST)/parse_aa.mjs"
 	install -m 0755 bin/aasync "$(DEST)/aasync.tmp.$$$$" && mv -f "$(DEST)/aasync.tmp.$$$$" "$(DEST)/aasync"
 	rm -rf "$(DEST)/web.new"

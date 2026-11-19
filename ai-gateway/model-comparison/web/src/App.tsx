@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { GlassSystemProvider } from "open-glass-ui";
 import { useSnapshot } from "./lib/useSnapshot";
+import { useSync, type SyncState } from "./lib/useSync";
 import { applyFilters, rankByValue, PRICE_MAX, type Filters } from "./lib/filters";
 import { DEFAULT_PRICE_SENSITIVITY, TASKS, defaultTask, scoreFor, tasksFromMetrics } from "./lib/tasks";
 import { useThemeMode } from "./lib/theme";
@@ -34,27 +35,31 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 export default function App() {
-  const state = useSnapshot();
+  const { state: syncState, sync } = useSync();
+  const state = useSnapshot("data/models.json", syncState.revision);
   const [theme, toggleTheme] = useThemeMode();
 
-  if (state.status === "loading") return <Shell><Status text="Loading dashboard data…" /></Shell>;
+  if (state.status === "loading") return <GlassSystemProvider renderer="css" theme={{ appearance: theme }} toasts={false}><Shell><Header theme={theme} onToggleTheme={toggleTheme} syncState={syncState} onSync={sync} /><Status text="Loading dashboard data…" /></Shell></GlassSystemProvider>;
   if (state.status === "error") {
     return (
-      <Shell>
-        <Status text={`Could not load the dashboard data (${state.message}). Run “node compare.mjs” (or /model-comparison) to build it.`} />
-      </Shell>
+      <GlassSystemProvider renderer="css" theme={{ appearance: theme }} toasts={false}><Shell>
+        <Header theme={theme} onToggleTheme={toggleTheme} syncState={syncState} onSync={sync} />
+        <Status text={syncState.phase === "gateway" || syncState.phase === "aa" ? "Building your first snapshot…" : `No dashboard data available (${state.message}). Use Sync to try again.`} />
+      </Shell></GlassSystemProvider>
     );
   }
-  return <GlassSystemProvider renderer="css" theme={{ appearance: theme }} toasts={false}><Dashboard snapshot={state.snapshot} theme={theme} onToggleTheme={toggleTheme} /></GlassSystemProvider>;
+  return <GlassSystemProvider renderer="css" theme={{ appearance: theme }} toasts={false}><Dashboard snapshot={state.snapshot} theme={theme} onToggleTheme={toggleTheme} syncState={syncState} onSync={sync} /></GlassSystemProvider>;
 }
 
 interface DashboardProps {
   snapshot: Snapshot;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  syncState: SyncState;
+  onSync: () => void;
 }
 
-function Dashboard({ snapshot, theme, onToggleTheme }: DashboardProps) {
+function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: DashboardProps) {
   const tasks = useMemo(() => tasksFromMetrics(snapshot.metrics), [snapshot.metrics]);
   const [filters, setFilters] = useState<Filters>(() => ({ ...DEFAULT_FILTERS, task: defaultTask(tasks) }));
   const [colorBy, setColorBy] = useState<ColorBy>("creator");
@@ -93,7 +98,7 @@ function Dashboard({ snapshot, theme, onToggleTheme }: DashboardProps) {
 
   return (
     <Shell>
-      <Header snapshot={snapshot} theme={theme} onToggleTheme={onToggleTheme} />
+      <Header snapshot={snapshot} theme={theme} onToggleTheme={onToggleTheme} syncState={syncState} onSync={onSync} />
       <div className="workspace-layout">
       <aside className="criteria-rail" aria-label="Comparison criteria">
       <ControlBar
