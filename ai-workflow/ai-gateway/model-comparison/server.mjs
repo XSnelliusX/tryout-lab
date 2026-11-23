@@ -5,6 +5,9 @@
 //   <token>/                     the model comparison (index.html, assets/, data/)
 //   <token>/data/recommendations.json|.js   computed live from the snapshot and
 //                                the Herdr config, so applied role changes show at once
+//   <token>/usage/               the ai-gateway usage dashboard (dashboard.html with
+//                                usage-log.js and config.js from the cost folder), so
+//                                both pages link to each other under one origin
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +33,14 @@ function run(cmd, args, env) {
 }
 
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+// The usage dashboard is one file with one inline script: allow exactly that script by hash.
+function usagePage(file) {
+  const html = fs.readFileSync(file, 'utf8');
+  const hashes = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`);
+  return { html, csp: CSP.replace("script-src 'self'", `script-src 'self' ${hashes.join(' ')}`) };
+}
 
 function recommendations(cost, ccConfig) {
   const snapshot = JSON.parse(fs.readFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), 'utf8'));
@@ -85,6 +96,23 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
       return;
     }
     if (req.method !== 'GET') { res.writeHead(405).end(); return; }
+    if (route === 'usage') { res.writeHead(301, { Location: `${prefix}usage/` }).end(); return; }
+    if (route === 'usage/') {
+      const file = path.join(cost, 'dashboard.html');
+      if (!fs.existsSync(file)) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('No usage dashboard yet: run /usage-dashboard once.'); return; }
+      const page = usagePage(file);
+      res.setHeader('Content-Security-Policy', page.csp);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(page.html);
+      return;
+    }
+    if (route === 'usage/usage-log.js' || route === 'usage/config.js') {
+      const file = path.join(cost, path.basename(route));
+      res.setHeader('Content-Type', 'application/javascript');
+      if (!fs.existsSync(file)) { res.end(''); return; }
+      fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+      return;
+    }
     if (route === 'data/recommendations.json' || route === 'data/recommendations.js') {
       let body;
       try {

@@ -11,7 +11,9 @@ cost-to-performance, using [Artificial Analysis](https://artificialanalysis.ai/)
 - Opens a local dashboard immediately, showing the last snapshot while it
   refreshes the gateway and then AA. A **Sync** button repeats both steps.
 - Runs a temporary server bound to `127.0.0.1` so the page can initiate syncs;
-  it exits after 30 minutes without page activity and no sync in progress.
+  it exits after 30 minutes without page activity and no sync in progress. The
+  same server serves the usage dashboard at `<token>/usage/`, so the two pages
+  link to each other (**Usage ↗** here, **Model comparison ↗** there).
 - Holds the **recommendation engine** of the AI workflow (`engine.mjs`): the
   dashboard's difficulty cards and "Models per role" panel, Herdr's
   `cc-models` and the prompt rewriter all take their picks from it, through
@@ -119,8 +121,11 @@ unguessable URL and validates the request origin; it does not listen on other
 network interfaces. The one-shot file snapshot remains viewable without a
 server, but cannot perform a sync.
 
-Under that URL the server also serves `data/recommendations.json`, computed on
-each request.
+Under that URL the server also serves `data/recommendations.json` (computed on
+each request) and the usage dashboard at `usage/`: the cost folder's
+`dashboard.html` with its `usage-log.js` and `config.js`, its one inline script
+allowed by hash in the Content-Security-Policy. Nothing else from the cost
+folder is served.
 
 ## What the data contains
 
@@ -276,7 +281,7 @@ Intelligence Index; their raw benchmark scores are still shown.
 
 ```text
 compare.mjs          entry point: catalog -> AA -> joiner -> file:// dashboard + recommendations
-server.mjs           local server: sync, live recommendations
+server.mjs           local server: sync, live recommendations, the usage dashboard under usage/
 engine.mjs           the recommendation engine (pure; engine.d.mts types it for the web app)
 recommend.mjs        engine files and CLI (roles, tiers, write)
 parse_aa.mjs         AA fetcher/decryptor and matcher (no dependencies)

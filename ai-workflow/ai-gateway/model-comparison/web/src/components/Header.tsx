@@ -27,7 +27,8 @@ export function Header({ snapshot, theme, onToggleTheme, syncState, onSync }: Pr
           <span>Model Atlas <small>AI GATEWAY</small></span>
         </a>
         <nav className="topnav" aria-label="Dashboard sections">
-          <a href="#overview">Explore</a><a href="#ranking">Models</a><a href="#compare">Compare</a>
+          <a href="#overview">Explore</a><a href="#roles">Roles</a><a href="#ranking">Models</a><a href="#compare">Compare</a>
+          <a href={usageDashboardHref()} className="topnav-out" title="AI usage and cost dashboard">Usage <span aria-hidden="true">↗</span></a>
         </nav>
         <div className="top-actions">
           <button type="button" className="sync-button" onClick={onSync} disabled={busy || syncState.phase === "unavailable"} aria-describedby="sync-status">
@@ -63,4 +64,10 @@ export function Header({ snapshot, theme, onToggleTheme, syncState, onSync }: Pr
 function ageHours(iso: string): number | null {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : (Date.now() - date.getTime()) / 3_600_000;
+}
+
+// The usage dashboard lives next to this one: ~/.gateway-cost/dashboard.html for a
+// file:// snapshot, <token>/usage/ under the local server (same origin, same token).
+export function usageDashboardHref(protocol = typeof window === "undefined" ? "http:" : window.location.protocol): string {
+  return protocol === "file:" ? "../dashboard.html" : "usage/";
 }

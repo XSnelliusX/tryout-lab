@@ -409,6 +409,7 @@
     cursor: pointer;
     box-shadow: 0 1px 2px rgba(13, 19, 32, 0.05);
   }
+  a.btn { text-decoration: none; }
   .btn:hover:not(:disabled) {
     background: var(--surface-2);
     border-color: var(--border-strong);
@@ -1914,6 +1915,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <a class="btn" id="open-comparison" href="model-comparison/index.html" title="Benchmarks, prices and model picks per task and Herdr role">Model comparison <span aria-hidden="true">↗</span></a>
       <button type="button" class="btn" id="theme-toggle" aria-label="Color theme: Auto">Theme: Auto</button>
       <button type="button" class="btn" id="reload-data" aria-label="Reload current usage data">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3535,6 +3537,9 @@ addEventListener("keydown", (e) => {
 })
 
 const DATA_DIRS = ["", "../../../../.gateway-cost/"]
+// The model comparison sits next to this page: <cost dir>/model-comparison/ for a file:// copy,
+// the server's root when the comparison server serves this page under <token>/usage/.
+if (location.protocol !== "file:" && /\/usage\/$/.test(location.pathname)) $("#open-comparison").href = "../"
 function loadData(i = 0, bustCache = false, onDone = null, backup = null) {
   if (i === 0) {
     backup = { log: window.GATEWAY_USAGE_LOG, cfg: window.GATEWAY_CONFIG }

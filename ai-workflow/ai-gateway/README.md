@@ -349,6 +349,9 @@ itself, or from `../../../../.gateway-cost/` (the default folder seen from
 * **This month** counts the calendar month so far under the tool, billing,
   provider, model, agent and session filters (not the date range), so
   `Billing = Gateway` shows the gateway spend alone and `All` everything.
+* **Model comparison ↗** (top bar) opens the model comparison next to it:
+  `model-comparison/index.html` in the cost folder, or the comparison server's
+  page when `/model-comparison` serves this dashboard (see below).
 
 A `usage.jsonl` line looks like:
 
@@ -391,6 +394,10 @@ node ~/.config/opencode/plugins/ai-gateway/index.ts compare              # open 
 node ~/.config/opencode/plugins/ai-gateway/index.ts compare --refresh    # one-shot AA build from current catalog
 node ~/.config/opencode/plugins/ai-gateway/index.ts compare --offline    # one-shot build with cached AA data
 ```
+
+The page recommends a model per difficulty and shows the model picks per
+Herdr role (the same engine `cc-models` and the prompt rewriter use). Its
+**Usage ↗** link opens this usage dashboard, served by the same local server.
 
 The benchmark data is fetched on demand and cached under
 `~/.cache/ai-gateway/model-comparison/`; it is never part of this repo.

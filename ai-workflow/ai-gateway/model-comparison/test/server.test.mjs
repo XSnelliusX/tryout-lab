@@ -68,7 +68,7 @@ test('serves the app even before a first snapshot exists', async (t) => {
   assert.equal((await fetch(`${url}data/models.json`)).status, 404);
 });
 
-test('serves live recommendations that follow the Herdr config', async (t) => {
+test('serves live recommendations and the usage dashboard under the same capability URL', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comparison-usage-'));
   const web = path.join(root, 'web'), cost = path.join(root, 'cost'), ccConfig = path.join(root, 'cc.json');
   fs.mkdirSync(web, { recursive: true });
@@ -80,6 +80,8 @@ test('serves live recommendations that follow the Herdr config', async (t) => {
   }] };
   fs.writeFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), JSON.stringify(snapshot));
   fs.writeFileSync(ccConfig, JSON.stringify({ roles: { implementer: { model: 'gw/m-1' } } }));
+  fs.writeFileSync(path.join(cost, 'dashboard.html'), '<html><script>window.ok = 1</script></html>');
+  fs.writeFileSync(path.join(cost, 'usage-log.js'), 'window.GATEWAY_USAGE_LOG = ""');
   const job = deferred();
   const { server, url } = await startServer({ web, cost, ccConfig, runner: () => job.promise });
   t.after(() => { job.reject(new Error('stopped')); server.close(); fs.rmSync(root, { recursive: true, force: true }); });
@@ -92,4 +94,14 @@ test('serves live recommendations that follow the Herdr config', async (t) => {
   assert.equal((await (await fetch(`${url}data/recommendations.json`)).json()).roles.roles[0].role, 'reviewer');
   assert.match(await (await fetch(`${url}data/recommendations.js`)).text(), /^window\.__MODEL_RECOMMENDATIONS__ = /);
 
+  const redirect = await fetch(`${url}usage`, { redirect: 'manual' });
+  assert.equal(redirect.status, 301);
+  const page = await fetch(`${url}usage/`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /window\.ok = 1/);
+  assert.match(page.headers.get('content-security-policy'), /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/);
+  assert.match(await (await fetch(`${url}usage/usage-log.js`)).text(), /GATEWAY_USAGE_LOG/);
+  assert.equal(await (await fetch(`${url}usage/config.js`)).text(), '', 'a missing config.js is an empty script');
+  assert.equal((await fetch(`${url}usage/usage.jsonl`)).status, 404, 'only the two data scripts are served');
+  assert.equal((await fetch(`${url.replace(/\/[0-9a-f]{64}\/$/, '/')}usage/`)).status, 404, 'the token is required');
 });
