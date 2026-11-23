@@ -1,4 +1,4 @@
-"""Writer role regression tests (python3 -m unittest discover -s herdr-commander/tests -v)."""
+"""Writer role regression tests (python3 -m unittest discover -s ai-workflow/herdr-commander/tests -v)."""
 
 import json
 import os

@@ -41,7 +41,7 @@ cd mac-setup/claude-code      # from the repo root
 
 ## Gateway commands
 
-The [AI gateway module](../../ai-gateway/README.md) installs four skills to `~/.claude/skills/` (`ai-gateway/install.sh --only claude`, also run by `setup.sh --only gateway`), so Claude Code has the same commands as OpenCode. This folder's `install.sh` no longer touches them:
+The [AI gateway module](../../ai-workflow/ai-gateway/README.md) installs four skills to `~/.claude/skills/` (`ai-workflow/ai-gateway/install.sh --only claude`, also run by `setup.sh --only gateway`), so Claude Code has the same commands as OpenCode. This folder's `install.sh` no longer touches them:
 
 | Command | Does |
 |---|---|

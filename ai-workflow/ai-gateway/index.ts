@@ -84,7 +84,7 @@ const DASHBOARD_SRC = join(dirname(fileURLToPath(import.meta.url)), "dashboard.h
 
 // GATEWAY_BASE_URL has no default. Empty means not configured: setup() then registers nothing.
 const BASE_URL = setting("GATEWAY_BASE_URL", "").trim().replace(/\/+$/, "")
-const NOT_CONFIGURED = "GATEWAY_BASE_URL is not set. Run ai-gateway/install.sh --only env (or mac-setup/setup.sh --only gateway), or add it to the env file (~/.config/ai-gateway/env, or $GATEWAY_ENV_FILE)."
+const NOT_CONFIGURED = "GATEWAY_BASE_URL is not set. Run ai-workflow/ai-gateway/install.sh --only env (or mac-setup/setup.sh --only gateway), or add it to the env file (~/.config/ai-gateway/env, or $GATEWAY_ENV_FILE)."
 const COMPLETIONS_BASE = `${BASE_URL}/aiendpoint/v1`
 const FAST_URL = `${BASE_URL}/aiendpoint/v1/models`
 const INFO_URL = `${BASE_URL}/aiendpoint/v1/model/info`
@@ -1289,7 +1289,7 @@ window.GATEWAY_CONFIG = {
 // outside the repo) and opens COST_DIR/model-comparison/index.html. Runs as a separate Node process.
 const COMPARE_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "model-comparison", "compare.mjs")
 const COMPARE_SERVER = join(dirname(COMPARE_SCRIPT), "server.mjs")
-const COMPARE_HINT = "model comparison is not installed: run ai-gateway/install.sh --only compare (needs Go and Node)"
+const COMPARE_HINT = "model comparison is not installed: run ai-workflow/ai-gateway/install.sh --only compare (needs Go and Node)"
 
 function runCompare(args: string[], server = false): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {

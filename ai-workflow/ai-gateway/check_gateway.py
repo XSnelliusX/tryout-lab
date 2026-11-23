@@ -286,7 +286,7 @@ def main():
     ap.add_argument("--out", help="write models.json/models.csv to this folder (default: print only)")
     args = ap.parse_args()
     if not BASE_URL:
-        sys.exit("[!] GATEWAY_BASE_URL is not set. Run ai-gateway/install.sh --only env (or mac-setup/setup.sh --only gateway), or add it to ~/.config/ai-gateway/env (or the file in GATEWAY_ENV_FILE).")
+        sys.exit("[!] GATEWAY_BASE_URL is not set. Run ai-workflow/ai-gateway/install.sh --only env (or mac-setup/setup.sh --only gateway), or add it to ~/.config/ai-gateway/env (or the file in GATEWAY_ENV_FILE).")
 
     key = read_key()
     print(f"[i] gateway  : {BASE_URL}")

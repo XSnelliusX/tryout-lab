@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install my Claude Code statusline and keybindings, and set the statusLine key in settings.json.
 # The gateway commands (/gateway-refresh, /usage-dashboard, /model-comparison, ...) and the usage hook come
-# from the AI gateway module: ../../ai-gateway/install.sh (setup.sh --only gateway).
+# from the AI gateway module: ../../ai-workflow/ai-gateway/install.sh (setup.sh --only gateway).
 # Changed files are shown as a diff and you confirm them; the old ones go to ~/.setup_backup/<stamp>/ first (see lib.sh).
 # Usage: ./install.sh   (from this folder)
 set -euo pipefail

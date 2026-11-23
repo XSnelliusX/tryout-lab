@@ -30,7 +30,7 @@ The ai-gateway installer builds and installs this module for you; see
 [`../README.md`](../README.md). Under the hood it runs:
 
 ```sh
-make -C ai-gateway/model-comparison install DEST=<install dir>
+make -C ai-workflow/ai-gateway/model-comparison install DEST=<install dir>
 ```
 
 which builds the Go joiner and the web app, then copies only the runtime files

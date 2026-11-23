@@ -66,7 +66,7 @@ describe() { # the menu text of a step
     aws) echo "Optional: AWS CLI and Session Manager plugin" ;;
     claude) echo "Claude Code (native installer) and the statusline" ;;
     opencode) echo "OpenCode CLI from the official installer" ;;
-    gateway) echo "AI gateway module (../ai-gateway): OpenCode plugin, env file and key, Claude Code commands, model comparison" ;;
+    gateway) echo "AI gateway module (../ai-workflow/ai-gateway): OpenCode plugin, env file and key, Claude Code commands, model comparison" ;;
     cmux) echo "cmux config with sidebars and Ghostty" ;;
     herdr) echo "Herdr desktop app (cask herdr-app) with its settings, keys, layouts and mods" ;;
     vorssaint) echo "Vorssaint menu bar settings" ;;
@@ -328,8 +328,8 @@ step_opencode() {
 
 step_gateway() {
   bold "AI gateway module (OpenCode plugin, env file and key, Claude Code commands, model comparison)"
-  # The module lives at the top of the repo and installs on its own too: ../ai-gateway/install.sh
-  "$repo/ai-gateway/install.sh"
+  # The module lives in ai-workflow/ and installs on its own too: ../ai-workflow/ai-gateway/install.sh
+  "$repo/ai-workflow/ai-gateway/install.sh"
 }
 
 step_cmux() {

@@ -267,7 +267,7 @@ Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 ## Troubleshooting
 
 - **`cc-agent` / `cc-commander`: role still has a placeholder model**: run `cc-models recommend --apply`, or edit `models.json` with real ids from `opencode models`.
-- **`cc-models`: no comparison data**: install the ai-gateway plugin's model comparison (`ai-gateway/install.sh --only compare`), then `cc-models recommend --refresh`.
+- **`cc-models`: no comparison data**: install the ai-gateway plugin's model comparison (`../ai-gateway/install.sh --only compare`), then `cc-models recommend --refresh`.
 - **`command not found: cc-agent`**: `~/.local/bin` is not on `PATH`; the installer prints the line to add.
 - **Commander runs but `hc` inside it cannot connect**: `HC_SOCKET` is derived from `HC_TERMINAL_SOCKET` or `$XDG_STATE_HOME/herdr-core/<session>/<session>.sock`. Launch roles through `cc-agent`, not `opencode` directly, so it is pinned.
 - **`cc-space` returns `name_match_folder_differs`**: a Space with that name already exists for another folder. Reuse it or choose a new name.

@@ -12,7 +12,7 @@ flowchart LR
     CFG["<b>~/.config/herdr-app</b><br/>settings.json · keys.json<br/>layouts/ · mods/"] --> APP
     REPO["<b>mac-setup/herdr/config</b>"] -->|install.sh| CFG
     CFG -->|update-config.sh| REPO
-    HC["<b>../herdr-commander</b><br/>cc-* scripts, models.json"] -.->|cc-* mods call| APP
+    HC["<b>../../ai-workflow/herdr-commander</b><br/>cc-* scripts, models.json"] -.->|cc-* mods call| APP
 ```
 
 ## What is in [config/](config/)
@@ -33,8 +33,8 @@ Only files that are mine are kept. The mods, layouts, icons and themes that ship
 
 The `cc-*` mods and `my-usage` need other parts of this repo to show anything:
 
-- `cc-*`: the [herdr-commander](../../herdr-commander/README.md) scripts (`cc-commander`, `cc-budget`, ...) in `~/.local/bin` and `~/.config/command-center/models.json`. Install them with `../../herdr-commander/install.sh`.
-- `my-usage`: the [AI gateway](../../ai-gateway/README.md) usage log (`setup.sh` step `gateway`).
+- `cc-*`: the [herdr-commander](../../ai-workflow/herdr-commander/README.md) scripts (`cc-commander`, `cc-budget`, ...) in `~/.local/bin` and `~/.config/command-center/models.json`. Install them with `../../ai-workflow/herdr-commander/install.sh`.
+- `my-usage`: the [AI gateway](../../ai-workflow/ai-gateway/README.md) usage log (`setup.sh` step `gateway`).
 - `my-github`: a logged-in `gh` (step `github`).
 
 ## Install

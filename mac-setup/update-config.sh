@@ -60,11 +60,11 @@ fi
 while IFS= read -r f <&3; do pull "$HOME/.config/nvim/$f" "$here/nvim/$f"; done 3< <(
   cd "$HOME/.config/nvim" 2>/dev/null &&
     find . -type f \( -name '*.lua' -o -name '*.json' -o -name '*.toml' -o -name '*.yaml' \) | sed 's#^\./##' | sort)
-# The AI gateway plugin for opencode (../ai-gateway, installed by its install.sh), its Claude Code commands, and the global asdf versions.
+# The AI gateway plugin for opencode (../ai-workflow/ai-gateway, installed by its install.sh), its Claude Code commands, and the global asdf versions.
 for f in index.ts tui.ts check_gateway.py claude_usage.py dashboard.html package.json; do
-  pull "$HOME/.config/opencode/plugins/ai-gateway/$f" "$repo/ai-gateway/$f"
+  pull "$HOME/.config/opencode/plugins/ai-gateway/$f" "$repo/ai-workflow/ai-gateway/$f"
 done
-for d in "$repo"/ai-gateway/claude-skills/*/; do
+for d in "$repo"/ai-workflow/ai-gateway/claude-skills/*/; do
   n="$(basename "$d")"; pull "$HOME/.claude/skills/$n/SKILL.md" "$d/SKILL.md"
 done
 pull "$HOME/.tool-versions" "$here/asdf/tool-versions"

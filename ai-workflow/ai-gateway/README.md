@@ -111,9 +111,9 @@ as-is: no build step, no dependencies.
 Install from the repo, not by hand. From the `tryout_lab` checkout:
 
 ```sh
-ai-gateway/install.sh             # every part, each asks first
-ai-gateway/install.sh --dry-run   # only report what would change
-ai-gateway/install.sh --only plugin|env|claude|antigravity|compare
+ai-workflow/ai-gateway/install.sh             # every part, each asks first
+ai-workflow/ai-gateway/install.sh --dry-run   # only report what would change
+ai-workflow/ai-gateway/install.sh --only plugin|env|claude|antigravity|compare
 ```
 
 `mac-setup/setup.sh --only gateway` runs the same script. It uses the prompt and
@@ -149,7 +149,7 @@ Plugin IDs must be unique. The plugin ID is `gateway-models`, so a second copy i
 the plugins directory (for example an older folder with another name) fails with
 `Duplicate plugin ID: gateway-models` and never runs. Remove any such copy first.
 
-**Updating.** Run `ai-gateway/install.sh` again. It replaces the copy in the plugins
+**Updating.** Run `ai-workflow/ai-gateway/install.sh` again. It replaces the copy in the plugins
 folder. The usage history is not in the plugin folder (see "Output files"), so it
 is kept.
 
@@ -181,7 +181,7 @@ watches that file:
 | Gateway error (other HTTP status), non-JSON or empty answer | error, warning with cached models | Catalog is not replaced by an empty one. |
 | Model details unavailable (`/model/info`) | warning | Models stay listed (without prices if none were cached). |
 | Integration not connected | warning | Models still work; `/models` may not group by provider. |
-| Not configured (`GATEWAY_BASE_URL` empty or missing) | error | Nothing is registered. Run `ai-gateway/install.sh --only env` or fix the env file (see "Configuration"). |
+| Not configured (`GATEWAY_BASE_URL` empty or missing) | error | Nothing is registered. Run `ai-workflow/ai-gateway/install.sh --only env` or fix the env file (see "Configuration"). |
 | Model cache, catalog report, usage log/summary, dashboard, browser, event stream | warning | Write/read failures in the cost directory or OpenCode storage. |
 
 The TUI ignores a `status.json` whose writer process is gone. When the TUI
@@ -420,7 +420,7 @@ for each of `Stop`, `SubagentStop` and `SessionEnd`:
   "command": "[ -f \"$HOME/.config/opencode/plugins/ai-gateway/claude_usage.py\" ] && python3 -I \"$HOME/.config/opencode/plugins/ai-gateway/claude_usage.py\"; true" }] }
 ```
 
-(`ai-gateway/install.sh --only claude` does this.) As a hook it is
+(`ai-workflow/ai-gateway/install.sh --only claude` does this.) As a hook it is
 silent, takes ~0.2 s, and always exits 0; errors go to `claude-usage.log`.
 
 How it counts:
@@ -485,7 +485,7 @@ sure the key file exists (`GATEWAY_API_KEY_FILE`). Run `check_gateway.py --fast`
 to test the endpoint and the key directly.
 
 **"Not configured" toast.** `GATEWAY_BASE_URL` is empty in the environment and in
-the env file. Run `ai-gateway/install.sh --only env`, or add the line to
+the env file. Run `ai-workflow/ai-gateway/install.sh --only env`, or add the line to
 `~/.config/ai-gateway/env`. Restart OpenCode afterwards, because the plugin reads
 its settings at startup.
 

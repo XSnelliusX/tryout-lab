@@ -58,7 +58,7 @@ The last line of a run names the backup folder, if the run replaced anything.
 | `aws` | **Optional**, not preselected in the menu. Installs the AWS CLI and the Session Manager plugin the way the AWS guides recommend, not with Homebrew, only the missing ones and only after their signatures check out ([how](#aws-cli-and-session-manager-plugin-how-they-are-verified)). Its own question defaults to no. It does not sign you in or write any profile |
 | `claude` | Claude Code via the native installer (updates itself), plus the [statusline](claude-code/README.md) and keybindings. The gateway commands and the usage hook come from the `gateway` step |
 | `opencode` | OpenCode via the official installer (`~/.opencode/bin`), skipped when `opencode` is already found |
-| `gateway` | the [AI gateway module](../ai-gateway/README.md): OpenCode plugin, env file and API key, Claude Code commands and usage hook, model comparison, see below |
+| `gateway` | the [AI gateway module](../ai-workflow/ai-gateway/README.md): OpenCode plugin, env file and API key, Claude Code commands and usage hook, model comparison, see below |
 | `cmux` | [cmux config](cmux/README.md): settings, sidebars, Ghostty |
 | `herdr` | the [Herdr desktop app](herdr/README.md) (cask `herdr-app`, not the herdr TUI formula) and its settings, keys, Command Center layouts and mods in `~/.config/herdr-app` |
 | `vorssaint` | restores the Vorssaint settings (below) |
@@ -77,7 +77,7 @@ The [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/get
 
 ## AI gateway
 
-The `gateway` step runs [../ai-gateway/install.sh](../ai-gateway/README.md), the
+The `gateway` step runs [../ai-workflow/ai-gateway/install.sh](../ai-workflow/ai-gateway/README.md), the
 installer of the separate AI gateway module: the OpenCode plugin, the gateway URL
 and API key (`~/.config/ai-gateway/env`, never in the repo), the Claude Code
 commands (`/usage-dashboard`, `/model-comparison`, ...) with the usage hook, and

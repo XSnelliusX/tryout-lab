@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 ```!
 d="$HOME/.config/opencode/plugins/ai-gateway"
-if [ ! -f "$d/index.ts" ]; then echo "The ai-gateway plugin is not installed: run ai-gateway/install.sh (or mac-setup/setup.sh --only gateway)"
+if [ ! -f "$d/index.ts" ]; then echo "The ai-gateway plugin is not installed: run ai-workflow/ai-gateway/install.sh (or mac-setup/setup.sh --only gateway)"
 elif ! command -v node >/dev/null; then echo "node not found (needs Node 23.6+, mac-setup/setup.sh --only asdf installs it)"
 else node "$d/index.ts" compare 2>&1 | tail -8; fi
 ```

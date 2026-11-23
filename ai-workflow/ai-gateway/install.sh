@@ -13,7 +13,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Shared prompt/backup helpers (gum menus, install_file, install_tree, ask, ...).
-. "$here/../mac-setup/lib.sh"
+. "$here/../../mac-setup/lib.sh"
 
 GW_ENV="$HOME/.config/ai-gateway/env"
 DST="$HOME/.config/opencode/plugins/ai-gateway"
