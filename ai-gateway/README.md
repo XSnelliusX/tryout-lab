@@ -9,6 +9,7 @@ Code, in one module that installs on its own (or from `mac-setup`):
 | Usage dashboard (`dashboard.html`) | All AI usage by tool, agent, model and billing, from one log that OpenCode, Neovim and Claude Code write to | `/usage-dashboard` |
 | Model comparison (`model-comparison/`) | Joins the gateway's models with public Artificial Analysis benchmarks: intelligence and capability indices, raw scores, speed and price per model, side by side | `/model-comparison` |
 | Claude Code commands (`claude-skills/`) and usage hook (`claude_usage.py`) | The same commands in Claude Code, and Claude Code's usage in the shared log | `/usage-dashboard`, `/model-comparison`, ... |
+| Antigravity usage hook (`antigravity_usage.py`) | Logs Antigravity CLI and Desktop App calls to the shared log (company Enterprise Gateway sessions only; personal Pro sessions are ignored) | `~/.gemini/config/hooks.json` |
 | `check_gateway.py` | Tests the URL and key, lists models | `python3 check_gateway.py` |
 
 The gateway URL and the API key are configured on the machine
@@ -112,7 +113,7 @@ Install from the repo, not by hand. From the `tryout_lab` checkout:
 ```sh
 ai-gateway/install.sh             # every part, each asks first
 ai-gateway/install.sh --dry-run   # only report what would change
-ai-gateway/install.sh --only plugin|env|claude|compare
+ai-gateway/install.sh --only plugin|env|claude|antigravity|compare
 ```
 
 `mac-setup/setup.sh --only gateway` runs the same script. It uses the prompt and
@@ -125,6 +126,7 @@ Python 3, and for the model comparison also Go 1.24+ and npm.
 | `plugin` | Copies the plugin files to `~/.config/opencode/plugins/ai-gateway/` (not this README, `install.sh`, `claude-skills/` or `model-comparison/`). OpenCode loads every folder in its plugins directory, so `opencode.json` needs no entry. An older `*-gateway` folder is migrated (see below) |
 | `env` | Asks for the gateway URL and the key file and writes `~/.config/ai-gateway/env` (mode 600, see "Configuration"). A missing key is asked for with hidden input and stored in `~/.keys/ai-gateway.key` (mode 600). Then runs `check_gateway.py` |
 | `claude` | Copies `claude-skills/*` to `~/.claude/skills/` and registers the usage hook in `~/.claude/settings.json` (Stop, SubagentStop, SessionEnd -> `claude_usage.py`); everything else in that file is kept. Imports the existing Claude Code history once |
+| `antigravity` | Registers the `ai-gateway-usage` hook (`PostInvocation`, `Stop` -> `antigravity_usage.py`) in `~/.gemini/config/hooks.json`. Only logs sessions where `AGY_LLM_GATEWAY_URL` points at the company gateway (`GATEWAY_BASE_URL`) |
 | `compare` | Builds `model-comparison/` (Go binary + web app) and installs the result to `~/.config/opencode/plugins/ai-gateway/model-comparison/` |
 
 Changed files are shown with a one-line summary and you choose overwrite, show
@@ -340,9 +342,10 @@ itself, or from `../../../../.gateway-cost/` (the default folder seen from
   write, overall and per model); a weekday by hour heatmap; top sessions; a
   sortable model table; the raw step log (latest 300). **Export CSV** downloads
   the filtered steps.
-* Model colors are fixed by total cost over all data, so a model keeps its color
-  when filters change. Models past the 8th fold into "Other models". Tools have
-  fixed colors (OpenCode blue, Claude Code orange, Neovim green, Claude Desktop yellow).
+* Every model gets its own distinct color and name (no "Other models" bucket),
+  keeping consistent colors when filters change. Tools have fixed colors
+  (OpenCode blue, Claude Code orange, Neovim green, Claude Desktop yellow,
+  Antigravity CLI green, Antigravity Desktop purple).
 * **This month** counts the calendar month so far under the tool, billing,
   provider, model, agent and session filters (not the date range), so
   `Billing = Gateway` shows the gateway spend alone and `All` everything.

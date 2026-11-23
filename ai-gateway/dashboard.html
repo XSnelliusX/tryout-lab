@@ -75,6 +75,14 @@
     --s6: #247a1a; --on-s6: #ffffff;
     --s7: #5946b8; --on-s7: #ffffff;
     --s8: #c42830; --on-s8: #ffffff;
+    --s9: #0b8494; --on-s9: #ffffff;
+    --s10: #8c4a08; --on-s10: #ffffff;
+    --s11: #7e3af2; --on-s11: #ffffff;
+    --s12: #0f766e; --on-s12: #ffffff;
+    --s13: #c026d3; --on-s13: #ffffff;
+    --s14: #4f46e5; --on-s14: #ffffff;
+    --s15: #65a30d; --on-s15: #0d1320;
+    --s16: #db2777; --on-s16: #ffffff;
     --other: #626b7c; --on-other: #ffffff;
 
     /* Heatmap levels */
@@ -141,6 +149,14 @@
       --s6: #41b54b; --on-s6: #061508;
       --s7: #9d92f2; --on-s7: #0d0a1f;
       --s8: #ed6c6c; --on-s8: #1a0606;
+      --s9: #22c1d6; --on-s9: #05161a;
+      --s10: #e09145; --on-s10: #170d04;
+      --s11: #b282ff; --on-s11: #10081f;
+      --s12: #2dd4bf; --on-s12: #041917;
+      --s13: #e879f9; --on-s13: #1b0620;
+      --s14: #818cf8; --on-s14: #090b20;
+      --s15: #a3e635; --on-s15: #0e1803;
+      --s16: #f472b6; --on-s16: #1e0613;
       --other: #8790a0; --on-other: #0c1017;
 
       --h1: #172b4d; --h2: #1b3d73; --h3: #20529e; --h4: #296ecc; --h5: #468ee8; --h6: #7bb4f5; --h7: #c4defc;
@@ -197,6 +213,14 @@
     --s6: #41b54b; --on-s6: #061508;
     --s7: #9d92f2; --on-s7: #0d0a1f;
     --s8: #ed6c6c; --on-s8: #1a0606;
+    --s9: #22c1d6; --on-s9: #05161a;
+    --s10: #e09145; --on-s10: #170d04;
+    --s11: #b282ff; --on-s11: #10081f;
+    --s12: #2dd4bf; --on-s12: #041917;
+    --s13: #e879f9; --on-s13: #1b0620;
+    --s14: #818cf8; --on-s14: #090b20;
+    --s15: #a3e635; --on-s15: #0e1803;
+    --s16: #f472b6; --on-s16: #1e0613;
     --other: #8790a0; --on-other: #0c1017;
     --h1: #172b4d; --h2: #1b3d73; --h3: #20529e; --h4: #296ecc; --h5: #468ee8; --h6: #7bb4f5; --h7: #c4defc;
   }
@@ -2254,7 +2278,12 @@ const TOKEN_TYPES = [
   { key: "cache_write", label: "Cache write", color: "var(--s4)", ink: "var(--on-s4)" },
 ]
 const UNPRICED = { key: "unpriced", label: "Priced by OpenCode", color: "var(--other)", ink: "var(--on-other)" }
-const TOOL_LABELS = { "prompt-rewriter": "Prompt Rewriter / Improver" }
+const TOOL_LABELS = {
+  "prompt-rewriter": "Prompt Rewriter / Improver",
+  "antigravity-cli": "Antigravity CLI",
+  "antigravity-desktop": "Antigravity Desktop",
+  "antigravity-ide": "Antigravity IDE",
+}
 const TOOL_COLORS = {
   opencode: "var(--s1)",
   "claude-code": "var(--s2)",
@@ -2262,6 +2291,13 @@ const TOOL_COLORS = {
   "claude-desktop": "var(--s4)",
   "prompt-rewriter": "var(--s5)",
   "Prompt Rewriter / Improver": "var(--s5)",
+  "antigravity-cli": "var(--s6)",
+  "Antigravity CLI": "var(--s6)",
+  "antigravity-desktop": "var(--s7)",
+  "Antigravity Desktop": "var(--s7)",
+  "antigravity-ide": "var(--s8)",
+  "Antigravity IDE": "var(--s8)",
+  antigravity: "var(--s6)",
 }
 const toolColor = (t) => TOOL_COLORS[t] ?? "var(--other)"
 const BILLING_LABELS = { gateway: "Gateway (metered)", usage: "Usage-based (direct)", other: "Other provider" }
@@ -2283,7 +2319,36 @@ const monthlyBudgetLimit = () => customBudgetUSD ?? (Number(CONFIG().monthlyLimi
 
 let ROWS = []
 const colorOf = new Map()
+let viewColorOf = colorOf
 const providerOf = new Map()
+
+const PALETTE_SIZE = 16
+function paletteColor(i) {
+  if (i < PALETTE_SIZE) return `var(--s${i + 1})`
+  const hue = Math.round(((i - PALETTE_SIZE) * 137.508 + 25) % 360)
+  return `hsl(${hue} 68% 54%)`
+}
+
+function buildViewColors(rows) {
+  const m = metric()
+  const active = group(rows, (r) => r.key).sort((a, b) => m.of(b) - m.of(a) || b.cost - a.cost || b.tokens - a.tokens)
+  const map = new Map()
+  const used = new Set()
+  for (const g of active) {
+    const c = colorOf.get(g.key)
+    if (c && c.startsWith("var(--s")) {
+      map.set(g.key, c)
+      used.add(c)
+    }
+  }
+  const free = Array.from({ length: PALETTE_SIZE }, (_, i) => `var(--s${i + 1})`).filter((c) => !used.has(c))
+  let extraIdx = PALETTE_SIZE
+  for (const g of active) {
+    if (!map.has(g.key)) map.set(g.key, free.shift() ?? colorOf.get(g.key) ?? paletteColor(extraIdx++))
+  }
+  return map
+}
+const modelColor = (key) => viewColorOf.get(key) ?? colorOf.get(key) ?? paletteColor(0)
 
 function enrich(r) {
   const n = (k) => Number(r[k]) || 0
@@ -2337,7 +2402,7 @@ function load(text, sourceLabel) {
   colorOf.clear()
   providerOf.clear()
   const byModel = group(ROWS, (r) => r.key).sort((a, b) => b.cost - a.cost || b.tokens - a.tokens)
-  byModel.forEach((g, i) => { colorOf.set(g.key, i < 8 ? `var(--s${i + 1})` : "var(--other)"); providerOf.set(g.key, g.rows[0].provider) })
+  byModel.forEach((g, i) => { colorOf.set(g.key, paletteColor(i)); providerOf.set(g.key, g.rows[0].provider) })
   const span = ROWS.length ? `${fmtTime(ROWS[0].t)} → ${fmtTime(ROWS.at(-1).t)}` : ""
   $("#source").textContent = `${ROWS.length.toLocaleString()} steps from ${sourceLabel}${span ? " · " + span : ""}`
   $("#empty").hidden = ROWS.length > 0
@@ -2828,15 +2893,14 @@ function renderTime(rows) {
 
   const series = new Map()
   for (const r of rows) {
-    const c = colorOf.get(r.key)
-    const sk = c === "var(--other)" ? "__other" : r.key
-    let s = series.get(sk)
-    if (!s) series.set(sk, (s = { key: sk, label: sk === "__other" ? "Other models" : r.label, color: c, total: 0, by: new Map() }))
+    const c = modelColor(r.key)
+    let s = series.get(r.key)
+    if (!s) series.set(r.key, (s = { key: r.key, label: r.label, color: c, total: 0, by: new Map() }))
     const k = keyOf(r.t), v = rowValue(r)
     s.total += v
     s.by.set(k, (s.by.get(k) ?? 0) + v)
   }
-  const list = [...series.values()].sort((a, b) => (a.key === "__other") - (b.key === "__other") || b.total - a.total)
+  const list = [...series.values()].sort((a, b) => b.total - a.total)
   $("#time-legend").replaceChildren(...(chartMode === "stacked" && list.length > 1
     ? list.map((s) => h("span", {}, h("i", { style: { background: s.color } }), s.label))
     : []))
@@ -2960,7 +3024,7 @@ function renderBars(box, groups, { label, sub, color, dim, limit = 12 }) {
 function renderSpotlight(rows) {
   const models = group(rows, (r) => r.key)
   renderBars($("#spot-models"), models, {
-    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => colorOf.get(g.key), dim: "model", limit: 5,
+    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => modelColor(g.key), dim: "model", limit: 5,
   })
   const m = metric()
   const tools = group(rows, (r) => r.tool).sort((a, b) => m.of(b) - m.of(a))
@@ -3286,7 +3350,7 @@ function table(box, id, cols, data, { sort = 0, dir = -1, limit, onRow, rowTitle
   }
 }
 
-const modelCell = (key, label) => [h("span", { class: "dot", style: { background: colorOf.get(key) } }), label]
+const modelCell = (key, label) => [h("span", { class: "dot", style: { background: modelColor(key) } }), label]
 
 function renderStepsTable(baseRows) {
   const finishes = [...new Set(baseRows.map((r) => r.finish).filter(Boolean))].sort()
@@ -3389,12 +3453,13 @@ function render() {
   tip.hidden = true
   syncControls()
   const rows = filtered()
+  viewColorOf = buildViewColors(rows)
   renderActiveFilters(rows.length)
   renderKPIs(rows)
   renderTime(rows)
   renderSpotlight(rows)
   renderBars($("#by-model"), group(rows, (r) => r.key), {
-    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => colorOf.get(g.key), dim: "model",
+    label: (g) => g.rows[0].label, sub: (g) => g.rows[0].provider, color: (g) => modelColor(g.key), dim: "model", limit: Infinity,
   })
   renderBars($("#by-provider"), group(rows, (r) => r.provider), {
     label: (g) => g.key, sub: (g) => `${g.models.size} model${g.models.size === 1 ? "" : "s"}`, color: () => "var(--s1)", dim: "provider",

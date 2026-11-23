@@ -4,10 +4,11 @@
 #   2. gateway URL and API key  -> ~/.config/ai-gateway/env (chmod 600), key file (chmod 600)
 #   3. Claude Code commands     -> ~/.claude/skills/{gateway-refresh,gateway-status,usage-dashboard,model-comparison}
 #      and the usage hook in ~/.claude/settings.json (logs Claude Code calls to ~/.gateway-cost)
-#   4. model comparison         -> built (Go + Node) into the plugin folder, opened with /model-comparison
+#   4. Antigravity usage hook   -> ~/.gemini/config/hooks.json (logs company-gateway Antigravity CLI & Desktop calls)
+#   5. model comparison         -> built (Go + Node) into the plugin folder, opened with /model-comparison
 # Every part asks first. Changed files are shown and confirmed, the old ones go to ~/.setup_backup/<stamp>/.
 # The gateway URL and the key never enter this repo.
-# Usage: ./install.sh [--dry-run] [--only plugin|env|claude|compare]
+# Usage: ./install.sh [--dry-run] [--only plugin|env|claude|antigravity|compare]
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -183,6 +184,32 @@ PY
   else python3 -I "$collector" </dev/null; fi   # import what is not logged yet (first run: the history)
 }
 
+part_antigravity() {
+  bold "Antigravity (CLI & Desktop): company-gateway usage hook -> ~/.gemini/config/hooks.json"
+  local hooks_file="$HOME/.gemini/config/hooks.json" collector="$DST/antigravity_usage.py" merged
+  if ! have agy && [ ! -d "/Applications/Antigravity.app" ] && [ ! -d "$HOME/.gemini" ]; then
+    info "Antigravity is not installed, skipped"; return 0
+  fi
+  ask "Install or update the Antigravity usage hook?" || return 0
+  merged="$(mktemp)"
+  python3 - "$hooks_file" "$merged" "$collector" <<'PY'
+import json, os, sys
+path, out, collector = sys.argv[1:4]
+data = json.load(open(path)) if os.path.exists(path) else {}
+cmd_post = f'[ -f "{collector}" ] && python3 -I "{collector}" || printf \'{{}}\\n\''
+cmd_stop = f'[ -f "{collector}" ] && python3 -I "{collector}" || printf \'{{"decision":"allow"}}\\n\''
+data["ai-gateway-usage"] = {
+    "PostInvocation": [{"type": "command", "command": cmd_post, "timeout": 15}],
+    "Stop": [{"type": "command", "command": cmd_stop, "timeout": 15}],
+}
+open(out, "w").write(json.dumps(data, indent=2) + "\n")
+PY
+  mkdir -p "$(dirname "$hooks_file")" 2>/dev/null || true
+  install_file "$merged" "$hooks_file"
+  rm -f "$merged"
+  info "usage hook: PostInvocation, Stop (antigravity_usage.py — company gateway only)"
+}
+
 part_compare() {
   bold "Model comparison dashboard (Artificial Analysis benchmarks joined with the gateway catalog)"
   local src="$here/model-comparison" stage
@@ -219,9 +246,9 @@ main() {
   done
   if dry; then bold "Dry run: nothing is installed, written, moved or backed up"; fi
   case "$only" in
-    "") for p in plugin env claude compare; do "part_$p"; done ;;
-    plugin|env|claude|compare) "part_$only" ;;
-    *) echo "unknown part $only (plugin, env, claude, compare)"; exit 1 ;;
+    "") for p in plugin env claude antigravity compare; do "part_$p"; done ;;
+    plugin|env|claude|antigravity|compare) "part_$only" ;;
+    *) echo "unknown part $only (plugin, env, claude, antigravity, compare)"; exit 1 ;;
   esac
   if [ -d "$BACKUP_DIR" ]; then info "replaced files were backed up to $BACKUP_DIR"; fi
 }
