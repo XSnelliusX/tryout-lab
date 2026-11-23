@@ -115,7 +115,8 @@ export function priceFor(row: Row, mode: CostMode): number | null {
 // costs by c multiplies the index by s/c^weight. The selected price weight is a
 // transparent judgment about premiums, not an AA benchmark or success rate.
 // The same cost unit must be used for all models in a comparison.
-export const DEFAULT_PRICE_SENSITIVITY = 0.1;
+// 0.0866 is the balanced cost sensitivity (6 points per doubling), see exponentFor.
+export const DEFAULT_PRICE_SENSITIVITY = 6 / (100 * Math.LN2);
 
 // A gateway price of $0 counts as MIN_COST (the engine's floor, $0.005): a free
 // model is very cheap, not infinitely good, so a weak free model cannot top the
@@ -126,11 +127,15 @@ export function valueFor(row: Row, task: Task, mode: CostMode, preference: Value
   if (score === null || price === null || !Number.isFinite(score) || !Number.isFinite(price) || price < 0 || score < 0) return null;
   const cost = Math.max(price, MIN_COST);
   if (preference === "speed") {
+    // Speed is throughput and latency: tokens per second, and the wait for the
+    // first answer token when it is measured (10 s counts as neutral).
     const speed = row.performance.output_tokens_per_second;
     if (speed === null || !Number.isFinite(speed) || speed <= 0) return null;
     if (score === 0) return 0;
+    const ttfa = row.performance.time_to_first_answer_token_seconds;
+    const latency = ttfa !== null && ttfa !== undefined && Number.isFinite(ttfa) && ttfa > 0 ? Math.pow(10 / Math.max(ttfa, 0.05), 0.1) : 1;
     const exponent = Math.max(0, Math.min(1, priceSensitivity));
-    return (score * Math.pow(speed / 100, 0.2)) / Math.pow(cost, exponent);
+    return (score * Math.pow(speed / 100, 0.1) * latency) / Math.pow(cost, exponent);
   }
   if (score === 0) return 0;
   const exponent = preference === "price" ? 1 : Math.max(0, Math.min(1, priceSensitivity));

@@ -8,6 +8,8 @@
 //   <token>/usage/               the ai-gateway usage dashboard (dashboard.html with
 //                                usage-log.js and config.js from the cost folder), so
 //                                both pages link to each other under one origin
+//   <token>/api/roles/apply      POST: writes picks into the Herdr config (model and
+//                                variant only, with a backup), as cc-models --apply
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +17,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildDocument, defaultPaths, loadConfig } from './recommend.mjs';
+import { applyRoleChanges, buildDocument, defaultPaths, loadConfig } from './recommend.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COST = process.env.GATEWAY_COST_DIR || path.join(os.homedir(), '.gateway-cost');
@@ -93,6 +95,23 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
       if (req.headers.origin !== origin || req.headers['x-model-comparison'] !== 'sync') { res.writeHead(403).end(); return; }
       void sync();
       res.writeHead(202, { 'Content-Type': 'application/json' }).end(JSON.stringify(state));
+      return;
+    }
+    if (route === 'api/roles/apply' && req.method === 'POST') {
+      if (req.headers.origin !== origin || req.headers['x-model-comparison'] !== 'apply' || !String(req.headers['content-type'] || '').startsWith('application/json')) { res.writeHead(403).end(); return; }
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => { body += chunk; if (body.length > 65536) req.destroy(); });
+      req.on('end', () => {
+        res.setHeader('Content-Type', 'application/json');
+        try {
+          const snapshot = JSON.parse(fs.readFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), 'utf8'));
+          const result = applyRoleChanges(ccConfig, snapshot, JSON.parse(body).changes);
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(400).end(JSON.stringify({ error: String(err.message || err) }));
+        }
+      });
       return;
     }
     if (req.method !== 'GET') { res.writeHead(405).end(); return; }

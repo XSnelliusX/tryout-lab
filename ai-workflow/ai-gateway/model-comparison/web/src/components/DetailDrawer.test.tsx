@@ -25,7 +25,7 @@ const filters: Filters = {
   task: defaultTask(tasks),
   costMode: "task",
   valueMode: "quality",
-  priceSensitivity: DEFAULT_PRICE_SENSITIVITY,
+  sensitivity: 6, priceSensitivity: DEFAULT_PRICE_SENSITIVITY,
   minScore: 0,
   maxPrice: PRICE_MAX,
   creators: [],

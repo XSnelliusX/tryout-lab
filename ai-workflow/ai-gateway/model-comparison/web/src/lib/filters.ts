@@ -3,8 +3,6 @@ import { priceFor, scoreFor, valueFor, type CostMode, type Task, type ValueMode 
 
 // The cost slider is logarithmic: $0.001 to $200 per 1M tokens (or per task).
 // It has 1000 steps so small prices stay precise.
-// The cost slider is logarithmic: $0.001 to $200 per 1M tokens (or per task).
-// It has 1000 steps so small prices stay precise.
 export const PRICE_MIN = 0.001;
 export const PRICE_MAX = 200;
 export const SLIDER_STEPS = 1000;
@@ -19,10 +17,25 @@ export function sliderFromPrice(p: number): number {
   return Math.max(0, Math.round((SLIDER_STEPS * Math.log(p / PRICE_MIN)) / Math.log(PRICE_MAX / PRICE_MIN)));
 }
 
+/**
+ * The value index divides the score by cost^s. In logs that is the engine's
+ * objective: a doubling of cost must buy k points (% of best), so s = k / (100 ln 2).
+ * One sensitivity therefore drives the recommendations, the roles and the ranking.
+ */
+export function exponentFor(sensitivity: number): number {
+  return sensitivity / (100 * Math.LN2);
+}
+
+/** Speed weight of the engine when speed counts: points per doubling of throughput or halving of latency. */
+export const SPEED_WEIGHT = 6;
+
 export interface Filters {
   task: Task;
   costMode: CostMode;
   valueMode: ValueMode;
+  /** Cost sensitivity: score points (% of best) one doubling of cost must buy (the engine's k at the standard tier). */
+  sensitivity: number;
+  /** Exponent of cost in the value index, derived from sensitivity (exponentFor). */
   priceSensitivity: number;
   minScore: number;
   maxPrice: number;

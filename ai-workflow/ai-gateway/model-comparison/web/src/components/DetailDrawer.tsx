@@ -12,8 +12,10 @@ interface Props {
   onClose: () => void;
 }
 
-// Full detail for one model, as a side panel on wide screens and a bottom sheet on
-// phones. Escape closes it.
+// Full detail for one model: a third workspace column on wide screens (the main
+// content narrows, nothing is covered), a floating panel on narrow ones. It
+// stays open while the page is used, so another row simply replaces it; Escape
+// or × closes it.
 export function DetailDrawer({ row, filters, tasks, metrics, onClose }: Props) {
   const panelRef = useRef<HTMLElement>(null);
   const isOpen = row !== null;
@@ -21,23 +23,14 @@ export function DetailDrawer({ row, filters, tasks, metrics, onClose }: Props) {
     if (!isOpen) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const panel = panelRef.current;
-    let dismissedByPointer = false;
-    panelRef.current?.focus();
+    panelRef.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.target instanceof Element && !panelRef.current?.contains(e.target)) {
-        dismissedByPointer = true;
-        onClose();
-      }
-    };
     window.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onPointerDown);
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onPointerDown);
-      if (!dismissedByPointer && previousFocus?.isConnected && (!document.activeElement || document.activeElement === document.body || panel?.contains(document.activeElement))) previousFocus.focus();
+      if (previousFocus?.isConnected && (!document.activeElement || document.activeElement === document.body || panel?.contains(document.activeElement))) previousFocus.focus({ preventScroll: true });
     };
   }, [isOpen, onClose]);
 
@@ -63,7 +56,7 @@ export function DetailDrawer({ row, filters, tasks, metrics, onClose }: Props) {
       role="region"
       aria-label={`Details for ${displayName(row.name)}`}
       tabIndex={-1}
-      className="detail-drawer"
+      className="detail-drawer side-panel"
     >
       <div className="drawer-header">
         <div className="drawer-heading-line"><span className="section-kicker">MODEL DETAILS</span><button type="button" onClick={onClose} className="drawer-close" aria-label="Close model details">×</button></div>

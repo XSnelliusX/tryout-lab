@@ -395,8 +395,9 @@ node ~/.config/opencode/plugins/ai-gateway/index.ts compare --refresh    # one-s
 node ~/.config/opencode/plugins/ai-gateway/index.ts compare --offline    # one-shot build with cached AA data
 ```
 
-The page recommends a model per difficulty and shows the model picks per
-Herdr role (the same engine `cc-models` and the prompt rewriter use). Its
+The page recommends a model per difficulty tier and per Herdr role in one panel
+(the same engine `cc-models` and the prompt rewriter use), with one slider for
+how much a better score may cost. Its
 **Usage ↗** link opens this usage dashboard, served by the same local server.
 
 The benchmark data is fetched on demand and cached under

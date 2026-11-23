@@ -9,7 +9,7 @@ import { buildOption as speedChart } from "../components/SpeedScatter";
 import type { Filters } from "./filters";
 
 const task = taskById("general");
-const filters: Filters = { task, costMode: "blended", valueMode: "quality", priceSensitivity: 0.35, minScore: 0, maxPrice: 100, creators: [], modelQuery: "", includeFree: true, includeDeprecated: true, gatewayProvider: "", effort: "all", reasoning: "all" };
+const filters: Filters = { task, costMode: "blended", valueMode: "quality", sensitivity: 6, priceSensitivity: 0.35, minScore: 0, maxPrice: 100, creators: [], modelQuery: "", includeFree: true, includeDeprecated: true, gatewayProvider: "", effort: "all", reasoning: "all" };
 const theme = { ink: "#000", muted: "#555", line: "#eee", surface: "#fff" };
 
 describe("decision-making regressions", () => {
@@ -90,8 +90,8 @@ describe("decision-making regressions", () => {
 
   it("never recommends below the tier floor, and harder tiers ask for more", () => {
     const rows = [10, 20, 30, 40, 50, 60].map((score, i) => makeRow({ slug: `m${score}`, scores: { intelligence: score }, blended: 0.1 * 3 ** i }));
-    const results = recommendByDifficulty(rows, task, "blended", "quality");
-    expect(results.map((r) => r.difficulty)).toEqual(["Easy", "Medium", "Difficult"]);
+    const results = recommendByDifficulty(rows, task, 6, false, "blended");
+    expect(results.map((r) => r.difficulty)).toEqual(["Easy", "Medium", "Difficult", "Hardest"]);
     for (const { result } of results) {
       expect(result!.pick.score).toBeGreaterThanOrEqual(result!.floor_share * result!.best.score - 1e-9);
     }
@@ -107,13 +107,13 @@ describe("decision-making regressions", () => {
     const unknown = makeRow({ slug: "unknown", scores: { intelligence: 50 }, blended: 1 });
     fast.performance.output_tokens_per_second = 300;
     slow.performance.output_tokens_per_second = 30;
-    expect(recommendByDifficulty([slow, fast, unknown], task, "blended", "speed")[1].result!.pick.slug).toBe("fast");
-    expect(recommendByDifficulty([slow, fast, unknown], task, "blended", "speed")[1].result!.pool).toBe(3);
+    expect(recommendByDifficulty([slow, fast, unknown], task, 6, true, "blended")[1].result!.pick.slug).toBe("fast");
+    expect(recommendByDifficulty([slow, fast, unknown], task, 6, true, "blended")[1].result!.pool).toBe(3);
   });
 
   it("does not recommend superseded releases even when the view shows them", () => {
     const old = makeRow({ slug: "old", scores: { intelligence: 60 }, blended: 0.1, release_deprecated: true });
     const current = makeRow({ slug: "current", scores: { intelligence: 50 }, blended: 1 });
-    for (const r of recommendByDifficulty([old, current], task, "blended", "quality")) expect(r.result!.pick.slug).toBe("current");
+    for (const r of recommendByDifficulty([old, current], task, 6, false, "blended")) expect(r.result!.pick.slug).toBe("current");
   });
 });

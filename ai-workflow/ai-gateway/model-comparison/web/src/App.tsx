@@ -2,8 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { GlassSystemProvider } from "open-glass-ui";
 import { useSnapshot } from "./lib/useSnapshot";
 import { useSync, type SyncState } from "./lib/useSync";
-import { applyFilters, rankByValue, PRICE_MAX, type Filters } from "./lib/filters";
-import { DEFAULT_PRICE_SENSITIVITY, TASKS, defaultTask, scoreFor, tasksFromMetrics } from "./lib/tasks";
+import { applyFilters, exponentFor, rankByValue, PRICE_MAX, type Filters } from "./lib/filters";
+import { SENSITIVITY } from "./lib/engine";
+import { TASKS, defaultTask, scoreFor, tasksFromMetrics } from "./lib/tasks";
 import { useThemeMode } from "./lib/theme";
 import { ControlBar } from "./components/ControlBar";
 import { KpiRow } from "./components/KpiRow";
@@ -15,16 +16,24 @@ import { RankingTable, MAX_PINNED } from "./components/RankingTable";
 import { DetailDrawer } from "./components/DetailDrawer";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
-import { Recommendations } from "./components/Recommendations";
-import { RoleModels } from "./components/RoleModels";
+import { DecisionPanel } from "./components/DecisionPanel";
+import { RolePanel } from "./components/RoleModels";
+import { HowItWorks } from "./components/HowItWorks";
+import { PRESETS } from "./components/ControlBar";
+import { planRoles, presetFor } from "./lib/recommendations";
+import type { ApplyResult } from "./lib/applyRoles";
 import { useRecommendations } from "./lib/useRecommendations";
 import type { ProviderOption, Row, Snapshot } from "./lib/types";
 
+// The rail sets task, max cost, provider and speed; the recommendations panel the
+// cost sensitivity. The rest are fixed: costs are per task at the gateway, $0
+// models count at the engine's minimum cost, superseded releases are hidden.
 const DEFAULT_FILTERS: Filters = {
   task: defaultTask(TASKS),
   costMode: "task",
   valueMode: "quality",
-  priceSensitivity: DEFAULT_PRICE_SENSITIVITY,
+  sensitivity: SENSITIVITY.balanced,
+  priceSensitivity: exponentFor(SENSITIVITY.balanced),
   minScore: 0,
   maxPrice: PRICE_MAX,
   creators: [],
@@ -64,19 +73,33 @@ interface DashboardProps {
 
 function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: DashboardProps) {
   const tasks = useMemo(() => tasksFromMetrics(snapshot.metrics), [snapshot.metrics]);
-  const recommendations = useRecommendations(syncState.revision);
+  // After Apply the Herdr config changed: fetch the recommendations again so "now" follows.
+  const [lastApplied, setLastApplied] = useState<ApplyResult | null>(null);
+  const [applyCount, setApplyCount] = useState(0);
+  const recommendations = useRecommendations(syncState.revision, applyCount);
+  const onApplied = useCallback((result: ApplyResult) => { setLastApplied(result); setApplyCount((n) => n + 1); }, []);
   const [filters, setFilters] = useState<Filters>(() => ({ ...DEFAULT_FILTERS, task: defaultTask(tasks) }));
   const [colorBy, setColorBy] = useState<ColorBy>("creator");
-  const [selected, setSelected] = useState<string | null>(null);
+  // The side panel shows one thing at a time: a model (selected), a Herdr role or the method.
+  const [selected, setSelectedModel] = useState<string | null>(null);
+  const [side, setSide] = useState<{ kind: "role"; role: string } | { kind: "how" } | null>(null);
+  const setSelected = useCallback((slug: string | null) => { setSelectedModel(slug); if (slug) setSide(null); }, []);
+  const openRole = useCallback((role: string) => { setSelectedModel(null); setSide({ kind: "role", role }); }, []);
+  const openHow = useCallback(() => { setSelectedModel(null); setSide({ kind: "how" }); }, []);
+  const closeSide = useCallback(() => setSide(null), []);
   const [pinned, setPinned] = useState<string[]>([]);
   const [chart, setChart] = useState<"cost" | "speed">("cost");
   const [hiddenCreators, setHiddenCreators] = useState<string[]>([]);
   const [highlightCreator, setHighlightCreator] = useState<string | null>(null);
 
-  const creators = useMemo(() => uniqueCreators(snapshot.models), [snapshot.models]);
   const gatewayProviders = useMemo(() => uniqueProviders(snapshot.models), [snapshot.models]);
-  const scoped = useMemo(() => applyFilters(snapshot.models, filters), [snapshot.models, filters]);
+  // The search only narrows the table; picks, charts and KPIs follow the criteria.
+  const criteria = useMemo(() => ({ ...filters, modelQuery: "" }), [filters]);
+  const scoped = useMemo(() => applyFilters(snapshot.models, criteria), [snapshot.models, criteria]);
   const ranked = useMemo(() => rankByValue(scoped, filters), [scoped, filters]);
+  const tableRows = useMemo(() => (filters.modelQuery.trim() ? rankByValue(applyFilters(snapshot.models, filters), filters) : ranked), [snapshot.models, filters, ranked]);
+  const plan = useMemo(() => planRoles(snapshot, recommendations, criteria), [snapshot, recommendations, criteria]);
+  const setSensitivity = useCallback((k: number) => setFilters((f) => ({ ...f, sensitivity: k, priceSensitivity: exponentFor(k) })), []);
   const chartRows = useMemo(() => scoped.filter((row) => !hiddenCreators.includes(row.creator)), [scoped, hiddenCreators]);
   const chartRanked = useMemo(() => rankByValue(chartRows, filters), [chartRows, filters]);
   const excludedForTask = useMemo(
@@ -98,37 +121,44 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
     },
     [],
   );
-  const closeDrawer = useCallback(() => setSelected(null), []);
+  const closeDrawer = useCallback(() => setSelected(null), [setSelected]);
+  const preset = presetFor(filters.sensitivity);
+  const sideRole = side?.kind === "role" ? plan?.roles.roles.find((r) => r.role === side.role) ?? null : null;
+  const sidePanel = selectedRow
+    ? <DetailDrawer row={selectedRow} filters={filters} tasks={tasks} metrics={snapshot.metrics ?? []} onClose={closeDrawer} />
+    : sideRole
+      ? <RolePanel r={sideRole} pickKey="custom" pickTitle={preset ? `${PRESETS.find((p) => p.key === preset)!.label} pick` : "Pick"} preset={preset} onClose={closeSide} onSelect={setSelected} onApplied={onApplied} />
+      : side?.kind === "how" ? <HowItWorks onClose={closeSide} /> : null;
 
   return (
     <Shell>
       <Header snapshot={snapshot} theme={theme} onToggleTheme={onToggleTheme} syncState={syncState} onSync={onSync} />
-      <div className="workspace-layout">
+      <div className={`workspace-layout${sidePanel ? " has-side" : ""}`}>
       <aside className="criteria-rail" aria-label="Comparison criteria">
       <ControlBar
         filters={filters}
         setFilters={setFilters}
-        creators={creators}
+        onSensitivity={setSensitivity}
         gatewayProviders={gatewayProviders}
         taskOptions={tasks}
-        colorBy={colorBy}
-        setColorBy={setColorBy}
-        onReset={() => { setFilters({ ...DEFAULT_FILTERS, task: defaultTask(tasks) }); setColorBy("creator"); setHiddenCreators([]); }}
+        onReset={() => { setFilters({ ...DEFAULT_FILTERS, task: defaultTask(tasks) }); setHiddenCreators([]); }}
       />
-      <div className="rail-footnote"><span className="rail-orbit" aria-hidden="true">✳</span><p>AI Gateway<br /><span>Data from Artificial Analysis</span></p></div>
       </aside>
       <div className="workspace-content">
-      <div className="decision-row">
-        <Recommendations rows={scoped} filters={filters} onSelect={setSelected} />
-        <RoleModels doc={recommendations} onSelect={setSelected} />
-      </div>
+      <DecisionPanel rows={scoped} plan={plan} filters={criteria} lastApplied={lastApplied} onSensitivity={setSensitivity} onSelect={setSelected} onOpenRole={openRole} onHow={openHow} onApplied={onApplied} />
       <div className="landscape-layout">
       <section id="analysis" aria-label="Visual analysis" className="analysis-workspace">
         <div className="analysis-toolbar">
           <div><p className="section-kicker">TRADE-OFF MAP</p><h2>Explore the landscape</h2></div>
+          <div className="analysis-switches">
+          <div role="group" aria-label="Color by" className="chart-view-switch is-small">
+            <button type="button" aria-pressed={colorBy === "creator"} onClick={() => setColorBy("creator")}>Creator</button>
+            <button type="button" aria-pressed={colorBy === "effort"} onClick={() => setColorBy("effort")}>Effort</button>
+          </div>
           <div role="group" aria-label="Chart view" className="chart-view-switch">
             <button type="button" aria-pressed={chart === "cost"} onClick={() => setChart("cost")}>Cost &amp; score</button>
             <button type="button" aria-pressed={chart === "speed"} onClick={() => setChart("speed")}>Speed &amp; score</button>
+          </div>
           </div>
         </div>
         <div className="charts-pair">
@@ -157,8 +187,10 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
       </aside>
       </div>
       <RankingTable
-        rows={ranked}
+        rows={tableRows}
         filters={filters}
+        query={filters.modelQuery}
+        onQuery={(modelQuery) => setFilters((f) => ({ ...f, modelQuery }))}
         selected={selected}
         pinned={pinned}
         onSelect={setSelected}
@@ -169,6 +201,7 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
       </section>
       <Footer snapshot={snapshot} />
       </div>
+      {sidePanel}
       </div>
       {pinnedRows.length > 0 && <div className="shortlist-dock glass" role="region" aria-label="Current shortlist">
         <div className="dock-stack" aria-hidden="true">{pinnedRows.map((r, i) => <span key={r.slug} style={{ backgroundColor: ["#316bd6", "#a05b9d", "#148477"][i] }} />)}</div>
@@ -176,7 +209,6 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
         <a href="#compare">Compare <span aria-hidden="true">↗</span></a>
         <button type="button" onClick={() => setPinned([])} aria-label="Clear shortlist">×</button>
       </div>}
-      <DetailDrawer row={selectedRow} filters={filters} tasks={tasks} metrics={snapshot.metrics ?? []} onClose={closeDrawer} />
     </Shell>
   );
 }
@@ -187,10 +219,6 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Status({ text }: { text: string }) {
   return <p className="py-24 text-center text-sm text-muted">{text}</p>;
-}
-
-function uniqueCreators(rows: Row[]): string[] {
-  return [...new Set(rows.map((r) => r.creator).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
 function uniqueProviders(rows: Row[]): ProviderOption[] {

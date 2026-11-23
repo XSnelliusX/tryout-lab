@@ -21,7 +21,7 @@ describe("creator legend", () => {
     const missing = makeRow({ slug: "b", name: "Beta", scores: { intelligence: 30 }, blended: 1 });
     measured.performance.output_tokens_per_second = 20;
     missing.performance.output_tokens_per_second = null;
-    const filters: Filters = { task: taskById("general"), costMode: "blended", valueMode: "quality", priceSensitivity: DEFAULT_PRICE_SENSITIVITY, minScore: 0, maxPrice: PRICE_MAX, creators: [], modelQuery: "", includeFree: true, includeDeprecated: true, gatewayProvider: "", effort: "all", reasoning: "all" };
+    const filters: Filters = { task: taskById("general"), costMode: "blended", valueMode: "quality", sensitivity: 6, priceSensitivity: DEFAULT_PRICE_SENSITIVITY, minScore: 0, maxPrice: PRICE_MAX, creators: [], modelQuery: "", includeFree: true, includeDeprecated: true, gatewayProvider: "", effort: "all", reasoning: "all" };
     expect(chartLegendRows([measured, missing], filters, "speed").map((r) => r.slug)).toEqual(["a"]);
   });
 });

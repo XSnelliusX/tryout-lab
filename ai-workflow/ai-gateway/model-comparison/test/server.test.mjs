@@ -105,3 +105,43 @@ test('serves live recommendations and the usage dashboard under the same capabil
   assert.equal((await fetch(`${url}usage/usage.jsonl`)).status, 404, 'only the two data scripts are served');
   assert.equal((await fetch(`${url.replace(/\/[0-9a-f]{64}\/$/, '/')}usage/`)).status, 404, 'the token is required');
 });
+
+test('applies role picks to the Herdr config: protected, validated, backed up, model and variant only', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comparison-apply-'));
+  const web = path.join(root, 'web'), cost = path.join(root, 'cost'), ccConfig = path.join(root, 'cc.json');
+  fs.mkdirSync(web, { recursive: true });
+  fs.mkdirSync(path.join(cost, 'model-comparison', 'data'), { recursive: true });
+  fs.writeFileSync(path.join(web, 'index.html'), 'app');
+  const snapshot = { schema_version: 3, generated_at: 'now', models: [
+    { slug: 'm-1', name: 'M 1', creator: 'S', effort: null, is_primary: true, scores: { intelligence: 40 },
+      gateway_routes: [{ provider_id: 'gw', model_id: 'm-1', cost_per_task_usd: 0.1, effort_levels: [], tools: true }] },
+    { slug: 'm-2-high', name: 'M 2 (High)', creator: 'S', effort: 'high', is_primary: false, scores: { intelligence: 60 },
+      gateway_routes: [{ provider_id: 'gw', model_id: 'm-2', cost_per_task_usd: 0.5, effort_levels: ['low', 'high'], tools: true }] },
+  ] };
+  fs.writeFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), JSON.stringify(snapshot));
+  const original = { budget: { monthly_cap_usd: 1 }, roles: { implementer: { model: 'gw/m-1', prompt: 'keep me' }, reviewer: { model: 'gw/m-1', variant: 'low' } } };
+  fs.writeFileSync(ccConfig, JSON.stringify(original, null, 2) + '\n');
+  process.env.SETUP_BACKUP_DIR = path.join(root, 'backup');
+  const job = deferred();
+  const { server, url } = await startServer({ web, cost, ccConfig, runner: () => job.promise });
+  t.after(() => { delete process.env.SETUP_BACKUP_DIR; job.reject(new Error('stopped')); server.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  const origin = new URL(url).origin;
+  const post = (body, headers = { origin, 'x-model-comparison': 'apply', 'content-type': 'application/json' }) =>
+    fetch(`${url}api/roles/apply`, { method: 'POST', headers, body: JSON.stringify(body) });
+
+  assert.equal((await post({ changes: [] }, { 'content-type': 'application/json' })).status, 403, 'needs the page origin and header');
+  assert.equal((await post({ changes: [{ role: 'implementer', model: 'gw/m-2', variant: 'high' }] }, { origin: 'https://evil.example', 'x-model-comparison': 'apply', 'content-type': 'application/json' })).status, 403);
+  assert.equal((await post({ changes: [{ role: 'nobody', model: 'gw/m-2', variant: 'high' }] })).status, 400, 'unknown role');
+  assert.equal((await post({ changes: [{ role: 'implementer', model: 'gw/not-there', variant: null }] })).status, 400, 'only routes in the data');
+  assert.deepEqual(JSON.parse(fs.readFileSync(ccConfig, 'utf8')), original, 'a rejected request writes nothing');
+
+  const ok = await post({ changes: [{ role: 'implementer', model: 'gw/m-2', variant: 'high' }, { role: 'reviewer', model: 'gw/m-1', variant: null }] });
+  assert.equal(ok.status, 200);
+  const result = await ok.json();
+  assert.deepEqual(result.applied.map((a) => a.to), ['gw/m-2#high', 'gw/m-1']);
+  const written = JSON.parse(fs.readFileSync(ccConfig, 'utf8'));
+  assert.deepEqual(written.roles.implementer, { model: 'gw/m-2', prompt: 'keep me', variant: 'high' });
+  assert.deepEqual(written.roles.reviewer, { model: 'gw/m-1' }, 'a default variant drops the key');
+  assert.deepEqual(written.budget, original.budget);
+  assert.deepEqual(JSON.parse(fs.readFileSync(result.backup, 'utf8')), original, 'the old config is backed up');
+});

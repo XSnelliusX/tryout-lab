@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROFILES, TIERS, WORKLOADS, buildDocument, formatCost, label, recommendGrid, recommendRoles } from './engine.mjs';
+import { PROFILES, TIERS, WORKLOADS, buildDocument, describeCurrent, formatCost, label, recommendGrid, recommendRoles } from './engine.mjs';
 
 export * from './engine.mjs';
 
@@ -50,6 +50,48 @@ export function loadConfig(file) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Writes picks into the Herdr Command Center config, as `cc-models recommend
+ * --apply` does: only `model` and `variant` of the named roles change, the old
+ * file is copied to ~/.setup_backup/<stamp>/ (or $SETUP_BACKUP_DIR) first, and
+ * the new one replaces it atomically. Every change must name a configured role
+ * and a gateway route + variant that exists in the snapshot, so nothing else can
+ * be written. changes: [{ role, model: 'provider/model', variant|null }].
+ * Returns { applied: [{ role, from, to }], backup }; throws with a message
+ * fit for the user on invalid input.
+ */
+export function applyRoleChanges(configFile, snapshot, changes, { env = process.env, now = new Date() } = {}) {
+  if (!Array.isArray(changes) || changes.length === 0 || changes.length > 64) throw new Error('No changes to apply.');
+  const raw = fs.readFileSync(configFile, 'utf8');
+  const config = JSON.parse(raw);
+  if (!config?.roles || typeof config.roles !== 'object') throw new Error(`No roles in ${configFile}.`);
+  const applied = [];
+  for (const change of changes) {
+    const role = typeof change?.role === 'string' ? change.role : '';
+    const model = typeof change?.model === 'string' ? change.model : '';
+    const variant = change?.variant === null || change?.variant === undefined || change?.variant === '' ? null : String(change.variant);
+    if (!Object.prototype.hasOwnProperty.call(config.roles, role)) throw new Error(`Unknown role "${role}".`);
+    if (!/^[\w.-]+\/[\w.:-]+$/.test(model) || (variant !== null && !/^[\w-]+$/.test(variant))) throw new Error(`Invalid model for ${role}.`);
+    if (!describeCurrent(snapshot, model, variant, null, null).known) throw new Error(`${model}${variant ? `#${variant}` : ''} is not a gateway route in the current data.`);
+    const spec = config.roles[role];
+    const from = `${spec.model ?? ''}${spec.variant ? `#${spec.variant}` : ''}`;
+    spec.model = model;
+    if (variant) spec.variant = variant;
+    else delete spec.variant;
+    applied.push({ role, from, to: `${model}${variant ? `#${variant}` : ''}` });
+  }
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const home = os.homedir();
+  const rel = configFile.startsWith(home + path.sep) ? path.relative(home, configFile) : path.join('_root', configFile);
+  const backup = path.join(env.SETUP_BACKUP_DIR || path.join(home, '.setup_backup', stamp), rel);
+  fs.mkdirSync(path.dirname(backup), { recursive: true });
+  fs.writeFileSync(backup, raw);
+  const tmp = `${configFile}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`);
+  fs.renameSync(tmp, configFile);
+  return { applied, backup };
 }
 
 function table(rows) {

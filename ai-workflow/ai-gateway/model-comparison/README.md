@@ -15,7 +15,7 @@ cost-to-performance, using [Artificial Analysis](https://artificialanalysis.ai/)
   same server serves the usage dashboard at `<token>/usage/`, so the two pages
   link to each other (**Usage ↗** here, **Model comparison ↗** there).
 - Holds the **recommendation engine** of the AI workflow (`engine.mjs`): the
-  dashboard's difficulty cards and "Models per role" panel, Herdr's
+  dashboard's recommendations panel (tier picks and Herdr roles), Herdr's
   `cc-models` and the prompt rewriter all take their picks from it, through
   `data/recommendations.json` (see [Recommendations](#recommendations)).
 
@@ -163,20 +163,26 @@ unmeasured, not zero.
    gateway's effective price when possible, and falls back to the AA host or
    model figure.
 
-Value modes: **price focused** = score / cost; **quality focused** = score /
-cost^s (adjustable price sensitivity `s`, default 0.10); **quality + speed** =
-the quality index times `(tokens/s / 100)^0.2`. These exponents are preferences,
-not measured laws. A gateway price of $0 counts as $0.005 (per task or per 1M
-tokens), so a free model is very cheap but must also score well to rank high;
-the cost column still shows $0. Missing prices are excluded. Superseded
-releases are hidden by default (toggle in "More filters").
+The ranking's value index is score / cost^s, where `s = k / (100 ln 2)` comes
+from the same cost sensitivity `k` as the recommendations (see below), so the
+table, the bars and the picks agree. With **Speed counts** it is also
+multiplied by `(tokens/s / 100)^0.1 × (10 s / time to first answer token)^0.1`.
+These exponents are preferences, not measured laws. A gateway price of $0
+counts as $0.005, so a free model is very cheap but must also score well to rank
+high; the cost column still shows $0. Missing prices are excluded and
+superseded releases are hidden.
+
+The criteria rail holds only what changes a decision: the benchmark, a max cost
+per task, the gateway provider and **Speed counts**. Each applies to the tier
+picks, the Herdr roles, the charts and the ranking alike. The search sits on the
+ranking table and narrows only the table.
 
 ## Recommendations
 
 `engine.mjs` (pure, no I/O; bundled into the dashboard) and `recommend.mjs`
 (files and command line) decide which model to use for a kind of work. The
-cards "Recommendations by difficulty", the panel "Models per role", Herdr's
-`cc-models` and the prompt rewriter's model advice all use it.
+dashboard's recommendations panel, Herdr's `cc-models` and the prompt
+rewriter's model advice all use it.
 
 1. **Workload score.** Work is scored on the benchmarks that measure it:
 
@@ -196,20 +202,25 @@ cards "Recommendations by difficulty", the panel "Models per role", Herdr's
    task. Superseded releases and effort `max` (unless allowed) are skipped.
 3. **Floor.** A pick reaches `floor × best score in the pool`.
 4. **Price of quality.** Among those, the highest
-   `100·score/best − k·log2(cost per task) + w·log2(tokens/s)`: every doubling
-   of cost must buy `k` points of the best score; `w` rewards speed.
+   `100·score/best − k·log2(cost per task) + w·(log2(tokens/s) − log2(s to first answer token))/2`:
+   every doubling of cost must buy `k` points of the best score; `w` (6 when
+   **Speed counts**, else 0) rewards throughput and a short wait alike.
 
-| Tier | floor (lean / balanced / max) | k per cost doubling | Dashboard card |
+One **cost sensitivity** sets `k`: the points a cost doubling must buy on
+standard work. The presets are max 1, balanced 6 and lean 12 (`SENSITIVITY`);
+the dashboard's slider takes any value from 0.5 to 30. Each tier scales it, and
+the floor moves with it (log scale between the max and lean presets):
+
+| Tier | floor (max → lean) | k per cost doubling | Panel group |
 |---|---|---|---|
-| `light` | 55% / 65% / 75% | 16 / 12 / 8 | Easy |
-| `standard` | 75% / 82% / 90% | 9 / 6 / 4 | Medium |
-| `hard` | 85% / 92% / 96% | 5 / 2.5 / 1.5 | Difficult |
-| `frontier` | 90% / 95% / 99% | 2 / 1 / 0.5 | |
+| `light` | 75% → 55% | 2 × sensitivity | Light · easy work |
+| `standard` | 90% → 75% | 1 × sensitivity | Standard · medium work |
+| `hard` | 96% → 85% | 0.5 × sensitivity | Hard · difficult work |
+| `frontier` | 99% → 90% | 0.25 × sensitivity | Frontier · hardest work |
 
 Across the gateway, quality rises about 7 points per cost doubling on average:
 light work asks for more than that (cost wins), hard work for less (quality
-wins). The dashboard's focus picks the profile: price = lean, quality =
-balanced, speed = balanced with `w = 2`.
+wins). The highest score is not the goal; what it costs to get there is.
 
 **Herdr roles are scored on what they need**, not on one benchmark
 (`ROLE_PROFILES`). A role's *fit* (0-100) is the weighted geometric mean of
@@ -223,7 +234,7 @@ measured criteria, each counted 0-100 against the best current model:
 | long context | AA-LCR |
 | knowledge work | GDP.pdf |
 | accuracy | AA-Omniscience (negative counts as 0) |
-| speed | time to a 500-token answer: time to the first answer token (thinking included) plus 500 tokens at the route's output speed; each doubling against the fastest model costs 20 points |
+| speed | latency and throughput, averaged: time to the first answer token (thinking included) against the quickest, and output tokens per second against the fastest, at the route's own host; each doubling costs 20 points |
 
 The geometric mean means a strength cannot hide a weakness: a fast model that
 cannot use tools is no researcher. A missing criterion is left out (flagged
@@ -246,8 +257,13 @@ A role's `"recommend": {"needs": {...}, "tier": ...}` in the Herdr config
 overrides this (`{"workload": "coding"}` scores it on a workload instead);
 `model_policy.providers` and `exclude` limit the candidates. Every setup
 (the roles' current models, lean, balanced, max) also gets the cost of one
-task on every role and the average fit: the dashboard plots them, and
-`cc-models recommend` prints them as its last row.
+task on every role and the average fit; `cc-models recommend` prints them as
+its last row. The recommendations document also carries the engine's part of
+the Herdr config (roles' models, tiers and overrides, and the model policy; no
+prompts or paths), so the dashboard recomputes the roles for its own criteria
+and cost sensitivity and plots the setup's cost against its fit for every
+sensitivity (`setupCurve`); choosing a point on that curve sets the
+sensitivity.
 
 ```sh
 node recommend.mjs roles [--json]                 # Herdr roles: current model and lean/balanced/max picks

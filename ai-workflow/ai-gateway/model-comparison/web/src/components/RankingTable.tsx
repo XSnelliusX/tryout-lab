@@ -15,6 +15,8 @@ interface Props {
   pinned: string[];
   onSelect: (slug: string) => void;
   onTogglePin: (slug: string) => void;
+  query: string;
+  onQuery: (query: string) => void;
 }
 
 type SortKey = "value" | "score" | "cost" | "context" | "speed" | "ttft" | "e2e" | "name";
@@ -23,7 +25,7 @@ const PAGE_SIZE = 50;
 
 // Sortable ranking table. Numbers are right-aligned with tabular figures and
 // unmeasured values show as a dash. Up to three rows can be pinned to compare.
-export function RankingTable({ rows, filters, selected, pinned, onSelect, onTogglePin }: Props) {
+export function RankingTable({ rows, filters, selected, pinned, onSelect, onTogglePin, query, onQuery }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [desc, setDesc] = useState(true);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -196,7 +198,8 @@ export function RankingTable({ rows, filters, selected, pinned, onSelect, onTogg
             {useGroups ? "Groups are ordered by their best variant; values shown belong to each row." : "Flat sorting compares individual variants."} Select a row for details, or pin up to {MAX_PINNED} to compare.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="search" className="table-search" aria-label="Search models" placeholder="Find a model…" value={query} onChange={(e) => onQuery(e.target.value)} />
           <button type="button" className="columns-button" aria-pressed={showMoreColumns} onClick={() => setShowMoreColumns(!showMoreColumns)}>{showMoreColumns ? "Fewer columns" : "More columns"}</button>
           <div role="group" aria-label="Table view" className="segmented table-view-toggle inline-flex rounded-lg border border-line p-0.5 text-xs">
             {[

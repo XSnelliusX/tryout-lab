@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  buildCandidates, buildDocument, criteriaContext, describeCurrent, recommend, recommendRoles, responseSeconds, roleFit, roleProfile,
+  buildCandidates, buildDocument, criteriaContext, describeCurrent, recommend, recommendRoles, responseSeconds, roleFit, roleProfile, setupCurve, speedScore, engineConfig,
   routesOf, variantForRoute, workloadScore, writeDocument, MIN_COST,
 } from '../recommend.mjs';
 
@@ -168,15 +168,21 @@ const research = {
   ],
 };
 
-test('the time to an answer counts thinking and generation, and speed is scored per doubling', () => {
+test('speed is latency and throughput, each scored per doubling against the fastest', () => {
   assert.equal(responseSeconds(2, 250), 4);
   assert.equal(responseSeconds(null, 100), null);
   const ctx = criteriaContext(research.models);
-  assert.equal(ctx.fastest, 0.5 + 500 / 300);
+  assert.equal(ctx.latency, 0.5);
+  assert.equal(ctx.throughput, 300);
   const scout = roleFit({ row: research.models[1], speed: 200, ttfa: 2 }, { speed: 100 }, ctx);
-  // 4.5 s against the fastest 2.17 s: 1.05 doublings, 20 points each.
-  assert.ok(Math.abs(scout.value - (100 - 20 * Math.log2(4.5 / ctx.fastest))) < 1e-9);
+  // First token after 2 s against 0.5 s: two doublings (60); 200 tok/s against 300: 0.58 doublings (88.3).
+  const latency = 100 - 20 * 2, throughput = 100 - 20 * Math.log2(300 / 200);
+  assert.ok(Math.abs(scout.value - (latency + throughput) / 2) < 1e-9);
+  assert.deepEqual(scout.speed_parts, { latency: 60, throughput: Number(throughput.toFixed(1)) });
   assert.equal(scout.response_seconds, 4.5);
+  // Only one part measured: that part alone.
+  assert.equal(speedScore(null, 300, ctx).value, 100);
+  assert.equal(speedScore(null, null, ctx), null);
 });
 
 test('research picks the fast tool user, not the best coder or the fastest model', () => {
@@ -192,6 +198,33 @@ test('research picks the fast tool user, not the best coder or the fastest model
   // A fast model that cannot use tools is not a researcher: one weak need pulls the fit down.
   const fits = Object.fromEntries(research.models.map((r) => [r.slug, roleFit({ row: r, speed: r.performance.output_tokens_per_second, ttfa: r.performance.time_to_first_answer_token_seconds }, explore.needs, ctx).value]));
   assert.ok(fits.sprinter < fits.scout, JSON.stringify(fits));
-  // 72.5 s per answer is five doublings slower than the fastest: no speed left for research.
-  assert.ok(fits.coder < fits.sprinter, JSON.stringify(fits));
+  // A minute to the first token leaves the coder no latency points, only some for throughput.
+  const coder = roleFit({ row: research.models[0], speed: 40, ttfa: 60 }, { speed: 100 }, ctx);
+  assert.equal(coder.speed_parts.latency, 0);
+  assert.ok(fits.coder < fits.scout, JSON.stringify(fits));
+});
+
+const fixture = snapshot;
+const cfg = {
+  roles: {
+    commander: { model: 'gw-a/swift-1', variant: 'low' },
+    implementer: { model: 'gw-a/mid-2#medium' },
+    escalation: { model: 'gw-b/top-3', variant: 'high' },
+  },
+  model_policy: { providers: ['gw-a', 'gw-b'], exclude: ['notools-*'] },
+};
+
+test('one cost sensitivity orders the profiles: lean costs least, max scores most', () => {
+  const out = recommendRoles(fixture, cfg, { sensitivity: 3 });
+  assert.ok(out.summary.lean.cost_usd <= out.summary.balanced.cost_usd && out.summary.balanced.cost_usd <= out.summary.max.cost_usd, JSON.stringify(out.summary));
+  assert.ok(out.summary.custom, 'a sensitivity adds the custom picks');
+  const curve = setupCurve(fixture, cfg);
+  for (let i = 1; i < curve.length; i++) assert.ok(curve[i].cost_usd <= curve[i - 1].cost_usd, 'cost falls as sensitivity rises');
+});
+
+test('the dashboard criteria narrow the role candidates, and the document carries no prompts', () => {
+  const capped = recommendRoles(fixture, cfg, { maxCost: 0.5 });
+  for (const r of capped.roles) for (const p of Object.values(r.picks)) if (p) assert.ok(p.pick.cost_per_task_usd <= 0.5, r.role);
+  const conf = engineConfig({ ...cfg, roles: Object.fromEntries(Object.entries(cfg.roles).map(([k, v]) => [k, { ...v, prompt: 'secret', description: 'x' }])) });
+  assert.ok(!JSON.stringify(conf).includes('secret'));
 });

@@ -14,7 +14,7 @@ function baseFilters(over: Partial<Filters> = {}): Filters {
     task: general,
     costMode: "blended",
     valueMode: "price",
-    priceSensitivity: 0.35,
+    sensitivity: 6, priceSensitivity: 0.35,
     minScore: 0,
     maxPrice: PRICE_MAX,
     creators: [],

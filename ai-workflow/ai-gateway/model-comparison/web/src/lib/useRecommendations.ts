@@ -11,7 +11,8 @@ declare global {
 // Under the local server the same path is computed live from the snapshot and the
 // Herdr config, so it is fetched again after a sync and whenever the tab becomes
 // visible (for example after `cc-models recommend --apply` in a terminal).
-export function useRecommendations(revision = 0): RecommendationsDocument | null {
+// nonce: bump it to fetch again, e.g. after applying picks to the Herdr config.
+export function useRecommendations(revision = 0, nonce = 0): RecommendationsDocument | null {
   const [doc, setDoc] = useState<RecommendationsDocument | null>(() => (typeof window === "undefined" ? null : window.__MODEL_RECOMMENDATIONS__ ?? null));
   useEffect(() => {
     if (typeof window === "undefined" || window.location.protocol === "file:") return;
@@ -26,6 +27,6 @@ export function useRecommendations(revision = 0): RecommendationsDocument | null
     const onVisible = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { cancelled = true; document.removeEventListener("visibilitychange", onVisible); };
-  }, [revision]);
+  }, [revision, nonce]);
   return doc;
 }

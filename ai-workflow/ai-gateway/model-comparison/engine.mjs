@@ -19,21 +19,27 @@
  *      stale when Artificial Analysis re-bases its index.
  *   4. Price of quality. Among those, the pick maximises
  *        100 * score / best  -  k * log2(cost per task)
- *      i.e. every doubling of cost must buy at least k points (% of best);
- *      k falls from lean to max.
+ *      i.e. every doubling of cost must buy at least k points (% of best).
+ *      k is one cost sensitivity (SENSITIVITY: lean 12, balanced 6, max 1,
+ *      or any value in between) times the tier's priceScale, so harder work
+ *      may cost more. The dashboard slider sets the sensitivity directly.
  *
  * Herdr roles are not scored on one benchmark but on what the role needs
  * (ROLE_PROFILES): a weighted geometric mean of measured criteria (CRITERIA:
  * coding, tool use, reasoning, long context, knowledge work, accuracy, speed),
- * each 0-100 against the best current model. Speed is the time to a 500-token answer
- * (thinking included) at the route's own host, so a research role that must be
+ * each 0-100 against the best current model. Speed is latency (time to the
+ * first answer token, thinking included) and throughput (output tokens per
+ * second) at the route's own host, each scored per doubling and averaged, so a research role that must be
  * fast and needs no coding gets a fast tool user, not the best coder.
  *
  * No imports, no globals: it runs in Node and in the browser.
  */
 
-export const ENGINE_VERSION = 1;
+export const ENGINE_VERSION = 2;
 export const PROFILES = ['lean', 'balanced', 'max'];
+/** Cost sensitivity per profile: score points (% of best) a doubling of cost must buy at the standard tier. */
+export const SENSITIVITY = { lean: 12, balanced: 6, max: 1 };
+export const SENSITIVITY_RANGE = [0.5, 30];
 
 /** Workload scores: weighted parts of snapshot metric ids (all on 0-100 scales). */
 export const WORKLOADS = {
@@ -65,22 +71,35 @@ export const WORKLOADS = {
 };
 
 /**
- * Difficulty tiers. floor: share of the best workload score a pick must reach.
- * perDoubling: score points (% of best) one doubling of cost must buy. Across
- * the gateway, quality rises about 7 points per cost doubling on average, so
- * light work asks for more than that (cost wins) and hard work for less.
+ * Difficulty tiers. floor: share of the best workload score a pick must reach,
+ * from `quality` (at the max preset's sensitivity or below) to `cost` (at the
+ * lean preset's or above), in between on a log scale (floorFor). priceScale: multiplies the cost sensitivity, so light work asks a doubling of
+ * cost to buy more (cost wins) and hard work less (quality wins). Across the
+ * gateway, quality rises about 7 points per cost doubling on average.
  */
 export const TIERS = {
-  light: { label: 'Light', description: 'Routine, well-scoped work: cost and speed first.', floor: { lean: 0.55, balanced: 0.65, max: 0.75 }, perDoubling: { lean: 16, balanced: 12, max: 8 } },
-  standard: { label: 'Standard', description: 'Everyday implementation and review.', floor: { lean: 0.75, balanced: 0.82, max: 0.9 }, perDoubling: { lean: 9, balanced: 6, max: 4 } },
-  hard: { label: 'Hard', description: 'Multi-file, subtle or design work.', floor: { lean: 0.85, balanced: 0.92, max: 0.96 }, perDoubling: { lean: 5, balanced: 2.5, max: 1.5 } },
-  frontier: { label: 'Frontier', description: 'Last resort: the strongest model that is available.', floor: { lean: 0.9, balanced: 0.95, max: 0.99 }, perDoubling: { lean: 2, balanced: 1, max: 0.5 } },
+  light: { label: 'Light', description: 'Routine, well-scoped work: cost and speed first.', floor: { quality: 0.75, cost: 0.55 }, priceScale: 2 },
+  standard: { label: 'Standard', description: 'Everyday implementation and review.', floor: { quality: 0.9, cost: 0.75 }, priceScale: 1 },
+  hard: { label: 'Hard', description: 'Multi-file, subtle or design work.', floor: { quality: 0.96, cost: 0.85 }, priceScale: 0.5 },
+  frontier: { label: 'Frontier', description: 'Last resort: the strongest model that is available.', floor: { quality: 0.99, cost: 0.9 }, priceScale: 0.25 },
 };
+
+/** The share of the best score a pick must reach at a tier and cost sensitivity. */
+export function floorFor(tier, sensitivity) {
+  const f = TIERS[tier]?.floor ?? TIERS.standard.floor;
+  const t = Math.max(0, Math.min(1, Math.log(sensitivity / SENSITIVITY.max) / Math.log(SENSITIVITY.lean / SENSITIVITY.max)));
+  return Number((f.quality - (f.quality - f.cost) * t).toFixed(3));
+}
+
+/** Points per doubling a cost sensitivity asks at a tier. */
+export function perDoublingFor(tier, sensitivity) {
+  return sensitivity * (TIERS[tier]?.priceScale ?? 1);
+}
 
 /**
  * What a role needs, as measurable criteria. Benchmarks count as a share of the
- * best current model (0-100, negative scores as 0); speed is the time to a
- * typical answer, where each doubling against the fastest model costs 20 points.
+ * best current model (0-100, negative scores as 0); speed averages latency and
+ * throughput, where each doubling against the fastest model costs 20 points.
  */
 export const ANSWER_TOKENS = 500;
 export const SPEED_POINTS_PER_DOUBLING = 20;
@@ -91,7 +110,7 @@ export const CRITERIA = {
   long_context: { label: 'Long context', metric: 'lcr', description: 'AA-LCR: reasoning over long documents.' },
   knowledge_work: { label: 'Knowledge work', metric: 'gdp_pdf_all_pass', description: 'GDP.pdf: real knowledge-work deliverables such as reports.' },
   accuracy: { label: 'Accuracy', metric: 'omniscience', description: 'AA-Omniscience: knowledge, penalised for hallucinating.' },
-  speed: { label: 'Speed', metric: null, description: `Time to a ${ANSWER_TOKENS}-token answer: time to the first answer token (thinking included) plus generation at the route's output speed. Each doubling against the fastest model costs ${SPEED_POINTS_PER_DOUBLING} points.` },
+  speed: { label: 'Speed', metric: null, description: `Latency and throughput, averaged: time to the first answer token (thinking included) and output tokens per second at the route's host. Each doubling against the fastest model costs ${SPEED_POINTS_PER_DOUBLING} points.` },
 };
 
 /** Per Herdr role: what it is for, its tier, and what it needs (weights in %). Override per role with `recommend` in models.json. */
@@ -117,7 +136,8 @@ const EFFORT_TO_VARIANT = { 'non-reasoning': 'none', minimal: 'minimal', low: 'l
 export const METHOD = {
   engine_version: ENGINE_VERSION,
   min_cost_per_task_usd: MIN_COST,
-  objective: '100 * score / best - k * log2(cost per task), among candidates with score >= floor * best (speed weight w adds w * log2(tokens per second) for the dashboard speed focus)',
+  objective: '100 * score / best - k * log2(cost per task), among candidates with score >= floor * best; k = sensitivity * tier priceScale (speed weight w adds w * (log2(tokens per second) - log2(seconds to first answer token)) / 2 when speed counts)',
+  sensitivity: SENSITIVITY,
   workloads: WORKLOADS,
   tiers: TIERS,
   criteria: CRITERIA,
@@ -177,17 +197,20 @@ export function responseSeconds(ttfa, tps) {
  */
 export function criteriaContext(rows) {
   const best = {};
-  let fastest = null;
+  let fastest = null, latency = null, throughput = null;
   for (const row of rows ?? []) {
     if (row.release_deprecated) continue;
     for (const c of Object.values(CRITERIA)) {
       const v = c.metric ? num(row.scores?.[c.metric]) : null;
       if (v !== null && (best[c.metric] === undefined || v > best[c.metric])) best[c.metric] = v;
     }
-    const t = responseSeconds(row.performance?.time_to_first_answer_token_seconds, row.performance?.output_tokens_per_second);
+    const ttfa = num(row.performance?.time_to_first_answer_token_seconds), tps = num(row.performance?.output_tokens_per_second);
+    const t = responseSeconds(ttfa, tps);
     if (t !== null && (fastest === null || t < fastest)) fastest = t;
+    if (ttfa !== null && ttfa > 0 && (latency === null || ttfa < latency)) latency = ttfa;
+    if (tps !== null && tps > 0 && (throughput === null || tps > throughput)) throughput = tps;
   }
-  return { best, fastest };
+  return { best, fastest, latency, throughput };
 }
 
 /**
@@ -200,13 +223,16 @@ export function criteriaContext(rows) {
 export function roleFit(candidate, needs, ctx) {
   const breakdown = {};
   let sum = 0, weight = 0, missing = 0;
-  const response = responseSeconds(candidate.ttfa ?? candidate.row?.performance?.time_to_first_answer_token_seconds, candidate.speed ?? candidate.row?.performance?.output_tokens_per_second);
+  const ttfa = num(candidate.ttfa ?? candidate.row?.performance?.time_to_first_answer_token_seconds);
+  const tps = num(candidate.speed ?? candidate.row?.performance?.output_tokens_per_second);
+  const response = responseSeconds(ttfa, tps);
+  const speed = speedScore(ttfa, tps, ctx);
   for (const [key, w] of Object.entries(needs ?? {})) {
     const c = CRITERIA[key];
     if (!c || !(w > 0)) continue;
     let n = null;
     if (key === 'speed') {
-      if (response !== null && ctx.fastest) n = Math.max(0, Math.min(100, 100 - SPEED_POINTS_PER_DOUBLING * Math.log2(response / ctx.fastest)));
+      if (speed) n = speed.value;
     } else {
       const v = num(candidate.row?.scores?.[c.metric]);
       const top = ctx.best[c.metric];
@@ -218,7 +244,25 @@ export function roleFit(candidate, needs, ctx) {
     weight += w;
   }
   if (weight === 0) return null;
-  return { value: Math.exp(sum / weight), estimated: missing / (weight + missing) >= 0.1, breakdown, response_seconds: round(response, 1) };
+  return {
+    value: Math.exp(sum / weight), estimated: missing / (weight + missing) >= 0.1, breakdown, response_seconds: round(response, 1),
+    ...(speed ? { speed_parts: { latency: round(speed.latency, 1), throughput: round(speed.throughput, 1) } } : {}),
+  };
+}
+
+/**
+ * Speed 0-100: the mean of latency (time to the first answer token against the
+ * quickest) and throughput (tokens per second against the fastest), each losing
+ * SPEED_POINTS_PER_DOUBLING per doubling. One part alone counts when the other
+ * is not measured; null when neither is.
+ */
+export function speedScore(ttfa, tps, ctx) {
+  const clamp = (v) => Math.max(0, Math.min(100, v));
+  const latency = ttfa !== null && ttfa > 0 && ctx?.latency ? clamp(100 - SPEED_POINTS_PER_DOUBLING * Math.log2(ttfa / ctx.latency)) : null;
+  const throughput = tps !== null && tps > 0 && ctx?.throughput ? clamp(100 - SPEED_POINTS_PER_DOUBLING * Math.log2(ctx.throughput / tps)) : null;
+  const parts = [latency, throughput].filter((v) => v !== null);
+  if (!parts.length) return null;
+  return { value: parts.reduce((a, b) => a + b, 0) / parts.length, latency, throughput };
 }
 
 /**
@@ -263,7 +307,7 @@ export function variantForRoute(row, route) {
 export function buildCandidates(snapshot, options = {}) {
   const {
     includeDeprecated = false, allowMaxEffort = false, providers = null, exclude = [],
-    requireTools = false, includeFree = true, costMode = 'task',
+    requireTools = false, includeFree = true, costMode = 'task', maxCost = null,
   } = options;
   const rows = options.rows ?? snapshot?.models ?? [];
   const allowed = providers && providers.length ? new Set(providers) : null;
@@ -283,6 +327,7 @@ export function buildCandidates(snapshot, options = {}) {
         : num(route.cost_per_task_usd);
       if (cost === null || cost < 0) continue;
       if (cost === 0 && !includeFree) continue;
+      if (maxCost !== null && cost > maxCost) continue;
       out.push({
         id: `${route.provider_id}/${route.model_id}${variant ? `#${variant}` : ''}`,
         provider_id: route.provider_id,
@@ -316,32 +361,36 @@ function median(values) {
 /**
  * The pick for a workload (or a role's needs), tier and profile. Returns null
  * when nothing in the pool has a score. options: needs + context + label (score
- * by roleFit instead of a workload), speedWeight (w), perDoubling / floor
- * (override the tier), preferProviders (tie-break order), limit (`ranked`).
+ * by roleFit instead of a workload), sensitivity (cost sensitivity, instead of
+ * the profile's), speedWeight (w), perDoubling / floor (override the tier),
+ * preferProviders (tie-break order), limit (`ranked`).
  */
-export function recommend(candidates, { workload = 'general', needs = null, context = null, label = null, tier = 'standard', profile = 'balanced', speedWeight = 0, perDoubling, floor, preferProviders = [], limit = 5 } = {}) {
+export function recommend(candidates, { workload = 'general', needs = null, context = null, label = null, tier = 'standard', profile = 'balanced', sensitivity, speedWeight = 0, perDoubling, floor, preferProviders = [], limit = 5 } = {}) {
   const spec = needs ? { label: label ?? 'Role fit', description: 'Weighted role needs.', parts: [] } : resolveWorkload(workload);
   const ctx = needs ? (context ?? criteriaContext(candidates.map((c) => c.row))) : null;
   const t = TIERS[tier];
   if (!t) throw new Error(`unknown tier "${tier}" (one of ${Object.keys(TIERS).join(', ')})`);
   if (!PROFILES.includes(profile)) throw new Error(`unknown profile "${profile}" (one of ${PROFILES.join(', ')})`);
-  const k = perDoubling ?? t.perDoubling[profile];
-  const share = floor ?? t.floor[profile];
+  const k = perDoubling ?? perDoublingFor(tier, sensitivity ?? SENSITIVITY[profile]);
+  const share = floor ?? floorFor(tier, sensitivity ?? SENSITIVITY[profile]);
 
   const pool = [];
   for (const c of candidates) {
     const s = needs ? roleFit(c, needs, ctx) : workloadScore(c.row, spec);
-    if (s) pool.push({ c, score: s.value, estimated: s.estimated, breakdown: s.breakdown, response: s.response_seconds ?? null });
+    if (s) pool.push({ c, score: s.value, estimated: s.estimated, breakdown: s.breakdown, speedParts: s.speed_parts ?? null, response: s.response_seconds ?? null });
   }
   if (!pool.length) return null;
   const best = pool.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.c.cost < a.c.cost) ? b : a));
   const top = best.score;
   const min = top > 0 ? share * top : top;
   const speedFallback = median(pool.map((p) => p.c.speed).filter((v) => v !== null && v > 0)) ?? 100;
+  const ttfaFallback = median(pool.map((p) => p.c.ttfa).filter((v) => v !== null && v > 0)) ?? 10;
+  // Speed counts both ways: a doubling of tokens per second or a halving of the wait for the first token.
+  const speedTerm = (p) => (Math.log2(Math.max(p.c.speed ?? speedFallback, 1)) - Math.log2(Math.max(p.c.ttfa ?? ttfaFallback, 0.05))) / 2;
   const rank = (p) => preferProviders.includes(p.c.provider_id) ? preferProviders.indexOf(p.c.provider_id) : preferProviders.length;
   const utility = (p) => (top > 0 ? (100 * p.score) / top : p.score)
     - k * Math.log2(Math.max(p.c.cost, MIN_COST))
-    + (speedWeight ? speedWeight * Math.log2(Math.max(p.c.speed ?? speedFallback, 1)) : 0);
+    + (speedWeight ? speedWeight * speedTerm(p) : 0);
   const order = (a, b) => (b.u - a.u) || (b.score - a.score) || (a.c.cost - b.c.cost) || (rank(a) - rank(b)) || a.c.id.localeCompare(b.c.id);
 
   const eligible = pool.filter((p) => p.score >= min).map((p) => ({ ...p, u: utility(p) })).sort(order);
@@ -360,12 +409,13 @@ export function recommend(candidates, { workload = 'general', needs = null, cont
     slug: p.c.slug, name: p.c.name, release: p.c.release, creator: p.c.creator,
     score: round(p.score, 1), score_pct_of_best: top > 0 ? round((100 * p.score) / top, 1) : null, estimated: p.estimated || undefined,
     cost_per_task_usd: round(p.c.cost, 4), free: p.c.free || undefined, output_tokens_per_second: p.c.speed === null ? null : Math.round(p.c.speed),
-    ...(p.breakdown ? { breakdown: p.breakdown, response_seconds: p.response } : {}),
+    time_to_first_answer_token_seconds: p.c.ttfa === null || p.c.ttfa === undefined ? null : round(p.c.ttfa, 1),
+    ...(p.breakdown ? { breakdown: p.breakdown, response_seconds: p.response, ...(p.speedParts ? { speed_parts: p.speedParts } : {}) } : {}),
   };
   const result = {
     workload: needs ? 'role' : typeof workload === 'string' ? workload : spec.label,
     workload_label: spec.label,
-    tier, profile,
+    tier, profile, sensitivity: sensitivity ?? SENSITIVITY[profile],
     floor_share: share, per_doubling: k, speed_weight: speedWeight,
     pool: pool.length, eligible: eligible.length,
     best: view(best),
@@ -457,7 +507,8 @@ export function describeCurrent(snapshot, model, variant, prof, ctx) {
         ...out, known: true, deprecated: Boolean(row.release_deprecated), release: row.release_name || row.name, name: row.name, slug: row.slug,
         score: s ? round(s.value, 1) : null, cost_per_task_usd: round(num(route.cost_per_task_usd), 4),
         output_tokens_per_second: candidate.speed === null ? null : Math.round(candidate.speed),
-        ...(s?.breakdown ? { breakdown: s.breakdown, response_seconds: s.response_seconds } : {}),
+        time_to_first_answer_token_seconds: candidate.ttfa === null ? null : round(candidate.ttfa, 1),
+        ...(s?.breakdown ? { breakdown: s.breakdown, response_seconds: s.response_seconds, ...(s.speed_parts ? { speed_parts: s.speed_parts } : {}) } : {}),
       };
     }
   }
@@ -478,22 +529,26 @@ function needsList(needs) {
  * role against its average fit. Honors model_policy.providers (default: the
  * providers the roles use today), model_policy.exclude and allow_max_effort.
  */
-export function recommendRoles(snapshot, config, { profiles = PROFILES } = {}) {
+export function recommendRoles(snapshot, config, { profiles = PROFILES, sensitivity = null, providers: only = null, maxCost = null, speedWeight = 0 } = {}) {
   const roles = config?.roles ?? {};
   const policy = config?.model_policy ?? {};
   const inUse = [...new Set(Object.values(roles).map((s) => splitModel(s).model).filter((m) => m.includes('/') && !m.includes('<')).map((m) => m.split('/')[0]))].sort();
-  const providers = Array.isArray(policy.providers) && policy.providers.length ? policy.providers : inUse;
-  const candidates = buildCandidates(snapshot, { providers, exclude: policy.exclude ?? [], requireTools: true, allowMaxEffort: Boolean(policy.allow_max_effort) });
+  // The dashboard's provider filter replaces the policy; otherwise the policy, else the providers in use.
+  const providers = only?.length ? only : Array.isArray(policy.providers) && policy.providers.length ? policy.providers : inUse;
+  const candidates = buildCandidates(snapshot, { providers, exclude: policy.exclude ?? [], requireTools: true, allowMaxEffort: Boolean(policy.allow_max_effort), maxCost });
+  // A sensitivity adds one more set of picks, "custom", next to the profiles.
+  const keys = sensitivity === null ? profiles : [...profiles, 'custom'];
+  const optionsFor = (key) => (key === 'custom' ? { sensitivity, speedWeight } : { profile: key, speedWeight });
   const ctx = criteriaContext(snapshot?.models);
   const rows = [];
   for (const [name, spec] of Object.entries(roles)) {
     const prof = roleProfile(name, spec);
     const { model, variant } = splitModel(spec);
     const picks = {};
-    for (const profile of profiles) {
-      picks[profile] = prof.needs
-        ? recommend(candidates, { needs: prof.needs, context: ctx, label: prof.label, tier: prof.tier, profile, preferProviders: providers })
-        : recommend(candidates, { workload: prof.workload, tier: prof.tier, profile, preferProviders: providers });
+    for (const key of keys) {
+      picks[key] = prof.needs
+        ? recommend(candidates, { needs: prof.needs, context: ctx, label: prof.label, tier: prof.tier, preferProviders: providers, ...optionsFor(key) })
+        : recommend(candidates, { workload: prof.workload, tier: prof.tier, preferProviders: providers, ...optionsFor(key) });
     }
     rows.push({
       role: name, label: prof.label, workload: prof.workload ?? 'role', tier: prof.tier, needs: needsList(prof.needs),
@@ -511,7 +566,7 @@ export function recommendRoles(snapshot, config, { profiles = PROFILES } = {}) {
     };
   };
   const summary = { current: setup((r) => r.current) };
-  for (const profile of profiles) summary[profile] = setup((r) => r.picks[profile]?.pick);
+  for (const key of keys) summary[key] = setup((r) => r.picks[key]?.pick);
   return { providers, exclude: policy.exclude ?? [], candidates: candidates.length, summary, roles: rows };
 }
 
@@ -529,10 +584,38 @@ export function recommendGrid(snapshot, options = {}) {
   return grid;
 }
 
+/**
+ * The cost/fit curve of the whole role setup across cost sensitivities (log
+ * spaced over SENSITIVITY_RANGE): [{ sensitivity, cost_usd, fit }], the points
+ * where the picks change. options: as recommendRoles.
+ */
+export function setupCurve(snapshot, config, options = {}, steps = 24) {
+  const [lo, hi] = SENSITIVITY_RANGE;
+  const out = [];
+  for (let i = 0; i < steps; i++) {
+    const sensitivity = round(lo * Math.pow(hi / lo, i / (steps - 1)), 2);
+    const s = recommendRoles(snapshot, config, { ...options, profiles: [], sensitivity }).summary.custom;
+    if (s && !(out.length && out.at(-1).cost_usd === s.cost_usd && out.at(-1).fit === s.fit)) out.push({ sensitivity, ...s });
+  }
+  return out;
+}
+
+/** The part of a Command Center config the engine reads (no prompts, paths or budgets). */
+export function engineConfig(config) {
+  const roles = {};
+  for (const [name, spec] of Object.entries(config?.roles ?? {})) {
+    roles[name] = Object.fromEntries(['model', 'variant', 'tier', 'recommend'].filter((k) => spec?.[k] !== undefined).map((k) => [k, spec[k]]));
+  }
+  const policy = config?.model_policy ?? {};
+  const model_policy = Object.fromEntries(['providers', 'exclude', 'allow_max_effort'].filter((k) => policy[k] !== undefined).map((k) => [k, policy[k]]));
+  return { roles, model_policy };
+}
+
 /** The whole recommendations document (data/recommendations.json). config may be null. */
 export function buildDocument(snapshot, config, { now = new Date() } = {}) {
   let roles = { available: false };
-  if (config?.roles) roles = { available: true, ...recommendRoles(snapshot, config) };
+  // config: the engine's part of the Herdr config, so the dashboard can recompute picks for its own criteria.
+  if (config?.roles) roles = { available: true, ...recommendRoles(snapshot, config), config: engineConfig(config) };
   return {
     schema_version: 1,
     generated_at: now.toISOString(),
