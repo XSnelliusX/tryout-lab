@@ -16,7 +16,7 @@ import { DetailDrawer } from "./components/DetailDrawer";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { Recommendations } from "./components/Recommendations";
-import { RolePicks } from "./components/RolePicks";
+import { RoleModels } from "./components/RoleModels";
 import { useRecommendations } from "./lib/useRecommendations";
 import type { ProviderOption, Row, Snapshot } from "./lib/types";
 
@@ -118,8 +118,10 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
       <div className="rail-footnote"><span className="rail-orbit" aria-hidden="true">✳</span><p>AI Gateway<br /><span>Data from Artificial Analysis</span></p></div>
       </aside>
       <div className="workspace-content">
-      <Recommendations rows={scoped} filters={filters} onSelect={setSelected} />
-      <RolePicks doc={recommendations} onSelect={setSelected} />
+      <div className="decision-row">
+        <Recommendations rows={scoped} filters={filters} onSelect={setSelected} />
+        <RoleModels doc={recommendations} onSelect={setSelected} />
+      </div>
       <div className="landscape-layout">
       <section id="analysis" aria-label="Visual analysis" className="analysis-workspace">
         <div className="analysis-toolbar">
