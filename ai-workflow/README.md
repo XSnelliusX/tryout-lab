@@ -71,17 +71,22 @@ the dashboard, for `cc-models` and for the prompt rewriter alike:
    low token price). Superseded releases are never recommended. A $0 price counts
    as $0.005 per task.
 3. **Good enough first**: a pick must reach a share of the best score that is
-   available (light 45-65%, standard 75-90%, hard 85-96%, frontier 90-99%,
+   available (light 55-75%, standard 75-90%, hard 85-96%, frontier 90-99%,
    from lean to max). Relative, so it does not go stale when the index is re-based.
 4. **Then cheap**: every doubling of cost must buy enough extra score (light 8-16
-   points of the best score, standard 4-9, hard 1.5-5, frontier 0.5-2). Speed
-   counts for latency-bound roles (Commander, explore).
+   points of the best score, standard 4-9, hard 1.5-5, frontier 0.5-2).
 
-Herdr roles map to a workload and a tier (implementer: coding/standard,
-architect: planning/hard, Commander: tool use/light, ...), overridable per role
-with `"recommend": {"workload": ..., "tier": ...}` in `models.json`. The prompt
-rewriter maps its task tiers (quick, standard, complex, deep reasoning) to the
-engine's tiers and passes the engine's pick per tier to the rewrite model.
+**Herdr roles are scored on what they need**, not on one general score: a fit
+of 0-100 from the criteria the role depends on, including speed (the time to an
+answer, thinking included). Research (explore) is 45% speed, 25% tool use, 15%
+long context and 15% reasoning, with no coding; the implementer is mostly
+coding; the architect mostly reasoning. A weighted geometric mean, so a fast
+model that cannot use tools is no researcher. Override per role with
+`"recommend": {"needs": {...}, "tier": ...}` in `models.json`. The dashboard's
+"Models per role" panel shows each role's pick per budget, and what each setup
+costs for one task per role against its average fit. The prompt rewriter maps
+its task tiers (quick, standard, complex, deep reasoning) to the engine's tiers
+and passes the engine's pick per tier to the rewrite model.
 
 ```sh
 node ~/.config/opencode/plugins/ai-gateway/model-comparison/recommend.mjs roles    # picks per Herdr role

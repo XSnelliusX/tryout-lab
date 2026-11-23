@@ -201,7 +201,7 @@ cards "Recommendations by difficulty", the panel "Models per role", Herdr's
 
 | Tier | floor (lean / balanced / max) | k per cost doubling | Dashboard card |
 |---|---|---|---|
-| `light` | 45% / 55% / 65% | 16 / 12 / 8 | Easy |
+| `light` | 55% / 65% / 75% | 16 / 12 / 8 | Easy |
 | `standard` | 75% / 82% / 90% | 9 / 6 / 4 | Medium |
 | `hard` | 85% / 92% / 96% | 5 / 2.5 / 1.5 | Difficult |
 | `frontier` | 90% / 95% / 99% | 2 / 1 / 0.5 | |
@@ -211,13 +211,43 @@ light work asks for more than that (cost wins), hard work for less (quality
 wins). The dashboard's focus picks the profile: price = lean, quality =
 balanced, speed = balanced with `w = 2`.
 
-Herdr roles (`ROLE_PROFILES`): Commander and explore `agentic/light` (speed
-weight 2 and 3), writer `writing/light`, verifier-fast `coding/light`,
-implementer and reviewer `coding/standard`, implementer-pro and verifier-deep
-`coding/hard`, architect (also the planner) `planning/hard`, escalation
-`planning/frontier`. A role's `"recommend": {"workload", "tier", "speed"}` in
-the Herdr config overrides this; `model_policy.providers` and `exclude` limit
-the candidates.
+**Herdr roles are scored on what they need**, not on one benchmark
+(`ROLE_PROFILES`). A role's *fit* (0-100) is the weighted geometric mean of
+measured criteria, each counted 0-100 against the best current model:
+
+| Criterion | Measured by |
+|---|---|
+| coding | Terminal-Bench 4.0 |
+| tool use | AutomationBench |
+| reasoning | Intelligence Index |
+| long context | AA-LCR |
+| knowledge work | GDP.pdf |
+| accuracy | AA-Omniscience (negative counts as 0) |
+| speed | time to a 500-token answer: time to the first answer token (thinking included) plus 500 tokens at the route's output speed; each doubling against the fastest model costs 20 points |
+
+The geometric mean means a strength cannot hide a weakness: a fast model that
+cannot use tools is no researcher. A missing criterion is left out (flagged
+`estimated` when 10% or more of the weight is missing).
+
+| Role | Purpose | Needs (%) | Tier |
+|---|---|---|---|
+| commander | Orchestration | tool use 40, speed 35, reasoning 25 | light |
+| explore | Research & search | speed 45, tool use 25, long context 15, reasoning 15 | light |
+| writer | Writing | knowledge work 30, reasoning 25, accuracy 25, speed 20 | light |
+| verifier-fast | Test triage | speed 35, coding 35, tool use 30 | light |
+| implementer | Coding | coding 55, tool use 20, reasoning 15, speed 10 | standard |
+| reviewer | Code review | coding 45, reasoning 40, long context 15 | standard |
+| implementer-pro | Hard coding | coding 60, reasoning 30, tool use 10 | hard |
+| verifier-deep | Deep verification | coding 45, reasoning 40, tool use 15 | hard |
+| architect (also the planner) | Planning & design | reasoning 50, coding 25, long context 15, accuracy 10 | hard |
+| escalation | Hardest problems | reasoning 50, coding 50 | frontier |
+
+A role's `"recommend": {"needs": {...}, "tier": ...}` in the Herdr config
+overrides this (`{"workload": "coding"}` scores it on a workload instead);
+`model_policy.providers` and `exclude` limit the candidates. Every setup
+(the roles' current models, lean, balanced, max) also gets the cost of one
+task on every role and the average fit: the dashboard plots them, and
+`cc-models recommend` prints them as its last row.
 
 ```sh
 node recommend.mjs roles [--json]                 # Herdr roles: current model and lean/balanced/max picks

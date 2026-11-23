@@ -5,7 +5,7 @@ import { recommendByDifficulty } from "./recommendations";
 
 const general = taskById("general");
 const row = (slug: string, score: number, cost: number) =>
-  makeRow({ slug, scores: { intelligence: score }, blended: 1, costPerTask: cost });
+  makeRow({ slug, name: slug, scores: { intelligence: score }, blended: 1, costPerTask: cost });
 
 describe("relative cost-performance regression", () => {
   it("prefers the cheaper model for a 1.5% score improvement costing 128% more", () => {
@@ -53,7 +53,7 @@ describe("relative cost-performance regression", () => {
     const medium = recommendByDifficulty([sol, argon], general, "task", "quality")[1].result!;
     expect(medium.pick.slug).toBe("sol");
     expect(medium.stronger?.slug).toBe("argon");
-    expect(medium.reason).toMatch(/next step up: argon \+0\.8 points for 2\.3x the cost/);
+    expect(medium.reason).toMatch(/next step up: argon, \+0\.8 points for 2\.3x the cost/);
   });
 
   it("counts a $0 model as cheap, not infinitely good", () => {

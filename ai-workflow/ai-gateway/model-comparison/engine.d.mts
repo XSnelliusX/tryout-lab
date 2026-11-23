@@ -16,17 +16,36 @@ export interface TierSpec {
   perDoubling: Record<Profile, number>;
 }
 
-export interface RoleProfile {
-  workload: string;
+export interface CriterionSpec {
+  label: string;
+  metric: string | null;
+  description: string;
+}
+
+/** A role's defaults: what it is for, its tier and its needs (weights in %). */
+export interface RoleDefaults {
+  label: string;
   tier: TierName;
-  speed: number;
+  needs: Record<string, number>;
+}
+
+/** roleProfile(): the effective profile of one configured role. */
+export interface RoleProfile {
+  key: string;
+  label: string;
+  tier: TierName;
+  needs: Record<string, number> | null;
+  workload: string | null;
 }
 
 export const ENGINE_VERSION: number;
 export const PROFILES: Profile[];
 export const WORKLOADS: Record<string, WorkloadSpec>;
 export const TIERS: Record<TierName, TierSpec>;
-export const ROLE_PROFILES: Record<string, RoleProfile>;
+export const ROLE_PROFILES: Record<string, RoleDefaults>;
+export const CRITERIA: Record<string, CriterionSpec>;
+export const ANSWER_TOKENS: number;
+export const SPEED_POINTS_PER_DOUBLING: number;
 export const MIN_COST: number;
 export const METHOD: {
   engine_version: number;
@@ -34,7 +53,10 @@ export const METHOD: {
   objective: string;
   workloads: Record<string, WorkloadSpec>;
   tiers: Record<TierName, TierSpec>;
-  roles: Record<string, RoleProfile>;
+  criteria: Record<string, CriterionSpec>;
+  answer_tokens: number;
+  speed_points_per_doubling: number;
+  roles: Record<string, RoleDefaults>;
 };
 
 /** Anything shaped like a snapshot row (the web app passes its Row). */
@@ -77,6 +99,9 @@ export interface PickView {
   cost_per_task_usd: number;
   free?: boolean;
   output_tokens_per_second: number | null;
+  /** Role picks: the score per need (0-100) and the seconds to a typical answer. */
+  breakdown?: Record<string, number>;
+  response_seconds?: number | null;
 }
 
 export interface RecommendResult {
@@ -108,8 +133,16 @@ export interface CandidateOptions {
   rows?: EngineRow[];
 }
 
+export interface CriteriaContext {
+  best: Record<string, number>;
+  fastest: number | null;
+}
+
 export interface RecommendOptions {
   workload?: string | WorkloadSpec;
+  needs?: Record<string, number> | null;
+  context?: CriteriaContext | null;
+  label?: string | null;
   tier?: TierName;
   profile?: Profile;
   speedWeight?: number;
@@ -128,21 +161,36 @@ export interface CurrentModel {
   score: number | null;
   cost_per_task_usd: number | null;
   release?: string;
+  name?: string;
+  slug?: string;
   placeholder?: boolean;
+  output_tokens_per_second?: number | null;
+  breakdown?: Record<string, number>;
+  response_seconds?: number | null;
+}
+
+export interface SetupSummary {
+  /** Cost of one task on every role, in USD. */
+  cost_usd: number;
+  /** Average fit over the roles. */
+  fit: number;
+  roles: number;
 }
 
 export interface RoleRecommendation {
   role: string;
+  label: string;
+  /** "role" when scored on needs, else the workload name of a `recommend.workload` override. */
   workload: string;
   tier: TierName;
-  speed_weight: number;
+  needs: { key: string; label: string; weight: number }[];
   current: CurrentModel;
   picks: Record<Profile, RecommendResult | null>;
 }
 
 export type RolesSection =
   | { available: false }
-  | { available: true; providers: string[]; exclude: string[]; candidates: number; roles: RoleRecommendation[] };
+  | { available: true; providers: string[]; exclude: string[]; candidates: number; summary: Record<string, SetupSummary | null>; roles: RoleRecommendation[] };
 
 export interface RecommendationsDocument {
   schema_version: number;
@@ -162,4 +210,7 @@ export function formatCost(v: number | null | undefined): string;
 export function label(c: { model_id: string; variant: string | null } | null | undefined): string;
 export function explain(r: RecommendResult): string;
 export function roleProfile(name: string, spec?: Record<string, unknown>): RoleProfile;
+export function responseSeconds(ttfa: number | null | undefined, tps: number | null | undefined): number | null;
+export function criteriaContext(rows: EngineRow[] | null | undefined): CriteriaContext;
+export function roleFit(candidate: { row: EngineRow; speed?: number | null; ttfa?: number | null }, needs: Record<string, number>, ctx: CriteriaContext): { value: number; estimated: boolean; breakdown: Record<string, number>; response_seconds: number | null } | null;
 export function buildDocument(snapshot: unknown, config: unknown, options?: { now?: Date }): RecommendationsDocument;

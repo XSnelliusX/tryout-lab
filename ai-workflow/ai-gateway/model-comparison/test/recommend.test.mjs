@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  buildCandidates, buildDocument, describeCurrent, recommend, recommendRoles, roleProfile,
+  buildCandidates, buildDocument, criteriaContext, describeCurrent, recommend, recommendRoles, responseSeconds, roleFit, roleProfile,
   routesOf, variantForRoute, workloadScore, writeDocument, MIN_COST,
 } from '../recommend.mjs';
 
@@ -33,7 +33,7 @@ const snapshot = {
     row('top-3-high', 'high', { intelligence: 60, terminal_bench_40: 62, automation_bench: 70 }, [route('gw-b', 'top-3', 6)]),
     row('top-3', 'max', { intelligence: 62, terminal_bench_40: 63, automation_bench: 71 }, [route('gw-b', 'top-3', 12)]),
     row('old-1', null, { intelligence: 58, terminal_bench_40: 60 }, [route('gw-a', 'old-1', 0.1, { effort_levels: [] })], { release_deprecated: true }),
-    row('free-9', null, { intelligence: 20, terminal_bench_40: 10, automation_bench: 20 }, [route('gw-c', 'free-9', 0, { effort_levels: [] })]),
+    row('free-9', null, { intelligence: 25, terminal_bench_40: 10, automation_bench: 30 }, [route('gw-c', 'free-9', 0, { effort_levels: [] })]),
     row('notools-1-high', 'high', { intelligence: 59, terminal_bench_40: 61 }, [route('gw-a', 'notools-1', 0.2, { tools: false })]),
   ],
 };
@@ -82,7 +82,7 @@ test('light work takes the cheap model, hard work pays for the frontier', () => 
   const standard = recommend(cands, { workload: 'coding', tier: 'standard', profile: 'balanced' });
   assert.equal(standard.pick.id, 'gw-a/mid-2#high', 'mid line clears the floor at a fraction of the frontier price');
   assert.equal(standard.stronger.id, 'gw-b/top-3#high');
-  assert.match(standard.reason, /next step up: top-3#high/);
+  assert.match(standard.reason, /next step up: top-3-high, \+/, 'named by display name');
   const frontier = recommend(cands, { workload: 'coding', tier: 'frontier', profile: 'max' });
   assert.equal(frontier.pick.id, 'gw-b/top-3#high');
   assert.equal(frontier.pick.score_pct_of_best, 100);
@@ -108,7 +108,7 @@ test('a free model is cheap, not infinitely good: it must clear the floor', () =
   assert.ok(onlyWeak.pick.free);
 });
 
-test('roles use their workload, honour the policy and describe the current model', () => {
+test('roles are scored on what they need, honour the policy and describe the current model', () => {
   const config = {
     roles: {
       commander: { model: 'gw-a/swift-1', variant: 'low' },
@@ -120,14 +120,21 @@ test('roles use their workload, honour the policy and describe the current model
   const out = recommendRoles(snapshot, config);
   assert.deepEqual(out.providers, ['gw-a', 'gw-b']);
   const by = Object.fromEntries(out.roles.map((r) => [r.role, r]));
-  assert.equal(by.commander.workload, 'agentic');
+  assert.equal(by.commander.label, 'Orchestration');
+  assert.deepEqual(by.commander.needs.map((n) => n.key), ['tool_use', 'speed', 'reasoning'], 'largest need first');
+  assert.ok(by.commander.picks.balanced.pick.breakdown.tool_use > 0, 'picks show their score per need');
   assert.equal(by.implementer.current.variant, 'medium', 'inline #variant is read');
   assert.equal(by.implementer.current.known, true);
-  assert.equal(by.custom.workload, 'general');
+  assert.ok(by.implementer.current.breakdown.coding > 0, 'the current model is scored the same way');
+  assert.equal(by.custom.workload, 'general', 'a workload override scores the role on that workload');
   assert.equal(by.custom.tier, 'hard', 'tier 3 maps to hard');
   for (const r of out.roles) for (const p of Object.values(r.picks)) assert.ok(['gw-a', 'gw-b'].includes(p.pick.provider_id));
   assert.equal(describeCurrent(snapshot, 'gw-a/<model>', null, 'coding').placeholder, true);
-  assert.deepEqual(roleProfile('unknown', { tier: 1 }), { workload: 'general', tier: 'light', speed: 0 });
+  assert.deepEqual(roleProfile('unknown', { tier: 1 }), { key: 'unknown', label: 'General', tier: 'light', needs: { reasoning: 70, tool_use: 30 }, workload: null });
+  assert.deepEqual(roleProfile('explore', { recommend: { needs: { speed: 100 } } }).needs, { speed: 100 });
+  // Every setup: the cost of one task on every role against the average fit.
+  for (const key of ['current', 'lean', 'balanced', 'max']) assert.ok(out.summary[key].cost_usd > 0 && out.summary[key].fit > 0, key);
+  assert.ok(out.summary.max.fit >= out.summary.lean.fit);
 });
 
 test('the providers default to those the roles already use', () => {
@@ -146,4 +153,45 @@ test('the document carries the grid, the roles and a file:// twin', () => {
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'recommendations.json'), 'utf8')), JSON.parse(JSON.stringify(doc)));
   assert.match(fs.readFileSync(path.join(dir, 'recommendations.js'), 'utf8'), /^window\.__MODEL_RECOMMENDATIONS__ = /);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Research needs speed and tool use, not coding: a fast tool user beats a slow, stronger coder,
+// and a fast model that cannot use tools does not make up for it with speed.
+const perf = (tps, ttfa) => ({ output_tokens_per_second: tps, time_to_first_answer_token_seconds: ttfa });
+const speedRoute = (id, cost, tps, ttfa) => ({ ...route('gw', id, cost, { effort_levels: [] }), output_tokens_per_second: tps, time_to_first_answer_token_seconds: ttfa });
+const research = {
+  schema_version: 3,
+  models: [
+    row('coder', null, { intelligence: 62, terminal_bench_40: 64, automation_bench: 70, lcr: 80 }, [speedRoute('coder', 0.3, 40, 60)], { performance: perf(40, 60) }),
+    row('scout', null, { intelligence: 40, terminal_bench_40: 20, automation_bench: 66, lcr: 78 }, [speedRoute('scout', 0.3, 200, 2)], { performance: perf(200, 2) }),
+    row('sprinter', null, { intelligence: 12, terminal_bench_40: 2, automation_bench: 8, lcr: 60 }, [speedRoute('sprinter', 0.3, 300, 0.5)], { performance: perf(300, 0.5) }),
+  ],
+};
+
+test('the time to an answer counts thinking and generation, and speed is scored per doubling', () => {
+  assert.equal(responseSeconds(2, 250), 4);
+  assert.equal(responseSeconds(null, 100), null);
+  const ctx = criteriaContext(research.models);
+  assert.equal(ctx.fastest, 0.5 + 500 / 300);
+  const scout = roleFit({ row: research.models[1], speed: 200, ttfa: 2 }, { speed: 100 }, ctx);
+  // 4.5 s against the fastest 2.17 s: 1.05 doublings, 20 points each.
+  assert.ok(Math.abs(scout.value - (100 - 20 * Math.log2(4.5 / ctx.fastest))) < 1e-9);
+  assert.equal(scout.response_seconds, 4.5);
+});
+
+test('research picks the fast tool user, not the best coder or the fastest model', () => {
+  const ctx = criteriaContext(research.models);
+  const cands = buildCandidates(research);
+  const explore = roleProfile('explore');
+  for (const profile of ['lean', 'balanced', 'max']) {
+    assert.equal(recommend(cands, { needs: explore.needs, context: ctx, tier: explore.tier, profile }).pick.model_id, 'scout', profile);
+  }
+  // The same models for coding work: the coder wins once the work is hard.
+  const coding = roleProfile('implementer-pro');
+  assert.equal(recommend(cands, { needs: coding.needs, context: ctx, tier: coding.tier, profile: 'balanced' }).pick.model_id, 'coder');
+  // A fast model that cannot use tools is not a researcher: one weak need pulls the fit down.
+  const fits = Object.fromEntries(research.models.map((r) => [r.slug, roleFit({ row: r, speed: r.performance.output_tokens_per_second, ttfa: r.performance.time_to_first_answer_token_seconds }, explore.needs, ctx).value]));
+  assert.ok(fits.sprinter < fits.scout, JSON.stringify(fits));
+  // 72.5 s per answer is five doublings slower than the fastest: no speed left for research.
+  assert.ok(fits.coder < fits.sprinter, JSON.stringify(fits));
 });
