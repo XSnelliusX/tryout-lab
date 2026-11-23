@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { applyRoleChanges, buildDocument, defaultPaths, loadConfig } from './recommend.mjs';
 
@@ -50,7 +50,11 @@ function recommendations(cost, ccConfig) {
 }
 
 export async function startServer({ web = path.join(HERE, 'web'), cost = COST, gateway = path.join(HERE, '..', 'index.ts'),
-  compare = path.join(HERE, 'compare.mjs'), runner = run, open = false, idleMs = 30 * 60_000, ccConfig = defaultPaths().ccConfig } = {}) {
+  compare = path.join(HERE, 'compare.mjs'), runner = run, open = false, idleMs = 30 * 60_000, maxLifetimeMs = 8 * 60 * 60_000, ccConfig = defaultPaths().ccConfig } = {}) {
+  // Lifetime: the server exits after idleMs without a request from a visible
+  // page (a hidden tab's status polls do not count), and after maxLifetimeMs in
+  // any case, unless a sync is running. Reopening /model-comparison starts a new one.
+  const startedAt = Date.now();
   const token = crypto.randomBytes(32).toString('hex');
   const prefix = `/${token}/`;
   const env = { ...process.env, GATEWAY_COST_DIR: cost };
@@ -84,8 +88,8 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
     if (req.headers.host !== new URL(origin).host || req.headers['sec-fetch-site'] === 'cross-site') { res.writeHead(403).end(); return; }
     const url = new URL(req.url, origin);
     if (!url.pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
-    lastActivity = Date.now();
     const route = url.pathname.slice(prefix.length);
+    if (!(route === 'api/status' && url.searchParams.get('visible') === '0')) lastActivity = Date.now();
     if (route === 'api/status' && req.method === 'GET') {
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify(state));
@@ -175,15 +179,44 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
     child.on('error', () => {});
     child.unref();
   }
-  const timer = setInterval(() => { if (!active && Date.now() - lastActivity > idleMs) server.close(); }, Math.min(idleMs, 60_000));
+  const timer = setInterval(() => {
+    const now = Date.now();
+    if (!active && (now - lastActivity > idleMs || now - startedAt > maxLifetimeMs)) {
+      server.close();
+      server.closeAllConnections();
+    }
+  }, Math.min(idleMs, maxLifetimeMs, 60_000));
   timer.unref();
   server.on('close', () => clearInterval(timer));
   return { server, url, sync };
 }
 
+// One dashboard server at a time: its pid is kept in the cost folder, and a new
+// start stops the previous one (only if that pid still runs this server).
+const PID_FILE = path.join(COST, 'model-comparison', 'server.pid');
+
+export function stopPrevious(pidFile = PID_FILE) {
+  let pid;
+  try { pid = Number(fs.readFileSync(pidFile, 'utf8').trim()); } catch { return false; }
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return false;
+  let command = '';
+  try {
+    command = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+  } catch { return false; }
+  if (!command.includes('server.mjs') || !command.includes('--serve')) return false;
+  try { process.kill(pid, 'SIGTERM'); return true; } catch { return false; }
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv.includes('--serve')) {
-    startServer({ open: true }).then(() => {
+    startServer({ open: true }).then(({ server }) => {
+      try {
+        fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
+        fs.writeFileSync(PID_FILE, `${process.pid}\n`);
+        server.on('close', () => {
+          try { if (fs.readFileSync(PID_FILE, 'utf8').trim() === String(process.pid)) fs.unlinkSync(PID_FILE); } catch {}
+        });
+      } catch {}
       if (process.send) process.send({ ready: true }, () => process.disconnect());
     }).catch((err) => {
       if (process.send) process.send({ error: String(err.message || err) }, () => process.disconnect());
@@ -191,6 +224,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       process.exitCode = 1;
     });
   } else {
+    stopPrevious();
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env: process.env });
     child.on('error', (err) => { console.error(`Unable to start dashboard: ${err.message}`); process.exitCode = 1; });
     let acknowledged = false;

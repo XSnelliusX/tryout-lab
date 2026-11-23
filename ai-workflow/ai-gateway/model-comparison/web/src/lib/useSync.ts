@@ -15,14 +15,16 @@ export function useSync() {
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const response = await fetch("./api/status", { cache: "no-store" });
+        // A hidden tab still polls, but tells the server so it does not keep it alive.
+        const visible = document.visibilityState === "visible" ? 1 : 0;
+        const response = await fetch(`./api/status?visible=${visible}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Sync server unavailable");
         const next = await response.json() as SyncState;
         if (!stopped) setState(next);
       } catch {
         if (!stopped) setState((previous) => ({ ...previous, phase: "unavailable", message: "Sync server unavailable. Reopen /model-comparison.", error: null }));
       }
-      if (!stopped) timer = setTimeout(poll, 1000);
+      if (!stopped) timer = setTimeout(poll, document.visibilityState === "visible" ? 1000 : 10_000);
     }
     void poll();
     return () => { stopped = true; clearTimeout(timer); };

@@ -11,7 +11,9 @@ cost-to-performance, using [Artificial Analysis](https://artificialanalysis.ai/)
 - Opens a local dashboard immediately, showing the last snapshot while it
   refreshes the gateway and then AA. A **Sync** button repeats both steps.
 - Runs a temporary server bound to `127.0.0.1` so the page can initiate syncs;
-  it exits after 30 minutes without page activity and no sync in progress. The
+  it exits after 30 minutes without a request from a visible page (a hidden
+  tab's status polls do not count) and after 8 hours in any case, never during a
+  sync. Only one runs at a time: reopening the command stops the previous one. The
   same server serves the usage dashboard at `<token>/usage/`, so the two pages
   link to each other (**Usage ↗** here, **Model comparison ↗** there).
 - Holds the **recommendation engine** of the AI workflow (`engine.mjs`): the

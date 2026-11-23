@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { startServer } from '../server.mjs';
+import { spawn } from 'node:child_process';
+import { startServer, stopPrevious } from '../server.mjs';
 
 function deferred() {
   let resolve, reject;
@@ -144,4 +145,48 @@ test('applies role picks to the Herdr config: protected, validated, backed up, m
   assert.deepEqual(written.roles.reviewer, { model: 'gw/m-1' }, 'a default variant drops the key');
   assert.deepEqual(written.budget, original.budget);
   assert.deepEqual(JSON.parse(fs.readFileSync(result.backup, 'utf8')), original, 'the old config is backed up');
+});
+
+test('a hidden tab does not keep the server alive, a visible one does, and the lifetime is capped', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comparison-idle-'));
+  const web = path.join(root, 'web');
+  fs.mkdirSync(web, { recursive: true });
+  fs.writeFileSync(path.join(web, 'index.html'), 'app');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const closed = (server) => new Promise((resolve) => server.once('close', resolve));
+  const poll = (url, visible, until) => (async () => { while (!until.done) { await fetch(`${url}api/status?visible=${visible}`).catch(() => {}); await new Promise((r) => setTimeout(r, 40)); } })();
+
+  // Hidden polls only: closes after the idle time.
+  const hidden = await startServer({ web, cost: root, runner: async () => 'ok', idleMs: 300 });
+  const stopHidden = { done: false };
+  void poll(hidden.url, 0, stopHidden);
+  const t0 = Date.now();
+  await closed(hidden.server);
+  stopHidden.done = true;
+  assert.ok(Date.now() - t0 < 3000, 'closed despite hidden polling');
+
+  // Visible polls keep it open past the idle time, until the lifetime cap.
+  const visible = await startServer({ web, cost: root, runner: async () => 'ok', idleMs: 300, maxLifetimeMs: 1500 });
+  const stopVisible = { done: false };
+  void poll(visible.url, 1, stopVisible);
+  const t1 = Date.now();
+  await closed(visible.server);
+  stopVisible.done = true;
+  assert.ok(Date.now() - t1 >= 1000, 'a visible page kept it open beyond the idle time');
+});
+
+test('a new start stops only a previous dashboard server', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comparison-pid-'));
+  const pidFile = path.join(root, 'server.pid');
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+  fs.writeFileSync(pidFile, `${other.pid}\n`);
+  assert.equal(stopPrevious(pidFile), false, 'an unrelated process is left alone');
+  other.kill();
+  const fake = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)', 'server.mjs', '--serve']);
+  fs.writeFileSync(pidFile, `${fake.pid}\n`);
+  const exited = new Promise((resolve) => fake.once('exit', resolve));
+  assert.equal(stopPrevious(pidFile), true);
+  await exited;
+  assert.equal(stopPrevious(path.join(root, 'missing.pid')), false);
+  fs.rmSync(root, { recursive: true, force: true });
 });
