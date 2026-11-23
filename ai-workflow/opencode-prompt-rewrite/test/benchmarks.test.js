@@ -11,10 +11,12 @@ import {
   formatVariantsNote,
   loadBenchmarks,
   lookupBenchmark,
+  engineTierPicks,
   resetBenchmarkCache,
   selectCandidateRoutes,
 } from "../benchmarks.js"
-import { CATALOG, COMPARISON, makeGatewayDir } from "./fixtures.js"
+import { benchmarkPicks, candidateRoutes, makeRewriteMessages } from "../core.js"
+import { CATALOG, COMPARISON, COMPARISON_ROUTES, RECOMMENDATIONS, makeGatewayDir } from "./fixtures.js"
 
 test("buildBenchmarkDb joins catalog rows with comparison variants and skips non-chat rows", () => {
   const db = buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON })
@@ -45,10 +47,12 @@ test("buildBenchmarkDb joins catalog rows with comparison variants and skips non
   assert.equal(db.models["gw-beta/model-a-beta"].firstParty, false)
   assert.equal(db.models["gw-beta/model-c"].deprecated, true)
 
-  // Variant is scoped to providers listed by the comparison; model-b has no intelligence index but is matched.
+  // Variant is scoped to providers listed by the comparison; model-b has no intelligence index but is matched,
+  // and gets no invented perf score from other benchmarks.
   const b = db.models["gw-alpha/model-b"]
   assert.equal(b.benchmark.matched, true)
-  assert.equal(b.benchmark.intelligenceEstimated, true)
+  assert.equal(b.benchmark.perfScore, null)
+  assert.equal(b.benchmark.intelligenceEstimated, false)
   assert.equal(b.benchmark.variants["non-reasoning"].effort, "non-reasoning")
 
   // Aliases: ids, catalog aliases, release slug, and provider-token suffix stripping derived from catalog fields.
@@ -218,4 +222,78 @@ test("selectCandidateRoutes provider preference is data-driven: preferredProvide
     ["gw-beta/model-a"],
     "session provider outranks everything",
   )
+})
+
+test("coding and agentic scores follow the engine's workloads and ignore retired benchmarks", () => {
+  const db = buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON })
+  const high = db.models["gw-alpha/model-a"].benchmark.variants.high
+  // 60% Terminal-Bench 4.0 (40) + 40% Intelligence Index (45); GPQA 60 / IFBench 50 play no part.
+  assert.equal(high.codingScore, 42)
+  assert.equal(high.agenticScore, 45, "no AutomationBench: the measured part carries the score")
+  const custom = buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON, recommendations: { method: { workloads: { coding: { parts: [["intelligence", 1]] } } } } })
+  assert.equal(custom.models["gw-alpha/model-a"].benchmark.variants.high.codingScore, 45, "definitions come from recommendations.json")
+})
+
+test("cost per task is per route and effort, and drives the balance score", () => {
+  const db = buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON_ROUTES })
+  assert.equal(db.models["gw-alpha/model-a"].benchmark.variants.high.costPerTaskUSD, 0.9)
+  assert.equal(db.models["gw-beta/model-a-beta"].benchmark.variants.high.costPerTaskUSD, 1.2, "the other route's own price")
+  const low = lookupBenchmark({ providerID: "gw-alpha", id: "model-a" }, "low", db)
+  const high = lookupBenchmark({ providerID: "gw-alpha", id: "model-a" }, "high", db)
+  assert.equal(low.costPerTaskUSD, 0.2)
+  assert.equal(low.balanceScore, Number((30 / Math.pow(0.2, 0.35)).toFixed(2)))
+  // Same token price, but high effort costs 4.5x per task: per token it looked like the better value.
+  assert.ok(computeValueMetrics(45, 2).balanceScore > computeValueMetrics(30, 2).balanceScore)
+  assert.ok(low.balanceScore > high.balanceScore, "per task, the low effort is the better value")
+  // A live price that differs from the gateway's invalidates the per-task figure.
+  assert.equal(lookupBenchmark({ providerID: "gw-alpha", id: "model-a", cost: { input: 3, output: 9 } }, "low", db).costPerTaskUSD, undefined)
+  // Schema 2 lists two ids for model-a: their aggregate cost per task is not trusted.
+  assert.equal(buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON }).models["gw-alpha/model-a"].benchmark.variants.high.costPerTaskUSD, null)
+})
+
+test("the engine's picks lead candidate selection and become benchmark_picks for the rewrite model", () => {
+  const db = buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON_ROUTES, recommendations: RECOMMENDATIONS })
+  const tiers = engineTierPicks(db)
+  assert.deepEqual(Object.keys(tiers), ["quick", "standard", "complex", "deep_reasoning"])
+  const models = routeModels(db).map((m) => ({ ...m, variants: m.id === "model-a" ? ["low", "high"] : [] }))
+  const picked = selectCandidateRoutes(models, null, db, { limit: 3 }).map((x) => x.key)
+  assert.deepEqual(picked.sort(), ["gw-alpha/model-a", "gw-alpha/model-b", "gw-beta/model-c"], "engine picks first, the cap respected")
+
+  const routes = [
+    { key: "r1", model: { providerID: "gw-alpha", id: "model-a" }, variants: ["low", "high"] },
+    { key: "r2", model: { providerID: "gw-alpha", id: "model-b" }, variants: [] },
+    { key: "r3", model: { providerID: "gw-beta", id: "model-c" }, variants: ["low", "high"] },
+  ]
+  const picks = benchmarkPicks(routes, db)
+  assert.deepEqual(picks.quick, { route_id: "r2", variant: null, codingScore: 20, costPerTaskUSD: 0.01, why: "cheap enough" })
+  assert.equal(picks.standard.route_id, "r1", "a pick that is not offered falls through to the next ranked one")
+  assert.equal(picks.standard.variant, "low")
+  assert.equal(picks.complex.variant, "high")
+  assert.equal(picks.deep_reasoning, undefined, "an effort the route does not offer is not proposed")
+  assert.deepEqual(benchmarkPicks(routes, buildBenchmarkDb({ catalog: CATALOG, comparison: COMPARISON })), {}, "no recommendations.json, no picks")
+})
+
+test("loadBenchmarks reads recommendations.json next to the snapshot and the rewrite prompt carries the picks", () => {
+  const g = makeGatewayDir({ comparison: COMPARISON_ROUTES, recommendations: RECOMMENDATIONS })
+  const prev = { dir: process.env.GATEWAY_COST_DIR, env: process.env.GATEWAY_ENV_FILE }
+  try {
+    resetBenchmarkCache()
+    process.env.GATEWAY_COST_DIR = g.dir
+    process.env.GATEWAY_ENV_FILE = join(g.dir, "missing.env")
+    assert.ok(loadBenchmarks({ settings: g.settings, forceReload: true }).recommendations.grid.coding)
+    const catalog = routeModels(loadBenchmarks({ forceReload: true })).map((m) => ({ ...m, variants: m.id === "model-a" ? ["low", "high"] : [] }))
+    const routes = candidateRoutes(catalog, null, 40)
+    const [, user] = makeRewriteMessages({ text: "fix it", context: [], currentModel: null, routes })
+    const routing = JSON.parse(user.content).routing
+    assert.equal(routing.benchmark_picks.complex.variant, "high")
+    assert.ok(routing.available_choices.some((r) => r.id === routing.benchmark_picks.complex.route_id))
+    assert.ok(routing.available_choices.find((r) => r.model === "gw-alpha/model-a").costPerTaskUSD > 0)
+  } finally {
+    if (prev.dir === undefined) delete process.env.GATEWAY_COST_DIR
+    else process.env.GATEWAY_COST_DIR = prev.dir
+    if (prev.env === undefined) delete process.env.GATEWAY_ENV_FILE
+    else process.env.GATEWAY_ENV_FILE = prev.env
+    resetBenchmarkCache()
+    g.cleanup()
+  }
 })

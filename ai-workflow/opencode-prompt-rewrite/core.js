@@ -1,4 +1,4 @@
-import { lookupBenchmark, selectCandidateRoutes } from "./benchmarks.js"
+import { engineTierPicks, loadBenchmarks, lookupBenchmark, selectCandidateRoutes } from "./benchmarks.js"
 
 export const GRILL_SYSTEM = `You are a principal software engineer and prompt architect interviewing an OpenCode user BEFORE their prompt is rewritten and sent to a coding/reasoning assistant.
 
@@ -56,18 +56,15 @@ Produce "rewritten_prompt": the complete, ready-to-send prompt for the working a
 
 JOB 2 — RECOMMEND THE WORKING MODEL & EFFORT (PERFORMANCE-COST BALANCED):
 Choose the best model (and optional variant/effort level from that model's listed variants) from routing.available_choices, or "keep" for routing.current_model.
-- Optimize for PERFORMANCE-COST BALANCE for the task in rewritten_prompt — NOT to the model performing this rewrite, and do NOT default to the most expensive frontier model when a fast high-value model handles the task reliably.
-- Evaluate each candidate using its quantitative benchmark and pricing fields when present:
-  * perfScore (intelligence index, ~0-100 scale; codingScore / reasoningScore when available)
-  * blended3to1USDPer1M (blended 3:1 input/output USD per 1M tokens)
-  * balanceScore (utility = perf / price^0.35; higher = better sweet spot) and valueRatio (perf / price)
-  * outputSpeedTokPerSec, variantsSummary (effort trade-offs including TTFT latency), and deprecated (avoid deprecated models when an active peer exists)
-- Tier decision rules:
-  * quick / focused Q&A / small edits: favor ultra-high-value or budget models (high balanceScore, low $/1M) or light effort (#none/#low), saving >80% vs frontier.
-  * standard implementation / bugfix / moderate multi-file work: balance strong codingScore against cost/latency (e.g. solid mid-tier models or mid reasoning effort #medium/#high).
-  * complex / deep_reasoning architecture / subtle invariants: select top perfScore/codingScore/reasoningScore or higher effort ONLY when complexity clearly justifies the higher $/1M cost or latency.
-  * Pick the lowest effort variant (#none/#low/#medium/#high/#xhigh/#max) on the chosen model that reliably solves the task without unnecessary TTFT latency.
-- Prefer "keep" ONLY if routing.current_model already sits near the best Performance-Cost fit for the task; otherwise explicitly switch to the better-balanced route and cite concrete metrics (perf/coding score, $/1M or speedup) in reason.
+- First classify the task in rewritten_prompt into task_tier: quick (focused Q&A, small edits), standard (implementation, bugfix, moderate multi-file work), complex (multi-file refactors, subtle invariants, design), deep_reasoning (the hardest problems, where the strongest model is worth its price).
+- routing.benchmark_picks, when present, holds per task tier the route and effort that the benchmark engine recommends: the cheapest model whose agentic-coding score is good enough for that tier, where every doubling of cost must buy enough extra score (the same engine as the user's model comparison dashboard and team tooling). Use the pick of your task_tier by default. Deviate only for a concrete reason the engine cannot see (the task needs a larger context, vision, or tools a route lacks; routing.current_model already fits the tier; the task is not coding, e.g. pure writing) and name that reason.
+- Without benchmark_picks, evaluate the candidates' fields yourself:
+  * perfScore (Artificial Analysis Intelligence Index, ~0-100), codingScore (60% Terminal-Bench 4.0 + 40% perfScore), agenticScore (multi-step tool use)
+  * costPerTaskUSD (cost of one benchmark task at this route's price and effort: verbose models and high efforts cost more per task at the same token price), blended3to1USDPer1M
+  * balanceScore (perf / cost^0.35; higher = better sweet spot), outputSpeedTokPerSec, variantsSummary (effort trade-offs including TTFT latency), deprecated (avoid when an active peer exists)
+  * quick: high-value budget models or light effort; standard: strong codingScore at moderate cost; complex / deep_reasoning: top codingScore or higher effort ONLY when the complexity justifies the cost and latency.
+- Do NOT optimize for the model performing this rewrite, and do not default to the most expensive frontier model when a cheaper one handles the task reliably. Pick the lowest effort variant that reliably solves the task.
+- Prefer "keep" ONLY if routing.current_model already sits near the right fit for the tier; otherwise switch and cite concrete metrics (coding score, $/task) in reason.
 - Use ONLY exact route_id values from routing.available_choices (or "keep") and exact variant strings listed on that route. Never invent models, variants, prices, or benchmark numbers not present in routing.
 - Optionally provide a runner-up "alternative" (e.g. a faster/cheaper value option if recommending frontier, or a stronger escalation option if recommending budget/balanced).
 - Never place routing advice inside rewritten_prompt.
@@ -190,7 +187,8 @@ function compactBenchmarkForMeta(bench) {
   if (typeof bench.perfScore === "number" && Number.isFinite(bench.perfScore)) out.perfScore = bench.perfScore
   if (bench.intelligenceEstimated) out.estimated = true
   if (typeof bench.codingScore === "number" && Number.isFinite(bench.codingScore)) out.codingScore = bench.codingScore
-  if (typeof bench.reasoningScore === "number" && Number.isFinite(bench.reasoningScore)) out.reasoningScore = bench.reasoningScore
+  if (typeof bench.agenticScore === "number" && Number.isFinite(bench.agenticScore)) out.agenticScore = bench.agenticScore
+  if (typeof bench.costPerTaskUSD === "number" && Number.isFinite(bench.costPerTaskUSD)) out.costPerTaskUSD = bench.costPerTaskUSD
   if (typeof bench.blended3to1Per1M === "number" && Number.isFinite(bench.blended3to1Per1M)) out.blended3to1Per1M = bench.blended3to1Per1M
   if (typeof bench.valueRatio === "number" && Number.isFinite(bench.valueRatio)) out.valueRatio = bench.valueRatio
   if (typeof bench.balanceScore === "number" && Number.isFinite(bench.balanceScore)) out.balanceScore = bench.balanceScore
@@ -289,7 +287,8 @@ export function formatRoutesForPrompt(routes) {
       if (typeof b.perfScore === "number") entry.perfScore = b.perfScore
       if (b.estimated) entry.perfEstimated = true
       if (typeof b.codingScore === "number") entry.codingScore = b.codingScore
-      if (typeof b.reasoningScore === "number") entry.reasoningScore = b.reasoningScore
+      if (typeof b.agenticScore === "number") entry.agenticScore = b.agenticScore
+      if (typeof b.costPerTaskUSD === "number") entry.costPerTaskUSD = b.costPerTaskUSD
       if (typeof b.blended3to1Per1M === "number") entry.blended3to1USDPer1M = b.blended3to1Per1M
       if (typeof b.balanceScore === "number") entry.balanceScore = b.balanceScore
       if (typeof b.valueRatio === "number") entry.valueRatio = b.valueRatio
@@ -319,7 +318,33 @@ export function makeGrillMessages({ text, context, currentModel, sessionTitle })
   ]
 }
 
+/**
+ * The benchmark engine's pick per task tier, as route ids of `routes` (the first ranked pick
+ * that is offered, at an effort the route has). Empty without recommendations.json.
+ */
+export function benchmarkPicks(routes, db = loadBenchmarks()) {
+  const tiers = engineTierPicks(db)
+  const out = {}
+  for (const [tier, picks] of Object.entries(tiers)) {
+    for (const p of picks) {
+      const route = (routes ?? []).find((r) => `${r.model.providerID}/${r.model.id}` === p.key)
+      if (!route) continue
+      if (p.variant && route.variants?.length && !route.variants.includes(p.variant)) continue
+      out[tier] = {
+        route_id: route.key,
+        variant: p.variant && route.variants?.includes(p.variant) ? p.variant : null,
+        codingScore: p.score,
+        costPerTaskUSD: p.costPerTaskUSD,
+        ...(p.reason ? { why: p.reason } : {}),
+      }
+      break
+    }
+  }
+  return out
+}
+
 export function makeRewriteMessages({ text, context, currentModel, routes, grillContext, refinement, sessionTitle }) {
+  const picks = benchmarkPicks(routes)
   const payload = {
     draft_to_rewrite: text,
     session_title: sessionTitle || undefined,
@@ -327,6 +352,7 @@ export function makeRewriteMessages({ text, context, currentModel, routes, grill
     routing: {
       current_model: currentModel ? modelRef(currentModel) : "unknown",
       available_choices: formatRoutesForPrompt(routes),
+      ...(Object.keys(picks).length ? { benchmark_picks: picks } : {}),
     },
   }
   if (grillContext) payload.grill_context = grillContext

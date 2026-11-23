@@ -1,11 +1,15 @@
 import { readFileSync, statSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { expandHome, indexCatalog, resolveGatewaySettings } from "./gateway.js"
 
-// Benchmark + pricing db, built at runtime from two files the ai-gateway module maintains:
+// Benchmark + pricing db, built at runtime from files the ai-gateway module maintains:
 //   (a) the gateway model catalog       $GATEWAY_COST_DIR/models.json
 //   (b) the model-comparison snapshot   $GATEWAY_COST_DIR/model-comparison/data/models.json
 //       (written by `/model-comparison`; scores originate from Artificial Analysis,
 //        fetched by the ai-gateway module, never bundled here)
+//   (c) its recommendations             $GATEWAY_COST_DIR/model-comparison/data/recommendations.json
+//       (the comparison's engine: the workload score definitions, and the picks per task tier
+//        that Herdr's cc-models and the dashboard use too)
 // See ../ai-gateway/README.md. PROMPT_REWRITE_BENCHMARKS_FILE may point at a prebuilt db instead.
 
 export const BENCHMARK_HINT = "run /model-comparison for benchmark scores"
@@ -73,14 +77,17 @@ export function loadBenchmarks(opts = {}) {
   if (override) return loadPrebuilt(override, opts.forceReload)
 
   const settings = opts.settings ?? resolveGatewaySettings()
+  const recommendationsPath = settings.recommendationsPath ?? join(dirname(settings.comparisonPath), "recommendations.json")
   const catalogMtime = statMtime(settings.catalogModelsPath)
   const comparisonMtime = statMtime(settings.comparisonPath)
-  const signature = `gw:${settings.catalogModelsPath}:${catalogMtime}|${settings.comparisonPath}:${comparisonMtime}`
+  const recommendationsMtime = statMtime(recommendationsPath)
+  const signature = `gw:${settings.catalogModelsPath}:${catalogMtime}|${settings.comparisonPath}:${comparisonMtime}|${recommendationsPath}:${recommendationsMtime}`
   if (!opts.forceReload && cache.signature === signature) return cache.db
 
   const catalogDoc = catalogMtime == null ? null : readJson(settings.catalogModelsPath)
   const comparison = comparisonMtime == null ? null : readJson(settings.comparisonPath)
-  const db = catalogDoc || comparison ? buildBenchmarkDb({ catalog: catalogDoc, comparison }) : EMPTY_DB()
+  const recommendations = recommendationsMtime == null ? null : readJson(recommendationsPath)
+  const db = catalogDoc || comparison ? buildBenchmarkDb({ catalog: catalogDoc, comparison, recommendations }) : EMPTY_DB()
   cache = { signature, db }
   return db
 }
@@ -98,47 +105,42 @@ export function benchmarkHint(db = loadBenchmarks()) {
 // Pure db builder: gateway catalog + model-comparison snapshot -> lookup db
 // ---------------------------------------------------------------------------
 
-function weightedMean(pairs) {
+// Workload scores come from the comparison's recommendation engine: its definitions travel
+// in recommendations.json (method.workloads), so this plugin and Herdr's cc-models score a
+// model the same way. DEFAULT_WORKLOADS is only the fallback for a missing file and mirrors
+// ai-gateway/model-comparison/engine.mjs. Only current AA benchmarks are used: retired ones
+// (tau2, IFBench, GPQA, Terminal-Bench Hard, LiveCodeBench) are missing for most current
+// models, and averaging them in made older models look stronger than newer ones.
+const DEFAULT_WORKLOADS = {
+  coding: { parts: [["terminal_bench_40", 0.6], ["intelligence", 0.4]] },
+  agentic: { parts: [["automation_bench", 0.6], ["intelligence", 0.4]] },
+}
+
+function workloadScore(scores, spec) {
   let sum = 0
-  let wSum = 0
-  for (const [val, w] of pairs) {
-    if (val == null || !Number.isFinite(val)) continue
-    sum += val * w
-    wSum += w
+  let weight = 0
+  for (const [id, w] of spec?.parts ?? []) {
+    const v = numOrNull(scores?.[id])
+    if (v == null) continue
+    sum += v * w
+    weight += w
   }
-  return wSum > 0 ? sum / wSum : null
+  return weight > 0 ? sum / weight : null
 }
 
-const CODING_WEIGHTS = {
-  terminal_bench_40: 2.2,
-  terminalbench_hard: 2.0,
-  frontier_code: 2.0,
-  scicode: 1.3,
-  livecodebench: 1.2,
-}
-const REASONING_WEIGHTS = {
-  hle: 2.0,
-  hle_diamond: 1.5,
-  gpqa: 1.4,
-  ifbench: 1.5,
-  lcr: 1.1,
-  tau2: 1.3,
-  critpt: 1.0,
+// The variant's cost per task on this gateway route (AA token counts at the route's price).
+// Older snapshots have no explicit routes: their aggregate cost is only trusted for a single route.
+function routeCostPerTask(m, providerId, modelId) {
+  if (Array.isArray(m?.gateway_routes)) {
+    const r = m.gateway_routes.find((x) => x.provider_id === providerId && x.model_id === modelId)
+    return numOrNull(r?.cost_per_task_usd)
+  }
+  const single = (m?.gateway_ids ?? []).length === 1 && (m?.gateway_providers ?? []).length <= 1
+  return single ? numOrNull(m?.pricing?.gateway_cost_per_task_usd) : null
 }
 
-function weighted(scores, weights) {
-  return weightedMean(Object.entries(weights).map(([id, w]) => [numOrNull(scores[id]), w]))
-}
-
-function summarizeVariant(m, capabilityIds) {
+function summarizeVariant(m, capabilityIds, workloads, gw) {
   const scores = m?.scores && typeof m.scores === "object" ? m.scores : {}
-  const coding = weighted(scores, CODING_WEIGHTS)
-  const reasoning = weighted(scores, REASONING_WEIGHTS)
-  const evalScore = weightedMean([
-    [coding, 1.3],
-    [reasoning, 1.0],
-    [numOrNull(scores.ifbench), 0.7],
-  ])
   const capabilities = {}
   for (const id of capabilityIds) {
     const v = numOrNull(scores[id])
@@ -150,26 +152,22 @@ function summarizeVariant(m, capabilityIds) {
     isReasoning: m.is_reasoning !== false,
     deprecated: m.release_deprecated === true,
     intelligenceIndex: round(numOrNull(scores.intelligence), 1),
-    codingScore: round(coding, 1),
-    reasoningScore: round(reasoning, 1),
-    evalScore: round(evalScore, 1),
+    codingScore: round(workloadScore(scores, workloads.coding), 1),
+    agenticScore: round(workloadScore(scores, workloads.agentic), 1),
     capabilities,
-    ifbench: round(numOrNull(scores.ifbench), 1),
-    gpqa: round(numOrNull(scores.gpqa), 1),
-    terminalBench: round(numOrNull(scores.terminal_bench_40) ?? numOrNull(scores.terminalbench_hard), 1),
+    terminalBench: round(numOrNull(scores.terminal_bench_40), 1),
     outputSpeed: round(numOrNull(perf.output_tokens_per_second), 0),
     ttft: round(numOrNull(perf.time_to_first_token_seconds), 2),
+    costPerTaskUSD: round(routeCostPerTask(m, gw?.provider_id, gw?.model_id), 4),
     referenceInputPer1M: round(numOrNull(m?.pricing?.effective_input_per_1m), 4),
     referenceOutputPer1M: round(numOrNull(m?.pricing?.effective_output_per_1m), 4),
   }
 }
 
-// Performance score on an index-like 0-100 scale. Uses the published intelligence index when present;
-// otherwise maps the raw eval composite conservatively so unindexed models stay comparable (flagged estimated).
+// Performance score on the 0-100 Intelligence Index scale; null when AA has not indexed the
+// variant (no estimate from other benchmarks: that mixed scales and retired benchmarks).
 function unifiedPerf(summary) {
-  if (summary.intelligenceIndex != null) return summary.intelligenceIndex
-  if (summary.evalScore == null) return null
-  return round(Math.max(2, summary.evalScore * 0.85 - 12), 1)
+  return summary.intelligenceIndex
 }
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "")
@@ -205,8 +203,9 @@ function pickRelease(models) {
  * model-comparison snapshot ({models, metrics, source}). Either may be null.
  * Catalog rows define the keys (`provider/model`); the comparison supplies scores per effort variant.
  */
-export function buildBenchmarkDb({ catalog, comparison } = {}) {
+export function buildBenchmarkDb({ catalog, comparison, recommendations } = {}) {
   const idx = indexCatalog(catalog)
+  const workloads = recommendations?.method?.workloads ?? DEFAULT_WORKLOADS
   const rows = idx.rows.filter((r) => !r.mode || r.mode === "chat" || r.mode === "responses")
 
   const compModels = Array.isArray(comparison?.models) ? comparison.models : []
@@ -248,12 +247,12 @@ export function buildBenchmarkDb({ catalog, comparison } = {}) {
     const variantsMap = {}
     const primaryKeys = new Set()
     for (const m of release) {
-      const s = summarizeVariant(m, capabilityIds)
+      const s = summarizeVariant(m, capabilityIds, workloads, gw)
       const perf = unifiedPerf(s)
       const vIn = numOrNull(gw.input_per_1M) ?? s.referenceInputPer1M
       const vOut = numOrNull(gw.output_per_1M) ?? s.referenceOutputPer1M
       const vBlend = blended3to1(vIn, vOut)
-      const { valueRatio, balanceScore } = computeValueMetrics(perf, vBlend)
+      const { valueRatio, balanceScore } = computeValueMetrics(perf, vBlend, s.costPerTaskUSD)
       const entry = { ...s, perfScore: perf, blended3to1Per1M: round(vBlend, 4), valueRatio, balanceScore }
       const effortKey = String(s.effort || "default").toLowerCase()
       const prev = variantsMap[effortKey]
@@ -272,7 +271,7 @@ export function buildBenchmarkDb({ catalog, comparison } = {}) {
     const blended = blended3to1(effIn, effOut)
     const perfScore = bestVariant?.perfScore ?? null
     const intel = bestVariant?.intelligenceIndex ?? null
-    const { valueRatio, balanceScore } = computeValueMetrics(perfScore, blended)
+    const { valueRatio, balanceScore } = computeValueMetrics(perfScore, blended, bestVariant?.costPerTaskUSD)
     const first = release[0]
 
     const record = {
@@ -310,13 +309,12 @@ export function buildBenchmarkDb({ catalog, comparison } = {}) {
       benchmark: {
         matched: release.length > 0,
         intelligenceIndex: intel,
-        intelligenceEstimated: intel == null && perfScore != null,
+        intelligenceEstimated: false,
         perfScore,
         codingScore: bestVariant?.codingScore ?? null,
-        reasoningScore: bestVariant?.reasoningScore ?? null,
-        ifbench: bestVariant?.ifbench ?? null,
-        gpqa: bestVariant?.gpqa ?? null,
+        agenticScore: bestVariant?.agenticScore ?? null,
         terminalBench: bestVariant?.terminalBench ?? null,
+        costPerTaskUSD: bestVariant?.costPerTaskUSD ?? null,
         capabilities: bestVariant?.capabilities ?? {},
         outputSpeed: bestVariant?.outputSpeed ?? null,
         ttft: bestVariant?.ttft ?? null,
@@ -345,6 +343,8 @@ export function buildBenchmarkDb({ catalog, comparison } = {}) {
     indexVersion: comparison?.intelligence_index_version_label ?? comparison?.intelligence_index_version ?? null,
     hasCatalog: rows.length > 0,
     hasBenchmarks: scored,
+    // The engine's ranked picks per workload, tier and profile (see benchmarkPicks in core.js).
+    recommendations: recommendations?.grid ? { generatedAt: recommendations.generated_at ?? null, grid: recommendations.grid } : null,
     gatewayProviders: providers,
     count: rows.length,
     matchedCount: Object.values(models).filter((r) => r.benchmark.matched).length,
@@ -369,12 +369,17 @@ export function blended3to1(inPer1M, outPer1M) {
   return (3 * i + o) / 4
 }
 
-export function computeValueMetrics(perfScore, blendedPer1M) {
+// balanceScore = perf / price^0.35. The price is the cost per task when the comparison knows it
+// for this route and effort (AA's token counts at the gateway price), else the blended per-1M price.
+// Per task matters: an xhigh variant costs several times its low variant at the same token price.
+export function computeValueMetrics(perfScore, blendedPer1M, costPerTask = null) {
   const perf = numOrNull(perfScore)
   const blend = numOrNull(blendedPer1M)
-  if (perf == null || blend == null) return { valueRatio: null, balanceScore: null }
-  const valueRatio = blend > 0 ? round(perf / blend, 2) : null
-  const balanceScore = round(perf / Math.pow(Math.max(blend, 0.08), 0.35), 2)
+  const task = numOrNull(costPerTask)
+  if (perf == null || (blend == null && task == null)) return { valueRatio: null, balanceScore: null }
+  const valueRatio = blend != null && blend > 0 ? round(perf / blend, 2) : null
+  const price = task ?? blend
+  const balanceScore = round(perf / Math.pow(Math.max(price, task != null ? 0.05 : 0.08), 0.35), 2)
   return { valueRatio, balanceScore }
 }
 
@@ -491,11 +496,14 @@ export function lookupBenchmark(model, variant, db = loadBenchmarks()) {
   const chosenVariant = pickVariantSummary(record, parsed.variant)
   const perfScore = numOrNull(chosenVariant?.perfScore) ?? numOrNull(bench.perfScore)
   const codingScore = numOrNull(chosenVariant?.codingScore) ?? numOrNull(bench.codingScore)
-  const reasoningScore = numOrNull(chosenVariant?.reasoningScore) ?? numOrNull(bench.reasoningScore)
+  const agenticScore = numOrNull(chosenVariant?.agenticScore) ?? numOrNull(bench.agenticScore)
   const intelligenceIndex = numOrNull(chosenVariant?.intelligenceIndex) ?? numOrNull(bench.intelligenceIndex)
   const outputSpeed = numOrNull(chosenVariant?.outputSpeed) ?? numOrNull(bench.outputSpeed)
   const ttft = numOrNull(chosenVariant?.ttft) ?? numOrNull(bench.ttft)
-  const { valueRatio, balanceScore } = computeValueMetrics(perfScore, blended)
+  // The comparison's cost per task holds at gateway prices; a live price that differs falls back to per-1M.
+  const livePriceDiffers = (liveIn != null && liveIn !== numOrNull(recPricing.inputPer1M)) || (liveOut != null && liveOut !== numOrNull(recPricing.outputPer1M))
+  const costPerTaskUSD = livePriceDiffers ? null : numOrNull(chosenVariant?.costPerTaskUSD) ?? (chosenVariant ? null : numOrNull(bench.costPerTaskUSD))
+  const { valueRatio, balanceScore } = computeValueMetrics(perfScore, blended, costPerTaskUSD)
 
   return stripNullish({
     matched: Boolean(bench.matched),
@@ -507,7 +515,8 @@ export function lookupBenchmark(model, variant, db = loadBenchmarks()) {
     intelligenceEstimated: intelligenceIndex == null && perfScore != null ? true : undefined,
     perfScore: perfScore ?? undefined,
     codingScore: codingScore ?? undefined,
-    reasoningScore: reasoningScore ?? undefined,
+    agenticScore: agenticScore ?? undefined,
+    costPerTaskUSD: costPerTaskUSD ?? undefined,
     outputSpeed: outputSpeed ?? undefined,
     ttft: ttft ?? undefined,
     inputPer1M: inputPer1M != null ? round(inputPer1M, 4) : undefined,
@@ -560,10 +569,37 @@ export function formatVariantsNote(model, db = loadBenchmarks()) {
       const parts = [v.effort]
       if (v.perfScore != null) parts.push(`perf ${v.perfScore}`)
       if (v.codingScore != null) parts.push(`code ${v.codingScore}`)
+      if (v.costPerTaskUSD != null) parts.push(`$${v.costPerTaskUSD}/task`)
       if (v.ttft != null && v.ttft >= 3) parts.push(`ttft ${v.ttft}s`)
       return parts.join(" ")
     })
     .join(" | ")
+}
+
+// The rewrite model's task tiers mapped to the engine's tiers (ai-gateway model-comparison/engine.mjs).
+export const TASK_TIERS = { quick: "light", standard: "standard", complex: "hard", deep_reasoning: "frontier" }
+
+/**
+ * The comparison engine's ranked picks per task tier, for agentic coding on the balanced budget:
+ * { quick: [{ key, variant, score, costPerTaskUSD, reason }], standard: [...], ... }. Empty
+ * without recommendations.json. Each pick is a gateway route (key = provider/model) at an effort.
+ */
+export function engineTierPicks(db = loadBenchmarks(), { workload = "coding", profile = "balanced" } = {}) {
+  const grid = db?.recommendations?.grid?.[workload]
+  const out = {}
+  if (!grid) return out
+  for (const [taskTier, engineTier] of Object.entries(TASK_TIERS)) {
+    const result = grid[engineTier]?.[profile]
+    if (!result?.ranked?.length) continue
+    out[taskTier] = result.ranked.map((p, i) => ({
+      key: `${p.provider_id}/${p.model_id}`,
+      variant: p.variant ?? null,
+      score: p.score,
+      costPerTaskUSD: p.cost_per_task_usd,
+      reason: i === 0 ? result.reason : null,
+    }))
+  }
+  return out
 }
 
 // Lower is better. Order: the session's own provider, then user-configured preferred providers
@@ -643,6 +679,17 @@ export function selectCandidateRoutes(models, currentModel, db = loadBenchmarks(
   const activeUnique = uniquePool.filter((x) => !x.bench?.deprecated)
   const byBalance = (a, b) => (b.bench?.balanceScore ?? -1) - (a.bench?.balanceScore ?? -1)
 
+  // The comparison engine's ranked picks per task tier come first (its top 3 per tier, in tier
+  // order), so the routes the rewrite model is pointed at (benchmark_picks) are always offered.
+  const tierPicks = engineTierPicks(db)
+  if (Object.keys(tierPicks).length) {
+    const byKey = new Map(enriched.map((x) => [x.key, x]))
+    for (const picks of Object.values(tierPicks)) {
+      for (const p of picks.slice(0, 3)) addItem(byKey.get(p.key))
+    }
+  }
+
+  // Without engine picks (no recommendations.json yet), fixed price/score tiers as before.
   // Budget high-value tier (cheap & capable)
   const budget = activeUnique
     .filter((x) => (x.bench?.blended3to1Per1M ?? Infinity) <= 0.65 && (x.bench?.perfScore ?? 0) >= 22)

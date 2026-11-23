@@ -103,13 +103,46 @@ export const COMPARISON = {
   ],
 }
 
+// Same snapshot in schema 3: explicit gateway routes with a cost per task per route and effort.
+export const COMPARISON_ROUTES = {
+  ...COMPARISON,
+  schema_version: 3,
+  models: COMPARISON.models.map((m) => ({
+    ...m,
+    gateway_routes: m.gateway_ids.map((id, i) => ({
+      provider_id: m.gateway_providers[i], model_id: id, effort_levels: [],
+      cost_per_task_usd: { "model-a-low": [0.2, 0.25], "model-a-high": [0.9, 1.2] }[m.slug]?.[i] ?? 0.5,
+    })),
+  })),
+}
+
+// A data/recommendations.json as the comparison engine writes it (only the fields read here).
+const pick = (provider_id, model_id, variant, score, cost) => ({ provider_id, model_id, variant, score, cost_per_task_usd: cost })
+export const RECOMMENDATIONS = {
+  schema_version: 1,
+  generated_at: "2026-01-01T00:00:00Z",
+  method: { workloads: { coding: { parts: [["terminal_bench_40", 0.6], ["intelligence", 0.4]] }, agentic: { parts: [["automation_bench", 0.6], ["intelligence", 0.4]] } } },
+  grid: {
+    coding: {
+      light: { balanced: { reason: "cheap enough", ranked: [pick("gw-alpha", "model-b", null, 20, 0.01)] } },
+      standard: { balanced: { reason: "good enough", ranked: [pick("gw-alpha", "missing-model", "low", 99, 0.1), pick("gw-alpha", "model-a", "low", 36, 0.2)] } },
+      hard: { balanced: { reason: "strong", ranked: [pick("gw-alpha", "model-a", "high", 42, 0.9)] } },
+      frontier: { balanced: { reason: "strongest", ranked: [pick("gw-beta", "model-c", "max", 60, 5)] } },
+    },
+  },
+}
+
 /** Create a temp GATEWAY_COST_DIR with the synthetic files. Returns { dir, settings, cleanup }. */
-export function makeGatewayDir({ catalog = CATALOG, comparison = COMPARISON } = {}) {
+export function makeGatewayDir({ catalog = CATALOG, comparison = COMPARISON, recommendations = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "rw-gw-"))
   if (catalog) writeFileSync(join(dir, "models.json"), JSON.stringify(catalog))
   if (comparison) {
     mkdirSync(join(dir, "model-comparison", "data"), { recursive: true })
     writeFileSync(join(dir, "model-comparison", "data", "models.json"), JSON.stringify(comparison))
+  }
+  if (recommendations) {
+    mkdirSync(join(dir, "model-comparison", "data"), { recursive: true })
+    writeFileSync(join(dir, "model-comparison", "data", "recommendations.json"), JSON.stringify(recommendations))
   }
   const settings = resolveGatewaySettings({ GATEWAY_COST_DIR: dir, GATEWAY_ENV_FILE: join(dir, "missing.env") })
   return { dir, settings, cleanup: () => rmSync(dir, { recursive: true, force: true }) }

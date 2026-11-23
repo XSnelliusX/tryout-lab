@@ -6,6 +6,7 @@
 //
 //   $GATEWAY_COST_DIR/models.json                          gateway model catalog
 //   $GATEWAY_COST_DIR/model-comparison/data/models.json    benchmark comparison (via /model-comparison)
+//   $GATEWAY_COST_DIR/model-comparison/data/recommendations.json   the comparison engine's picks per task tier
 
 import { readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
@@ -81,6 +82,7 @@ export function resolveGatewaySettings(env = process.env) {
     usageLogPath: join(costDir, "usage.jsonl"),
     catalogModelsPath: join(costDir, "models.json"),
     comparisonPath: join(costDir, "model-comparison", "data", "models.json"),
+    recommendationsPath: join(costDir, "model-comparison", "data", "recommendations.json"),
   }
 }
 

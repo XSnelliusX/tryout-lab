@@ -86,7 +86,22 @@ The plugin ships **no** gateway values and **no** benchmark data. At runtime it 
 | What | Provided by | File |
 |---|---|---|
 | Model catalog: provider ids, prices (incl. cache and context tiers), token limits, capabilities, effort levels | the **ai-gateway OpenCode plugin** (refreshes it automatically) | `$GATEWAY_COST_DIR/models.json` |
-| Benchmark scores: intelligence index, capability indices, coding/reasoning scores, speed/TTFT, per effort variant | the ai-gateway **`/model-comparison`** command (OpenCode or Claude Code) | `$GATEWAY_COST_DIR/model-comparison/data/models.json` |
+| Benchmark scores: intelligence index, capability indices, speed/TTFT, cost per task per gateway route and effort | the ai-gateway **`/model-comparison`** command (OpenCode or Claude Code) | `$GATEWAY_COST_DIR/model-comparison/data/models.json` |
+| The recommendation engine's picks per task tier, and its workload score definitions | the same command (its recommendation engine) | `$GATEWAY_COST_DIR/model-comparison/data/recommendations.json` |
+
+**How the model advice works.** The rewrite model first classifies the task
+(quick, standard, complex, deep reasoning). For each of these tiers the
+comparison's recommendation engine (the same one Herdr's `cc-models` and the
+comparison dashboard use) has picked a route and effort: the cheapest model whose
+agentic-coding score (60% Terminal-Bench 4.0 + 40% Intelligence Index) is good
+enough for that tier, at the route's cost per task. Those picks are passed as
+`routing.benchmark_picks`, are always among the offered routes, and are the
+default answer; the rewrite model deviates only for a reason it names (context
+size, vision, the current model already fits, non-coding work). Each route also
+carries `codingScore`, `agenticScore`, `costPerTaskUSD` and a `balanceScore`
+computed per task, so a high effort is not mistaken for a bargain because its
+token price is the same. Without `recommendations.json` (an older comparison),
+the plugin falls back to its own price tiers.
 
 `GATEWAY_COST_DIR` defaults to `~/.gateway-cost`. It, `GATEWAY_PROVIDER_PREFIX` and `GATEWAY_USAGE_DISABLED` can be set in the environment or in the ai-gateway env file (`GATEWAY_ENV_FILE`, default `~/.config/ai-gateway/env`); see `.env.example`. The plugin joins both files at runtime (cached by file mtimes), so refreshing either one is picked up without reinstalling. A provider counts as part of the gateway when the catalog lists it (or it starts with `$GATEWAY_PROVIDER_PREFIX-`, if set).
 
@@ -108,7 +123,7 @@ The scores originate from [Artificial Analysis](https://artificialanalysis.ai), 
 | `rpc.js` | Typed OpenCode RPC method schemas and `events.progress` contract. |
 | `core.js` | Prompt engineering templates (`GRILL_SYSTEM`, `REWRITE_SYSTEM`), CLI flag parsing, provider-balanced candidate routing (`maxCandidates = 40`), safe context filtering, robust JSON extraction, and response validation. |
 | `gateway.js` | Reads the ai-gateway data contract: env/env-file settings, catalog loading, and data-driven gateway-provider membership. |
-| `benchmarks.js` | Pure `buildBenchmarkDb` (catalog + model-comparison snapshot -> lookup db), mtime-cached `loadBenchmarks`, lookups, value metrics and candidate-route selection. |
+| `benchmarks.js` | Pure `buildBenchmarkDb` (catalog + model-comparison snapshot + recommendations -> lookup db), mtime-cached `loadBenchmarks`, lookups, value metrics, the engine's picks per task tier (`engineTierPicks`) and candidate-route selection. |
 | `usage.js` | Token/cost accounting from the catalog and live model prices; writes the gateway usage log. |
 | `service.js` | Stateful server runtime: per-window concurrency, abort/timeout handling, TTL caches, live progress events, session model-switch guards, and single-use prompt submission. |
 | `store.js` | TUI client store: per-window state across session switches, Grill Me answer tracking, server job rehydration, elapsed timer formatting, and footer status summaries. |
