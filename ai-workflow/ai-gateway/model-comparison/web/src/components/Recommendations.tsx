@@ -1,27 +1,47 @@
 import { useMemo } from "react";
 import { displayName, formatMetric, formatNumber, formatSpeed, formatUsd } from "../lib/format";
 import { recommendByDifficulty } from "../lib/recommendations";
-import { formatValue, priceFor, scoreFor, valueFor } from "../lib/tasks";
+import { label, TIERS, type PickView } from "../lib/engine";
 import type { Filters } from "../lib/filters";
 import type { Row } from "../lib/types";
 
+const FOCUS_LABEL = { price: "lean budget", quality: "balanced budget", speed: "balanced budget, speed counts" } as const;
+
 export function Recommendations({ rows, filters, onSelect }: { rows: Row[]; filters: Filters; onSelect: (slug: string) => void }) {
-  const results = useMemo(() => recommendByDifficulty(rows, filters.task, filters.costMode, filters.valueMode, filters.priceSensitivity), [rows, filters.task, filters.costMode, filters.valueMode, filters.priceSensitivity]);
+  const results = useMemo(() => recommendByDifficulty(rows, filters.task, filters.costMode, filters.valueMode), [rows, filters.task, filters.costMode, filters.valueMode]);
+  const unit = filters.costMode === "task" ? "per task" : "per 1M tokens";
+  const cost = (p: PickView) => (p.free ? "$0 (free)" : formatUsd(p.cost_per_task_usd));
   return <section id="overview" aria-label="Difficulty recommendations" className="recommendations">
-    <header className="recommendations-heading"><div><p className="section-kicker">A PLACE TO START</p><h1>Recommendations by difficulty</h1><p>Relative score bands for {filters.task.label} · based on your current criteria</p></div>
-      <details className="recommendation-method"><summary>How this works <span aria-hidden="true">ⓘ</span></summary><p>These are relative heuristics, not measured task difficulty or guarantees of success. Easy uses the 25th–50th percentile, medium the 50th–75th, and difficult the 75th and above. Models below the 25th percentile are not recommended. Speed focus excludes models without speed data. Free models rank ahead of paid models because no finite score-to-cost ratio exists.</p></details>
+    <header className="recommendations-heading"><div><p className="section-kicker">A PLACE TO START</p><h1>Recommendations by difficulty</h1><p>{filters.task.label} · {FOCUS_LABEL[filters.valueMode]} · the same engine as Herdr&apos;s cc-models and the prompt rewriter</p></div>
+      <details className="recommendation-method"><summary>How this works <span aria-hidden="true">ⓘ</span></summary><p>Each card is the cheapest model that is good enough for its tier. A pick must reach a share of the best score in view (easy {pct(TIERS.light)}, medium {pct(TIERS.standard)}, difficult {pct(TIERS.hard)}), and among those every doubling of cost must buy enough extra score: {perDoubling(TIERS.light)} points of the best score for easy work, {perDoubling(TIERS.standard)} for medium, {perDoubling(TIERS.hard)} for difficult (lean, balanced and max budgets). Price focus uses the lean budget, quality focus the balanced one, and speed focus also rewards tokens per second. Each route of a model (provider and effort) is a separate candidate at its own cost. Superseded releases are never recommended, and a $0 model counts as $0.005 so it has to be good enough too. These are benchmark heuristics, not guarantees.</p></details>
     </header>
     <div className="recommendation-grid">
-      {results.length === 0 && <p className="text-sm text-muted">No scored and priced models match the filters. Try broadening your criteria.</p>}
-      {results.map(({ difficulty, minimum, maximum, eligible, model, comparison, nextUpgrade }) => <article key={difficulty} className={`recommendation-card recommendation-${difficulty.toLowerCase()}`}>
-        <div className="recommendation-band"><span className="band-indicator" aria-hidden="true" /><strong>{difficulty}</strong><span>Score {formatMetric(minimum, filters.task.scale)}{maximum !== null ? ` – < ${formatMetric(maximum, filters.task.scale)}` : "+"}</span></div>
-        {model ? <>
-          <button type="button" onClick={() => onSelect(model.slug)} className="recommendation-model">{displayName(model.name)} <span aria-hidden="true">↗</span></button>
-          <p className="recommendation-creator">{model.creator} · {eligible} eligible variants</p>
-          <div className="recommendation-stats"><span><small>Score</small><strong>{formatMetric(scoreFor(model, filters.task), filters.task.scale)}</strong></span><span><small>Cost</small><strong>{priceFor(model, filters.costMode) === 0 ? "$0 reported" : formatUsd(priceFor(model, filters.costMode))}</strong></span><span><small>Value</small><strong>{formatValue(valueFor(model, filters.task, filters.costMode, filters.valueMode, filters.priceSensitivity), filters.valueMode)}</strong></span></div>
-          <details className="recommendation-detail"><summary>More context</summary><p>{filters.costMode === "task" ? "Cost per AA benchmark task" : "Blended cost per 1M tokens"} · {formatSpeed(model.performance.output_tokens_per_second)}.</p>{comparison && <p>vs. {displayName(comparison.cheaper.name)}: +{formatNumber(comparison.scoreGainPercent)}% score for +{formatNumber(comparison.costIncreasePercent)}% cost.</p>}{nextUpgrade && <p>Highest score in band: <button type="button" onClick={() => onSelect(nextUpgrade.model.slug)}>{displayName(nextUpgrade.model.name)}</button> · +{formatNumber(nextUpgrade.scoreGainPercent)}% score for +{formatNumber(nextUpgrade.costIncreasePercent)}% cost.</p>}</details>
-        </> : <p className="recommendation-empty">No eligible model{filters.valueMode === "speed" ? " with measured speed" : ""}.</p>}
-      </article>)}
+      {results.every((r) => !r.result) && <p className="text-sm text-muted">No scored and priced models match the filters. Try broadening your criteria.</p>}
+      {results.map(({ difficulty, tier, result }) => {
+        const pick = result?.pick;
+        return <article key={difficulty} className={`recommendation-card recommendation-${difficulty.toLowerCase()}`}>
+          <div className="recommendation-band"><span className="band-indicator" aria-hidden="true" /><strong>{difficulty}</strong><span>{TIERS[tier].label} tier · ≥ {Math.round((result?.floor_share ?? 0) * 100)}% of best</span></div>
+          {result && pick ? <>
+            <button type="button" onClick={() => onSelect(pick.slug)} className="recommendation-model">{displayName(pick.name)} <span aria-hidden="true">↗</span></button>
+            <p className="recommendation-creator">{pick.creator} · <code>{label(pick)}</code> · {result.eligible} of {result.pool} routes qualify</p>
+            <div className="recommendation-stats"><span><small>Score</small><strong>{formatMetric(pick.score, filters.task.scale)} <small>({formatNumber(pick.score_pct_of_best ?? 0)}%)</small></strong></span><span><small>Cost {unit}</small><strong>{cost(pick)}</strong></span><span><small>Speed</small><strong>{formatSpeed(pick.output_tokens_per_second)}</strong></span></div>
+            <details className="recommendation-detail"><summary>Why this one</summary>
+              <p>{result.reason}.</p>
+              {result.stronger && <p>Next step up: <button type="button" onClick={() => onSelect(result.stronger!.slug)}>{displayName(result.stronger.name)}</button> ({label(result.stronger)}) · {formatMetric(result.stronger.score, filters.task.scale)} for {cost(result.stronger)}.</p>}
+              {result.cheaper && <p>Strongest cheaper option: <button type="button" onClick={() => onSelect(result.cheaper!.slug)}>{displayName(result.cheaper.name)}</button> · {formatMetric(result.cheaper.score, filters.task.scale)} for {cost(result.cheaper)}.</p>}
+              {result.best.id !== pick.id && <p>Best available: <button type="button" onClick={() => onSelect(result.best.slug)}>{displayName(result.best.name)}</button> · {formatMetric(result.best.score, filters.task.scale)} for {cost(result.best)}.</p>}
+            </details>
+          </> : <p className="recommendation-empty">No eligible model.</p>}
+        </article>;
+      })}
     </div>
   </section>;
+}
+
+function pct(t: { floor: { balanced: number } }) {
+  return `${Math.round(t.floor.balanced * 100)}%`;
+}
+
+function perDoubling(t: { perDoubling: { lean: number; balanced: number; max: number } }) {
+  return `${t.perDoubling.lean}/${t.perDoubling.balanced}/${t.perDoubling.max}`;
 }

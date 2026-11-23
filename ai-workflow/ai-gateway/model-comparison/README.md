@@ -160,8 +160,10 @@ unmeasured, not zero.
 Value modes: **price focused** = score / cost; **quality focused** = score /
 cost^s (adjustable price sensitivity `s`, default 0.10); **quality + speed** =
 the quality index times `(tokens/s / 100)^0.2`. These exponents are preferences,
-not measured laws. A gateway price of $0 ranks as free rather than receiving an
-invented ratio; missing prices are excluded.
+not measured laws. A gateway price of $0 counts as $0.005 (per task or per 1M
+tokens), so a free model is very cheap but must also score well to rank high;
+the cost column still shows $0. Missing prices are excluded. Superseded
+releases are hidden by default (toggle in "More filters").
 
 ## Recommendations
 

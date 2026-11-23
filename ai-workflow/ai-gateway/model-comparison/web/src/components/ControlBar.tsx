@@ -204,7 +204,7 @@ export function ControlBar({ filters, setFilters, creators, gatewayProviders, ta
         Effective prices prefer the gateway, then the AA provider host, then AA's model list price. Gateway $0 models {filters.includeFree ? "are included" : "are hidden"}; unavailable prices are excluded. These are decision heuristics, not benchmark scores.
       </p>
       <details className="text-xs text-muted"><summary className="cursor-pointer underline">How the utility score is calculated</summary>
-        <p className="mt-1">For positive prices: price focus = score / cost; quality focus = score / cost^s, where s is price sensitivity. Speed focus = score × (tokens/s ÷ 100)^0.2 / cost^s. Free models have no finite cost ratio and are ranked before paid models; equal free models are ordered by score. Percentage gains are relative changes in benchmark scores, not changes in real-world success rates. The exponents are preferences, not measured facts; value indices cannot be compared across tasks or cost bases.</p>
+        <p className="mt-1">For positive prices: price focus = score / cost; quality focus = score / cost^s, where s is price sensitivity. Speed focus = score × (tokens/s ÷ 100)^0.2 / cost^s. A $0 gateway price counts as $0.005, so a free model ranks high only when its score is competitive too. Percentage gains are relative changes in benchmark scores, not changes in real-world success rates. The exponents are preferences, not measured facts; value indices cannot be compared across tasks or cost bases.</p>
       </details>
       </details>
       </div>

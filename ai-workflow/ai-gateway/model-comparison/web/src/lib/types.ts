@@ -143,6 +143,24 @@ export interface Host {
   time_to_first_token_seconds: number | null;
 }
 
+// One gateway deployment of a variant (schema 3): an explicit provider/model pair
+// with its own prices. gateway_ids and gateway_providers do not line up.
+export interface GatewayRoute {
+  provider_id: string;
+  provider_name?: string;
+  model_id: string;
+  input_per_1m: number | null;
+  output_per_1m: number | null;
+  blended_3_to_1_per_1m: number | null;
+  cost_per_task_usd: number | null;
+  cost_per_task_source: string;
+  effort_levels: string[] | null;
+  tools?: boolean;
+  max_input_tokens?: number;
+  max_output_tokens?: number;
+  output_tokens_per_second: number | null;
+}
+
 export interface MatchInfo {
   source: string;
   query: string;
@@ -184,6 +202,7 @@ export interface Row {
   license_name?: string;
   modalities?: Modalities;
   hosts?: Host[];
+  gateway_routes?: GatewayRoute[];
   intelligence_index_cost_per_task_usd: number | null;
   value_per_blended_usd: number | null;
   value_per_cost_per_task_usd: number | null;

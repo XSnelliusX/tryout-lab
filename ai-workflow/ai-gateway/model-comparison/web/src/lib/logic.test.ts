@@ -40,8 +40,9 @@ describe("tasks", () => {
       { id: "intelligence", label: "General", short_label: "General", group: "Core", kind: "index", scale: "index", description: "", radar: true, default: true },
       { id: "scicode", label: "Coding", short_label: "Coding", group: "Coding", kind: "benchmark", scale: "percent", description: "", radar: false, default: false },
     ]);
-    expect(tasks.map((t) => t.id)).toEqual(["intelligence", "scicode"]);
-    expect(tasks[1].scale).toBe("percent");
+    // The recommendation workloads follow the core index, before the benchmarks.
+    expect(tasks.map((t) => t.id)).toEqual(["intelligence", "workload:general", "workload:coding", "workload:agentic", "workload:planning", "workload:writing", "scicode"]);
+    expect(tasks.at(-1)!.scale).toBe("percent");
     expect(defaultTask(tasks).id).toBe("intelligence");
   });
 
@@ -73,7 +74,7 @@ describe("tasks", () => {
   });
 
   it("distinguishes genuinely free models from unpriced models", () => {
-    expect(valueFor(makeRow({ scores: { intelligence: 50 }, blended: 0 }), general, "blended")).toBe(Infinity);
+    expect(valueFor(makeRow({ scores: { intelligence: 50 }, blended: 0 }), general, "blended")).toBeCloseTo(50 / 0.005);
     expect(valueFor(makeRow({ scores: { intelligence: 50 }, blended: null }), general, "blended")).toBeNull();
   });
 
@@ -94,7 +95,7 @@ describe("tasks", () => {
 
   it("uses gateway zero for free models even when AA measured a paid benchmark", () => {
     const free = makeRow({ scores: { intelligence: 40 }, blended: 0, costPerTask: 3 });
-    expect(valueFor(free, general, "task", "price")).toBe(Infinity);
+    expect(valueFor(free, general, "task", "price")).toBeCloseTo(40 / 0.005);
     expect(valueFor(free, general, "task", "quality")).toBeGreaterThan(0);
     expect(applyFilters([free], baseFilters({ costMode: "task" }))).toHaveLength(1);
   });

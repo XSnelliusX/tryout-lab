@@ -170,7 +170,7 @@ export function buildOption(
           escapeHtml(p.data.creator),
           `Score: ${formatMetric(score, task.scale)}`,
           `Cost: ${formatUsd(cost)} ${costMode === "task" ? "per AA benchmark task" : "per 1M tokens"}`,
-          `Value: ${formatValue(p.data.metric, filters.valueMode)}${p.data.metric === Infinity ? " · no finite ratio" : ` ${valueUnit(costMode, filters.valueMode)}`}`,
+          `Value: ${formatValue(p.data.metric, filters.valueMode)} ${valueUnit(costMode, filters.valueMode)}${cost === 0 ? " · $0 counted as $0.005" : ""}`,
           p.data.onFrontier ? "On the Pareto frontier" : "",
         ]
           .filter(Boolean)

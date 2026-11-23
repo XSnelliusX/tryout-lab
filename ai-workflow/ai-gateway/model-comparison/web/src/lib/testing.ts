@@ -58,6 +58,12 @@ export function makeRow({ scores, blended, costPerTask, ...rest }: RowFixture): 
     },
     modalities: { input: [], output: [] },
     hosts: [],
+    // One gateway route per fixture, priced like the row (schema 3 snapshots carry these).
+    gateway_routes: [{
+      provider_id: "gw", model_id: rest.slug ?? "m", input_per_1m: blended ?? null, output_per_1m: blended ?? null,
+      blended_3_to_1_per_1m: blended ?? null, cost_per_task_usd: blended === 0 ? 0 : costPerTask ?? null,
+      cost_per_task_source: costPerTask == null ? "none" : "gateway_estimate", effort_levels: [], tools: true, output_tokens_per_second: null,
+    }],
     intelligence_index_cost_per_task_usd: costPerTask ?? null,
     value_per_blended_usd: null,
     value_per_cost_per_task_usd: null,

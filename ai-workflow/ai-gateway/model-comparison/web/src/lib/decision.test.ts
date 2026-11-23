@@ -88,35 +88,32 @@ describe("decision-making regressions", () => {
     expect((chart.series as Array<{ step?: string }>)[1].step).toBe("start");
   });
 
-  it("returns distinct explicitly estimated thresholds and never picks below one", () => {
-    const rows = [10, 20, 30, 40, 50, 60].map((score) => makeRow({ slug: `m${score}`, scores: { intelligence: score }, blended: 1 }));
+  it("never recommends below the tier floor, and harder tiers ask for more", () => {
+    const rows = [10, 20, 30, 40, 50, 60].map((score, i) => makeRow({ slug: `m${score}`, scores: { intelligence: score }, blended: 0.1 * 3 ** i }));
     const results = recommendByDifficulty(rows, task, "blended", "quality");
-    expect(results).toHaveLength(3);
-    expect(results[0].minimum).toBeLessThan(results[1].minimum);
-    expect(results[1].minimum).toBeLessThan(results[2].minimum);
-    for (const result of results) {
-      expect(result.model!.scores.intelligence!).toBeGreaterThanOrEqual(result.minimum);
-      if (result.maximum !== null) expect(result.model!.scores.intelligence!).toBeLessThan(result.maximum);
+    expect(results.map((r) => r.difficulty)).toEqual(["Easy", "Medium", "Difficult"]);
+    for (const { result } of results) {
+      expect(result!.pick.score).toBeGreaterThanOrEqual(result!.floor_share * result!.best.score - 1e-9);
     }
-    expect(new Set(results.map((r) => r.model!.slug)).size).toBe(3);
+    const scores = results.map((r) => r.result!.pick.score);
+    expect(scores[0]).toBeLessThanOrEqual(scores[1]);
+    expect(scores[1]).toBeLessThanOrEqual(scores[2]);
+    expect(results[0].result!.pick.slug).not.toBe(results[2].result!.pick.slug);
   });
 
-  it("does not let missing-speed models distort speed-focused bands", () => {
-    const rows = [20, 40, 60, 90].map((score) => {
-      const row = makeRow({ slug: `m${score}`, scores: { intelligence: score }, blended: 1 });
-      row.performance.output_tokens_per_second = score === 90 ? null : 100;
-      return row;
-    });
-    const results = recommendByDifficulty(rows, task, "blended", "speed");
-    expect(results[2].minimum).toBe(40);
-    expect(results[2].model?.slug).toBe("m60");
+  it("lets measured speed count in speed focus, without dropping models that lack it", () => {
+    const fast = makeRow({ slug: "fast", scores: { intelligence: 50 }, blended: 1 });
+    const slow = makeRow({ slug: "slow", scores: { intelligence: 50 }, blended: 1 });
+    const unknown = makeRow({ slug: "unknown", scores: { intelligence: 50 }, blended: 1 });
+    fast.performance.output_tokens_per_second = 300;
+    slow.performance.output_tokens_per_second = 30;
+    expect(recommendByDifficulty([slow, fast, unknown], task, "blended", "speed")[1].result!.pick.slug).toBe("fast");
+    expect(recommendByDifficulty([slow, fast, unknown], task, "blended", "speed")[1].result!.pool).toBe(3);
   });
 
-  it("does not fabricate a recommendation for a band with tied thresholds", () => {
-    const rows = [1, 2].map((n) => makeRow({ slug: `m${n}`, scores: { intelligence: 40 }, blended: 1 }));
-    const results = recommendByDifficulty(rows, task, "blended", "quality");
-    expect(results[0].model).toBeNull();
-    expect(results[1].model).toBeNull();
-    expect(results[2].model).not.toBeNull();
+  it("does not recommend superseded releases even when the view shows them", () => {
+    const old = makeRow({ slug: "old", scores: { intelligence: 60 }, blended: 0.1, release_deprecated: true });
+    const current = makeRow({ slug: "current", scores: { intelligence: 50 }, blended: 1 });
+    for (const r of recommendByDifficulty([old, current], task, "blended", "quality")) expect(r.result!.pick.slug).toBe("current");
   });
 });

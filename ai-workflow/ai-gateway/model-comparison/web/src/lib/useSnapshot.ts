@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Snapshot } from "./types";
+import { WORKLOADS, workloadScore } from "./engine";
+import { WORKLOAD_PREFIX } from "./tasks";
 
 export type SnapshotState =
   | { status: "loading" }
@@ -44,7 +46,8 @@ export function useSnapshot(url = "data/models.json", revision = 0): SnapshotSta
   return state;
 }
 
-// Go encodes an empty slice as null. Normalise so the UI can always iterate.
+// Go encodes an empty slice as null. Normalise so the UI can always iterate, and
+// add the recommendation workload scores (scores["workload:<name>"]).
 export function normalize(raw: Snapshot): Snapshot {
   return {
     ...raw,
@@ -54,6 +57,7 @@ export function normalize(raw: Snapshot): Snapshot {
     metrics: raw.metrics ?? [],
     models: (raw.models ?? []).map((m) => ({
       ...m,
+      scores: withWorkloads(m.scores ?? {}),
       gateway_ids: m.gateway_ids ?? [],
       gateway_providers: m.gateway_providers ?? [],
       gateway_provider_names: m.gateway_provider_names ?? [],
@@ -64,4 +68,10 @@ export function normalize(raw: Snapshot): Snapshot {
       modalities: m.modalities ?? { input: [], output: [] },
     })),
   };
+}
+
+function withWorkloads(scores: Snapshot["models"][number]["scores"]) {
+  const out = { ...scores };
+  for (const name of Object.keys(WORKLOADS)) out[`${WORKLOAD_PREFIX}${name}`] = workloadScore({ scores }, name)?.value ?? null;
+  return out;
 }

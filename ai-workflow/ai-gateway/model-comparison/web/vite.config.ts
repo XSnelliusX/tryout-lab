@@ -8,7 +8,8 @@ import tailwindcss from "@tailwindcss/vite";
 //     <script type="module"> loaded from file:// (CORS), and `crossorigin`
 //     attributes break file:// requests too;
 //   - data/models.js (written by compare.mjs / aasync) is a classic script that
-//     sets window.__MODEL_COMPARISON__, loaded before the app bundle.
+//     sets window.__MODEL_COMPARISON__, loaded before the app bundle, and
+//     data/recommendations.js sets window.__MODEL_RECOMMENDATIONS__ (recommend.mjs).
 // `vite dev` has no data/models.js; useSnapshot falls back to fetch there.
 function classicScripts() {
   return {
@@ -29,7 +30,8 @@ function classicScripts() {
           // modulepreload hints are meaningless for a classic bundle.
           .replace(/\s*<link rel="modulepreload"[^>]*>/g, "");
         // Data first (classic, synchronous); the deferred app bundle runs after it.
-        return out.replace("<script", '<script src="./data/models.js"></script>\n    <script');
+        // recommendations.js is optional (older snapshots): a missing file only logs a 404.
+        return out.replace("<script", '<script src="./data/models.js"></script>\n    <script src="./data/recommendations.js"></script>\n    <script');
       },
     },
   };
@@ -39,6 +41,8 @@ function classicScripts() {
 // Vitest 5 while remaining a valid Vite/Vitest configuration.
 export default {
   base: "./",
+  // The recommendation engine (../engine.mjs) is shared with the Node tools.
+  server: { fs: { allow: [".."] } },
   plugins: [react(), tailwindcss(), classicScripts()],
   build: {
     modulePreload: false,

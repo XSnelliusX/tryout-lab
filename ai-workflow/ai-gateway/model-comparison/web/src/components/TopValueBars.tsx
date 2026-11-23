@@ -28,7 +28,7 @@ export function TopValueBars({ rows, filters, selected, onSelect }: Props) {
   const theme = useChartTheme();
   const option = useMemo(() => buildOption(rows, filters, selected, theme), [rows, filters, selected, theme]);
   const ref = useChart(option, onSelect);
-  const free = rows.filter((r) => valueFor(r, filters.task, filters.costMode, filters.valueMode, filters.priceSensitivity) === Infinity);
+  const free = rows.filter((r) => priceFor(r, filters.costMode) === 0 && valueFor(r, filters.task, filters.costMode, filters.valueMode, filters.priceSensitivity) !== null);
 
   return (
     <section aria-label="Top models by value" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
@@ -38,7 +38,7 @@ export function TopValueBars({ rows, filters, selected, onSelect }: Props) {
           {filters.task.label}, {valueUnit(filters.costMode, filters.valueMode)}{free.length ? " · paid models only" : ""}
         </p>
       </header>
-      {free.length > 0 && <details className="free-models"><summary>{free.length} $0 variants excluded from bars</summary><p>Free variants have no finite score-to-cost ratio. Verify gateway pricing before relying on it.</p><div>{free.map((r) => <button key={r.slug} type="button" onClick={() => onSelect(r.slug)}>{displayName(r.name)}</button>)}</div></details>}
+      {free.length > 0 && <details className="free-models"><summary>{free.length} $0 variants excluded from bars</summary><p>Free variants are ranked at $0.005 in the table; the bars show paid models only. Verify gateway pricing before relying on it.</p><div>{free.map((r) => <button key={r.slug} type="button" onClick={() => onSelect(r.slug)}>{displayName(r.name)}</button>)}</div></details>}
       <div ref={ref} role="img" aria-label={`Top ${TOP_N} paid models by value. Exact values are available in the model table.`} className="value-chart tradeoff-chart w-full" />
       <p className="text-xs text-muted">Select a bar for details. The model table provides the same values and is keyboard accessible.</p>
     </section>
@@ -49,7 +49,7 @@ export function buildOption(rows: Row[], filters: Filters, selected: string | nu
   const { task, costMode, valueMode } = filters;
   const ranked = rows
     .map((r) => ({ r, v: valueFor(r, task, costMode, valueMode, filters.priceSensitivity) }))
-    .filter((x): x is { r: Row; v: number } => x.v !== null && Number.isFinite(x.v))
+    .filter((x): x is { r: Row; v: number } => x.v !== null && Number.isFinite(x.v) && priceFor(x.r, costMode) !== 0)
     .sort((a, b) => b.v - a.v)
     .slice(0, TOP_N)
     .reverse();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeRow } from "./testing";
 import { taskById, valueFor } from "./tasks";
-import { nextEfficientUpgrade, premiumComparison, recommendByDifficulty } from "./recommendations";
+import { recommendByDifficulty } from "./recommendations";
 
 const general = taskById("general");
 const row = (slug: string, score: number, cost: number) =>
@@ -14,11 +14,18 @@ describe("relative cost-performance regression", () => {
     expect(valueFor(sol, general, "task", "quality")!).toBeGreaterThan(valueFor(argon, general, "task", "quality")!);
   });
 
-  it("recommends Sol instead of Argon in the same quality tier", () => {
+  it("recommends Sol instead of Argon: +1.5% score is not worth +128% cost, even for difficult work", () => {
     const sol = row("sol", 51.8, 0.72);
     const argon = row("argon", 52.6, 1.64);
-    const rows = [row("lower-a", 20, 1), row("lower-b", 40, 1), sol, argon, row("higher-a", 60, 1), row("higher-b", 70, 1)];
-    expect(recommendByDifficulty(rows, general, "task", "quality")[1].model?.slug).toBe("sol");
+    const rows = [row("lower-a", 20, 1), row("lower-b", 40, 1), sol, argon];
+    const [, medium, difficult] = recommendByDifficulty(rows, general, "task", "quality");
+    expect(medium.result?.pick.slug).toBe("sol");
+    expect(difficult.result?.pick.slug).toBe("sol");
+  });
+
+  it("pays for a large gain at a small premium", () => {
+    const rows = [row("sol", 51.8, 0.72), row("better", 70, 1)];
+    expect(recommendByDifficulty(rows, general, "task", "quality")[1].result?.pick.slug).toBe("better");
   });
 
   it("does not ignore proportional price differences at high absolute prices", () => {
@@ -41,33 +48,34 @@ describe("relative cost-performance regression", () => {
     expect(valueFor(a, general, "task", "quality", 0.8)!).toBeGreaterThan(valueFor(b, general, "task", "quality", 0.8)!);
   });
 
-  it("shows the actual score and cost percentage for a premium", () => {
+  it("names the next step up with its score and cost", () => {
     const sol = row("sol", 51.8, 0.72), argon = row("argon", 52.6, 1.64);
-    const comparison = premiumComparison(argon, [sol, argon], general, "task");
-    expect(comparison?.scoreGainPercent).toBeCloseTo(1.5444, 3);
-    expect(comparison?.costIncreasePercent).toBeCloseTo(127.7778, 3);
-    const upgrade = nextEfficientUpgrade(sol, [sol, argon], general, "task");
-    expect(upgrade?.model.slug).toBe("argon");
-    expect(upgrade?.costIncreasePercent).toBeCloseTo(127.7778, 3);
+    const medium = recommendByDifficulty([sol, argon], general, "task", "quality")[1].result!;
+    expect(medium.pick.slug).toBe("sol");
+    expect(medium.stronger?.slug).toBe("argon");
+    expect(medium.reason).toMatch(/next step up: argon \+0\.8 points for 2\.3x the cost/);
   });
 
-  it("does not calculate a percentage increase from zero", () => {
-    const free = row("free", 50, 0), paid = row("paid", 55, 1);
+  it("counts a $0 model as cheap, not infinitely good", () => {
+    const free = row("free", 30, 0), paid = row("paid", 55, 1);
     free.pricing.gateway_input_per_1m = 0;
     free.pricing.gateway_output_per_1m = 0;
     free.pricing.effective_input_per_1m = 0;
     free.pricing.effective_output_per_1m = 0;
     free.pricing.blended_3_to_1_per_1m = 0;
-    expect(premiumComparison(paid, [free, paid], general, "task")).toBeNull();
-    expect(nextEfficientUpgrade(free, [free, paid], general, "task")).toBeNull();
+    expect(Number.isFinite(valueFor(free, general, "task", "price")!)).toBe(true);
+    expect(valueFor(paid, general, "task", "quality")!).toBeGreaterThan(valueFor(free, general, "task", "quality")!);
+    const difficult = recommendByDifficulty([free, paid], general, "task", "quality")[2].result!;
+    expect(difficult.pick.slug).toBe("paid");
   });
 
-  it("sorts multiple free models by score, never by a NaN from Infinity minus Infinity", () => {
+  it("lets a strong free model win when it clears the floor", () => {
     const free1 = makeRow({ slug: "f1", scores: { intelligence: 40 }, blended: 0 });
-    const free2 = makeRow({ slug: "f2", scores: { intelligence: 60 }, blended: 0 });
+    const free2 = makeRow({ slug: "f2", scores: { intelligence: 66 }, blended: 0 });
     const paid = makeRow({ slug: "paid", scores: { intelligence: 70 }, blended: 1 });
     const results = recommendByDifficulty([free1, free2, paid], general, "blended", "quality");
-    expect(results[2].model?.slug).toBe("f2");
+    expect(results[2].result?.pick.slug).toBe("f2");
+    expect(results[2].result?.pick.free).toBe(true);
   });
 
   it("compares both relative improvements, with a percent-for-percent price focus", () => {

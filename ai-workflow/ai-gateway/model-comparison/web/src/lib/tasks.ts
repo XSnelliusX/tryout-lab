@@ -1,4 +1,5 @@
 import type { Metric, Row } from "./types";
+import { MIN_COST, WORKLOADS } from "./engine";
 
 // A task is one metric the dashboard can rank by. The real application builds
 // this list from snapshot.metrics; TASKS is the static fallback for tests and
@@ -28,9 +29,28 @@ export const TASKS: Task[] = [
   { id: "healthcare", label: "Healthcare & medical", shortLabel: "Healthcare", description: "AA healthcare and medical capability index.", score: "healthcare_and_medical", group: "Capabilities", kind: "capability", scale: "index", radar: true, default: false },
 ];
 
+export const WORKLOAD_PREFIX = "workload:";
+
+// The recommendation workloads (weighted benchmark blends) as selectable tasks.
+// useSnapshot puts their values into row.scores["workload:<name>"].
+export function workloadTasks(): Task[] {
+  return Object.entries(WORKLOADS).map(([name, spec]) => ({
+    id: `${WORKLOAD_PREFIX}${name}`,
+    label: `${spec.label} (workload)`,
+    shortLabel: spec.label,
+    description: `${spec.description} The score the recommendations, Herdr's cc-models and the prompt rewriter use.`,
+    score: `${WORKLOAD_PREFIX}${name}`,
+    group: "Workloads (used by recommendations)",
+    kind: "index" as const,
+    scale: "index" as const,
+    radar: false,
+    default: false,
+  }));
+}
+
 export function tasksFromMetrics(metrics: Metric[] | undefined): Task[] {
   if (!metrics || metrics.length === 0) return TASKS;
-  return metrics.map((m) => ({
+  const tasks = metrics.map((m) => ({
     id: m.id,
     label: m.label,
     shortLabel: m.short_label,
@@ -42,6 +62,9 @@ export function tasksFromMetrics(metrics: Metric[] | undefined): Task[] {
     radar: m.radar,
     default: m.default,
   }));
+  // Right after the core index, so the blends sit next to the score they extend.
+  const core = tasks.filter((t) => t.group === tasks[0].group);
+  return [...core, ...workloadTasks(), ...tasks.slice(core.length)];
 }
 
 export function defaultTask(tasks: Task[]): Task {
@@ -94,22 +117,22 @@ export function priceFor(row: Row, mode: CostMode): number | null {
 // The same cost unit must be used for all models in a comparison.
 export const DEFAULT_PRICE_SENSITIVITY = 0.1;
 
+// A gateway price of $0 counts as MIN_COST (the engine's floor, $0.005): a free
+// model is very cheap, not infinitely good, so a weak free model cannot top the
+// ranking just because it costs nothing. The cost column still shows $0.
 export function valueFor(row: Row, task: Task, mode: CostMode, preference: ValueMode = "price", priceSensitivity = DEFAULT_PRICE_SENSITIVITY): number | null {
   const score = scoreFor(row, task);
-  const cost = priceFor(row, mode);
-  if (score === null || cost === null || !Number.isFinite(score) || !Number.isFinite(cost) || cost < 0 || score < 0) return null;
+  const price = priceFor(row, mode);
+  if (score === null || price === null || !Number.isFinite(score) || !Number.isFinite(price) || price < 0 || score < 0) return null;
+  const cost = Math.max(price, MIN_COST);
   if (preference === "speed") {
     const speed = row.performance.output_tokens_per_second;
     if (speed === null || !Number.isFinite(speed) || speed <= 0) return null;
     if (score === 0) return 0;
-    if (cost === 0) return Infinity;
     const exponent = Math.max(0, Math.min(1, priceSensitivity));
     return (score * Math.pow(speed / 100, 0.2)) / Math.pow(cost, exponent);
   }
   if (score === 0) return 0;
-  // A real zero-cost model dominates paid models on price, but has no finite
-  // score/cost ratio. Use infinity internally and label it explicitly in the UI.
-  if (cost === 0) return Infinity;
   const exponent = preference === "price" ? 1 : Math.max(0, Math.min(1, priceSensitivity));
   return score / Math.pow(cost, exponent);
 }

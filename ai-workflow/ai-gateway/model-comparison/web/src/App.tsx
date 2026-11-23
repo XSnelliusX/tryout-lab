@@ -16,6 +16,8 @@ import { DetailDrawer } from "./components/DetailDrawer";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { Recommendations } from "./components/Recommendations";
+import { RolePicks } from "./components/RolePicks";
+import { useRecommendations } from "./lib/useRecommendations";
 import type { ProviderOption, Row, Snapshot } from "./lib/types";
 
 const DEFAULT_FILTERS: Filters = {
@@ -28,7 +30,8 @@ const DEFAULT_FILTERS: Filters = {
   creators: [],
   modelQuery: "",
   includeFree: true,
-  includeDeprecated: true,
+  // Superseded releases clutter the view and are never the best pick; the toggle shows them.
+  includeDeprecated: false,
   gatewayProvider: "",
   effort: "all",
   reasoning: "all",
@@ -61,6 +64,7 @@ interface DashboardProps {
 
 function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: DashboardProps) {
   const tasks = useMemo(() => tasksFromMetrics(snapshot.metrics), [snapshot.metrics]);
+  const recommendations = useRecommendations(syncState.revision);
   const [filters, setFilters] = useState<Filters>(() => ({ ...DEFAULT_FILTERS, task: defaultTask(tasks) }));
   const [colorBy, setColorBy] = useState<ColorBy>("creator");
   const [selected, setSelected] = useState<string | null>(null);
@@ -115,6 +119,7 @@ function Dashboard({ snapshot, theme, onToggleTheme, syncState, onSync }: Dashbo
       </aside>
       <div className="workspace-content">
       <Recommendations rows={scoped} filters={filters} onSelect={setSelected} />
+      <RolePicks doc={recommendations} onSelect={setSelected} />
       <div className="landscape-layout">
       <section id="analysis" aria-label="Visual analysis" className="analysis-workspace">
         <div className="analysis-toolbar">
