@@ -6,7 +6,7 @@ A small orchestration framework for Herdr and [OpenCode](https://opencode.ai): o
 - **Workers**: OpenCode sessions pinned to a role (`implementer`, `architect`, `verifier-deep`, ...) with a model, reasoning variant and permission set taken from one config file.
 - **Guardrails**: roles are cheap-by-default, tests run in a plain shell first, and an optional monthly budget downgrades the most expensive role automatically.
 
-It works with **any OpenCode provider**. The [ai-gateway plugin](../ai-gateway) is optional and only needed for the cost log that powers the budget guardrail (see [Budget guardrail](#budget-guardrail)).
+It works with **any OpenCode provider**. The [ai-gateway plugin](../ai-gateway) is optional: it provides the cost log that powers the budget guardrail (see [Budget guardrail](#budget-guardrail)) and the model comparison `cc-models` recommends from. Installed together with it by [`../install.sh`](../README.md).
 
 ## Architecture
 

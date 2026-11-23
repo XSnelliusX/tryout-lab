@@ -7,7 +7,7 @@ Code, in one module that installs on its own (or from `mac-setup`):
 |---|---|---|
 | OpenCode plugin (`index.ts`, `tui.ts`) | Discovers the gateway's models and registers them in OpenCode, one provider per upstream (`acc-bedrock`, `acc-azure`, ...), with limits, prices and capabilities. Logs per-step tokens and cost | the model picker, `/gateway-status`, `/gateway-refresh` |
 | Usage dashboard (`dashboard.html`) | All AI usage by tool, agent, model and billing, from one log that OpenCode, Neovim and Claude Code write to | `/usage-dashboard` |
-| Model comparison (`model-comparison/`) | Joins the gateway's models with public Artificial Analysis benchmarks: intelligence and capability indices, raw scores, speed and price per model, side by side | `/model-comparison` |
+| Model comparison (`model-comparison/`) | Joins the gateway's models with public Artificial Analysis benchmarks: intelligence and capability indices, raw scores, speed and price per model, side by side. Holds the recommendation engine that picks models per task and per Herdr role for every tool of the [AI workflow](../README.md) | `/model-comparison` |
 | Claude Code commands (`claude-skills/`) and usage hook (`claude_usage.py`) | The same commands in Claude Code, and Claude Code's usage in the shared log | `/usage-dashboard`, `/model-comparison`, ... |
 | Antigravity usage hook (`antigravity_usage.py`) | Logs Antigravity CLI and Desktop App calls to the shared log (company Enterprise Gateway sessions only; personal Pro sessions are ignored) | `~/.gemini/config/hooks.json` |
 | `check_gateway.py` | Tests the URL and key, lists models | `python3 check_gateway.py` |
@@ -26,7 +26,7 @@ ai-gateway/
 ├── claude_usage.py       # Claude Code usage hook
 ├── check_gateway.py      # connectivity check
 ├── claude-skills/        # /gateway-refresh, /gateway-status, /usage-dashboard, /model-comparison for Claude Code
-└── model-comparison/     # benchmark comparison dashboard (Go + Node build), see its README
+└── model-comparison/     # benchmark comparison dashboard and recommendation engine (Go + Node build), see its README
 ```
 
 Startup uses a cached inventory (no network), and the slow metadata endpoint is
