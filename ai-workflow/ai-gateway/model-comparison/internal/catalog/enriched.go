@@ -77,6 +77,8 @@ type EnrichedGateway struct {
 	OutputPer1M      *float64   `json:"output_per_1M"`
 	UpstreamProvider string     `json:"upstream_provider"`
 	UpstreamModel    string     `json:"upstream_model"`
+	EffortLevels     []string   `json:"effort_levels"`
+	Tools            *bool      `json:"tools"`
 	AA               EnrichedAA `json:"aa"`
 }
 
@@ -672,11 +674,11 @@ func buildEnrichedRow(a *enrichedAggregate) Row {
 
 	perf, perfSource := variantPerformance(v, host)
 	context := v.ContextWindowTokens
-	gatewayContext := (*int)(nil)
-	if host != nil && host.ContextWindowTokens != nil {
+	// The gateway's own input limit is what a request can use; the AA host's
+	// documented context is only a fallback when the catalog has no limit.
+	gatewayContext := a.maxInput
+	if gatewayContext == nil && host != nil {
 		gatewayContext = host.ContextWindowTokens
-	} else if a.maxInput != nil {
-		gatewayContext = a.maxInput
 	}
 
 	warnings := sortedSet(a.warnings)
@@ -751,6 +753,7 @@ func buildEnrichedRow(a *enrichedAggregate) Row {
 		LicenseName:                v.LicenseName,
 		Modalities:                 variantModalities(v),
 		Hosts:                      compactHosts(v.Hosts),
+		GatewayRoutes:              buildRoutes(v, a.rows, host, aaCost, aaBlended),
 		CostPerTask:                aaCost,
 		ValueBlended:               ValueRatio(v.IntelligenceIndex, blended),
 		ValueCostPerTask:           ValueRatio(v.IntelligenceIndex, gatewayCost),
@@ -765,6 +768,69 @@ func buildEnrichedRow(a *enrichedAggregate) Row {
 			Alternatives: alternativesOf(a.match.Alternatives),
 		},
 	}
+}
+
+// buildRoutes lists every gateway deployment of the variant as an explicit
+// (provider_id, model_id) pair with its own prices, cost per task, effort levels
+// and serving speed. Consumers must use these pairs: gateway_ids and
+// gateway_providers are independently sorted sets and do not line up.
+func buildRoutes(v EnrichedVariant, rows []EnrichedGateway, fallbackHost *EnrichedHost, aaCost, aaBlended *float64) []Route {
+	out := make([]Route, 0, len(rows))
+	seen := map[string]bool{}
+	for i := range rows {
+		r := &rows[i]
+		key := r.ProviderID + "/" + r.ModelID
+		if !isChatMode(r.Mode) || seen[key] {
+			continue
+		}
+		seen[key] = true
+		host := findHost(v.Hosts, r.AA.ProviderMatch.AAHost)
+		if host == nil {
+			host = fallbackHost
+		}
+		var providerCost, providerBlended *float64
+		if host != nil {
+			providerCost = host.Pricing.CostPerTask
+			providerBlended = BlendedPrice(host.Pricing.Price1mInputTokens, host.Pricing.Price1mOutputTokens)
+		}
+		in, out2 := validPrice(r.InputPer1M), validPrice(r.OutputPer1M)
+		cost, source := estimateCostPerTask(in, out2, providerCost, providerBlended, aaCost, aaBlended)
+		perf, _ := variantPerformance(v, host)
+		levels := r.EffortLevels
+		if levels == nil {
+			levels = []string{}
+		}
+		out = append(out, Route{
+			ProviderID:            r.ProviderID,
+			ProviderName:          r.ProviderName,
+			ModelID:               r.ModelID,
+			InputPer1M:            in,
+			OutputPer1M:           out2,
+			BlendedUSD:            BlendedPrice(in, out2),
+			CostPerTask:           cost,
+			CostPerTaskSource:     source,
+			EffortLevels:          levels,
+			Tools:                 r.Tools,
+			MaxInputTokens:        r.MaxInputTokens,
+			MaxOutputTokens:       r.MaxOutputTokens,
+			OutputTokensPerSecond: perf.OutputTokensPerSecond,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ProviderID != out[j].ProviderID {
+			return out[i].ProviderID < out[j].ProviderID
+		}
+		return out[i].ModelID < out[j].ModelID
+	})
+	return out
+}
+
+// validPrice drops negative and non-finite prices, which the catalog uses for "unknown".
+func validPrice(v *float64) *float64 {
+	if v == nil || *v < 0 || math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return nil
+	}
+	return v
 }
 
 func variantScores(v EnrichedVariant) (map[string]*float64, map[string]*float64) {

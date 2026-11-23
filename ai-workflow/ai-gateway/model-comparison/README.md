@@ -124,6 +124,11 @@ One dashboard row per AA variant of every matched catalog model:
 - model metadata: context window, modalities, open-weights flag, license
 - AA provider-host rows: input/output price, cost per task, context, speed
 - gateway ids, aliases, upstream ids, prices and the match evidence
+- `gateway_routes`: every gateway deployment of the variant as an explicit
+  `provider_id` + `model_id` pair with its own prices, cost per task, effort
+  levels, tool support and serving speed. Use these: `gateway_ids` and
+  `gateway_providers` are two independently sorted sets that do not line up
+  (schema 3; older snapshots lack the routes)
 - warnings such as `deprecated_release`, `effort_unavailable:max`,
   `provider_host_row_missing`, `aggregator_not_an_aa_host`
 

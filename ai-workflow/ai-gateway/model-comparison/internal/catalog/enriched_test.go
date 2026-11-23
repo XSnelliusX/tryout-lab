@@ -139,8 +139,8 @@ func TestBuildEnrichedAggregatesVariantsAndGatewayIDs(t *testing.T) {
 		GeneratedAt: "2026-10-28T07:00:00Z",
 		File:        enrichedFile(),
 	})
-	if snap.SchemaVersion != 2 {
-		t.Fatalf("schema = %d, want 2", snap.SchemaVersion)
+	if snap.SchemaVersion != 3 {
+		t.Fatalf("schema = %d, want 3", snap.SchemaVersion)
 	}
 	if snap.Counts.Rows != 2 || snap.Counts.Matched != 2 || snap.Counts.Unmatched != 1 {
 		t.Fatalf("counts = %+v", snap.Counts)
@@ -268,3 +268,50 @@ func TestBestCatalogRowPicksCheapestChatRow(t *testing.T) {
 		t.Fatalf("expected no usable row, got %+v", best)
 	}
 }
+
+// gateway_ids and gateway_providers are sorted independently; routes must pair
+// each model id with its own provider and price.
+func TestBuildEnrichedRoutesPairProvidersWithTheirModels(t *testing.T) {
+	file := enrichedFile()
+	// "a-..." sorts first among ids but its provider "gw-zeta" sorts last.
+	file.Rows[0].ProviderID, file.Rows[0].ModelID = "gw-zeta", "a-orbit-pro"
+	file.Rows[0].EffortLevels = []string{"low", "max"}
+	file.Rows[0].Tools = boolptr(true)
+	file.Rows[0].MaxInputTokens = intptr(100000)
+	file.Rows[1].ProviderID, file.Rows[1].ModelID = "gw-alpha", "z-orbit-pro"
+	snap := BuildEnriched(EnrichedBuildInput{File: file})
+	var base *Row
+	for i := range snap.Models {
+		if snap.Models[i].Slug == "orbit-pro-2" {
+			base = &snap.Models[i]
+		}
+	}
+	if base == nil {
+		t.Fatal("missing base row")
+	}
+	if len(base.GatewayRoutes) != 2 {
+		t.Fatalf("routes = %+v", base.GatewayRoutes)
+	}
+	alpha, zeta := base.GatewayRoutes[0], base.GatewayRoutes[1]
+	if alpha.ProviderID != "gw-alpha" || alpha.ModelID != "z-orbit-pro" || zeta.ProviderID != "gw-zeta" || zeta.ModelID != "a-orbit-pro" {
+		t.Fatalf("routes not paired by catalog row: %+v", base.GatewayRoutes)
+	}
+	// Each route is priced at its own gateway price: the host's $10 task at a
+	// 3:1 blend of 4 is re-priced to blend 4 (gw-zeta: 2/10) and 4.875 (gw-alpha: 2.5/12).
+	if zeta.CostPerTask == nil || math.Abs(*zeta.CostPerTask-10) > 1e-9 {
+		t.Errorf("zeta cost = %v, want 10", zeta.CostPerTask)
+	}
+	if alpha.CostPerTask == nil || math.Abs(*alpha.CostPerTask-10*4.875/4) > 1e-9 {
+		t.Errorf("alpha cost = %v, want %v", *alpha.CostPerTask, 10*4.875/4)
+	}
+	if len(zeta.EffortLevels) != 2 || zeta.Tools == nil || !*zeta.Tools || alpha.EffortLevels == nil || len(alpha.EffortLevels) != 0 {
+		t.Errorf("route capabilities: %+v / %+v", zeta, alpha)
+	}
+	// The gateway's own input limit wins over the AA host context window.
+	if base.GatewayContextWindowTokens == nil || *base.GatewayContextWindowTokens != 100000 {
+		t.Errorf("gateway context = %v, want 100000", base.GatewayContextWindowTokens)
+	}
+}
+
+func boolptr(v bool) *bool { return &v }
+func intptr(v int) *int    { return &v }

@@ -3,7 +3,8 @@ package catalog
 import "math"
 
 // SchemaVersion is bumped whenever the snapshot JSON shape changes.
-const SchemaVersion = 2
+// 3: rows carry gateway_routes (explicit provider/model pairs).
+const SchemaVersion = 3
 
 // Snapshot is the file the dashboard loads.
 type Snapshot struct {
@@ -106,6 +107,7 @@ type Row struct {
 	LicenseName                string     `json:"license_name,omitempty"`
 	Modalities                 Modalities `json:"modalities"`
 	Hosts                      []Host     `json:"hosts,omitempty"`
+	GatewayRoutes              []Route    `json:"gateway_routes"`
 	CostPerTask                *float64   `json:"intelligence_index_cost_per_task_usd"`
 	ValueBlended               *float64   `json:"value_per_blended_usd"`
 	ValueCostPerTask           *float64   `json:"value_per_cost_per_task_usd"`
@@ -172,6 +174,24 @@ type Perf struct {
 type Modalities struct {
 	Input  []string `json:"input"`
 	Output []string `json:"output"`
+}
+
+// Route is one gateway deployment serving a variant: an explicit provider id
+// and model id, with that deployment's own prices and cost per task.
+type Route struct {
+	ProviderID            string   `json:"provider_id"`
+	ProviderName          string   `json:"provider_name,omitempty"`
+	ModelID               string   `json:"model_id"`
+	InputPer1M            *float64 `json:"input_per_1m"`
+	OutputPer1M           *float64 `json:"output_per_1m"`
+	BlendedUSD            *float64 `json:"blended_3_to_1_per_1m"`
+	CostPerTask           *float64 `json:"cost_per_task_usd"`
+	CostPerTaskSource     string   `json:"cost_per_task_source"`
+	EffortLevels          []string `json:"effort_levels"`
+	Tools                 *bool    `json:"tools,omitempty"`
+	MaxInputTokens        *int     `json:"max_input_tokens,omitempty"`
+	MaxOutputTokens       *int     `json:"max_output_tokens,omitempty"`
+	OutputTokensPerSecond *float64 `json:"output_tokens_per_second"`
 }
 
 // Host is one provider-specific AA row for a variant.
