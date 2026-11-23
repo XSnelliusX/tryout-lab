@@ -35,10 +35,10 @@ Run `cc-agent <role> --dry-run` to see the exact model and variant a role resolv
 
 ## Keeping models current (`cc-models`)
 
-The user chooses the models; `cc-models` helps. Its picks come from the model comparison's recommendation engine (the same one behind the comparison dashboard's "Models per role" panel): each role is scored on its own workload (coding roles on agentic coding, you on tool use, the architect on planning), at the gateway's cost per task.
-- Which models are in use: `cc-models status` (model per role, its workload score, $ per task, superseded or not).
+The user chooses the models; `cc-models` helps. Its picks come from the model comparison's recommendation engine (the same one behind the comparison dashboard's "Models per role" panel): each role is scored on what it needs (a fit of 0-100: research on speed and tool use, coding roles on coding and reasoning, the writer on knowledge work and accuracy, ...), at the gateway's cost per task.
+- Which models are in use: `cc-models status` (model per role, its fit, $ per task, superseded or not).
 - When the user asks about new models: run `cc-models update --refresh`. It only proposes newer versions of the model lines already in use, at the same effort. Show its table, and apply **only after the user agrees**: `cc-models update --yes`.
-- When the user asks for suggestions: `cc-models recommend --profile balanced` shows one table, the current models next to the lean, balanced and max picks (workload score, $ per task, a summary row), plus one line per role on why. Apply only the roles the user agrees to: `cc-models recommend --profile <p> --apply --role <a,b> --yes`.
+- When the user asks for suggestions: `cc-models recommend --profile balanced` shows one table, the current models next to the lean, balanced and max picks (fit, $ per task, a summary row), plus one line per role on why. Apply only the roles the user agrees to: `cc-models recommend --profile <p> --apply --role <a,b> --yes`.
 - New workers use new models at once; you need `cc-commander --restart` for your own model (only when the user asks; it ends this conversation). Never edit `models.json` by hand for this.
 
 ## Writing delegation

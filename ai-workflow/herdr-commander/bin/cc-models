@@ -3,7 +3,7 @@
 
 Usage:
   cc-models status
-      Table of each role's current model: its workload score, $ per task, superseded or not.
+      Table of each role's current model: its fit for the role, $ per task, superseded or not.
   cc-models recommend [--profile lean|balanced|max --apply [--role a,b]] [--yes]
       One table: each role's current model next to the lean, balanced and max picks, with the
       average score and the cost of one task per role for each setup. --profile P --apply writes
@@ -15,14 +15,16 @@ Options: --refresh rebuilds the comparison data first; --json prints machine-rea
 
 The picks come from the model comparison's recommendation engine (ai-gateway
 model-comparison/recommend.mjs), the same one the dashboard and the prompt rewriter use. Each role is
-scored on its own workload (coding roles on agentic coding, the Commander on tool use, the architect on
-planning), must reach a share of the best score available, and every doubling of cost must buy enough
-extra score; lean, balanced and max differ in both. See the comparison's "Models per role" panel.
+scored on what it needs (research: speed and tool use; coding roles: coding and reasoning; writer:
+knowledge work and accuracy; ...), a fit of 0-100 from measured benchmarks and the time to an answer.
+A pick must reach a share of the best fit available, and every doubling of cost must buy enough extra
+fit; lean, balanced and max differ in both. See the comparison's "Models per role" panel.
 
 Data: $GATEWAY_COST_DIR/model-comparison/data/models.json (benchmarks with gateway prices).
 Optional "model_policy" in models.json: "providers" (provider ids to pick from; default: the ones already
 in use), "exclude" (model id patterns never to recommend, e.g. "*astra*"), "allow_max_effort" (default
-false). Per role, "recommend": {"workload": "coding", "tier": "hard", "speed": 0} overrides the defaults.
+false). Per role, "recommend": {"needs": {"coding": 60, "speed": 40}, "tier": "hard"} overrides the defaults
+(needs: coding, tool_use, reasoning, long_context, knowledge_work, accuracy, speed).
 Only `model` and `variant` change; the old models.json is backed up to ~/.setup_backup/.
 """
 import argparse
@@ -184,13 +186,13 @@ def pick_of(result):
 
 def compare_table(rows, profiles):
     """One row per role: current model and each profile's pick ('=' when it is the current model)."""
-    head = ["role", "scored on", "current", "score", "$"]
+    head = ["role", "needs", "current", "fit", "$"]
     for p in profiles:
-        head += [p, "score", "$"]
+        head += [p, "fit", "$"]
     lines, totals = [], {k: [0.0, 0, 0.0] for k in ["current"] + profiles}
     for r in rows:
         cur = r["current"]
-        line = [r["role"], f"{r['workload']}/{r['tier']}",
+        line = [r["role"], f"{r['label']} ({r['tier']})",
                 label(cur["model"], cur["variant"]) + (" (old)" if cur.get("deprecated") else ""),
                 num(cur, "score", "{:.1f}"), num(cur, "cost", "{:.2f}")]
         if cur.get("score") is not None:
@@ -206,7 +208,7 @@ def compare_table(rows, profiles):
                f"{totals['current'][2]:.2f}"]
     for p in profiles:
         summary += ["", f"{totals[p][0] / totals[p][1]:.1f}" if totals[p][1] else "-", f"{totals[p][2]:.2f}"]
-    numeric = {i for i, h in enumerate(head) if h in ("score", "$")}
+    numeric = {i for i, h in enumerate(head) if h in ("fit", "$")}
     w = [max(len(x[i]) for x in [head] + lines + [summary]) for i in range(len(head))]
     fmt = lambda row: "  ".join(v.rjust(w[i]) if i in numeric else v.ljust(w[i]) for i, v in enumerate(row)).rstrip()
     rule = "  ".join("-" * x for x in w)
@@ -307,7 +309,7 @@ def main():
         rows = []
         for r in engine["roles"]:
             c = r["current"]
-            rows.append({"role": r["role"], "workload": r["workload"], "tier": r["tier"],
+            rows.append({"role": r["role"], "label": r.get("label") or r["workload"], "workload": r["workload"], "tier": r["tier"],
                          "current": {"model": c["model"], "variant": c["variant"], "score": c.get("score"),
                                      "cost": c.get("cost_per_task_usd"), "deprecated": c.get("deprecated", False),
                                      "known": c.get("known", False), "placeholder": c.get("placeholder", False)},
@@ -315,16 +317,16 @@ def main():
         if a.cmd == "status":
             if a.json:
                 print(json.dumps({"data": comp.get("generated_at"), "roles": [
-                    {"role": r["role"], "workload": r["workload"], "tier": r["tier"], **r["current"]} for r in rows]}, indent=2))
+                    {"role": r["role"], "label": r["label"], "workload": r["workload"], "tier": r["tier"], **r["current"]} for r in rows]}, indent=2))
                 return
-            print(f"data {comp.get('generated_at')}   score = the role's workload score (see cc-models --help)\n")
-            lines = [("role", "model", "scored on", "score", "$/task", "note")]
+            print(f"data {comp.get('generated_at')}   fit = how well the model meets the role's needs, 0-100 (see cc-models --help)\n")
+            lines = [("role", "model", "needs", "fit", "$/task", "note")]
             for r in rows:
                 c = r["current"]
                 note = ("placeholder: run cc-models recommend --profile balanced --apply" if c["placeholder"] else
                         "superseded: see cc-models update" if c["deprecated"] else
                         "not on the gateway or no benchmark data for this effort" if not c["known"] else "")
-                lines.append((r["role"], label(c["model"], c["variant"]), f"{r['workload']}/{r['tier']}",
+                lines.append((r["role"], label(c["model"], c["variant"]), f"{r['label']} ({r['tier']})",
                               num(c, "score", "{:.1f}"), num(c, "cost", "{:.2f}"), note))
             w = [max(len(x[i]) for x in lines) for i in range(6)]
             for n, row in enumerate(lines):
@@ -378,7 +380,7 @@ def main():
             if a.cmd == "update" and d and d["deprecated"] and not r["new"]:
                 print(f"! {r['role']}: {d['release']} is superseded and has no newer version on your gateway; choose one by hand.")
         if a.cmd == "recommend" and not a.apply:
-            print("\n'=' = same as current; score = the role's workload score. "
+            print("\n'=' = same as current; fit = how well the model meets the role's needs, 0-100. "
                   "Apply one: cc-models recommend --profile lean|balanced|max --apply [--role a,b]")
         if a.cmd == "recommend" and a.apply:
             print(f"\nApplying the {a.profile} picks" + (f" for {', '.join(sorted(wanted))}" if wanted else "") + f": {len(changes)} change(s).")

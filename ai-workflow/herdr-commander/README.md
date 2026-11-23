@@ -181,7 +181,7 @@ planner to revise it rather than improvising. The rules are in the
 ## Choosing models (`cc-models`)
 
 ```sh
-cc-models status                            # table: each role's model, its workload score, $/task, superseded?
+cc-models status                            # table: each role's model, its fit for the role, $/task, superseded?
 cc-models recommend --profile balanced      # current models vs the lean, balanced and max picks, and why
 cc-models recommend --profile lean --apply  # write a profile's picks (asks first; --yes to skip)
 cc-models recommend --profile max --apply --role architect,escalation   # only some roles
@@ -189,36 +189,39 @@ cc-models update --refresh                  # new release: GPT-6.1 Sol -> 6.2 So
 ```
 
 ```text
-role             scored on          current                  score      $  lean                 score     $  balanced             score      $  max                   score      $
----------------  -----------------  -----------------------  -----  -----  -------------------  -----  ----  -------------------  -----  -----  --------------------  -----  -----
-implementer      coding/standard    gpt-6.2-sol#medium        54.7   0.41  =                     54.7  0.41  gpt-6.2-sol#high      57.1   0.56  gpt-6.2-sol#high       57.1   0.56
-implementer-pro  coding/hard        gemini-4-neon#medium      54.7   1.90  gpt-6.2-sol#high      57.1  0.56  gemini-4-neon#xhigh   62.7   6.44  gemini-4-carbon#high   63.1   7.76
+role             needs                        current                   fit      $  lean                  fit     $  balanced              fit      $  max                    fit      $
+---------------  ---------------------------  -----------------------  ----  -----  -------------------  ----  ----  -------------------  ----  -----  --------------------  ----  -----
+explore          Research & search (light)    claude-5.5-haiku#medium  54.5   0.09  gpt-6-luna#medium    56.7  0.04  gpt-6.1-terra#low    65.6   0.07  gpt-6.1-terra#low     65.6   0.07
+implementer-pro  Hard coding (hard)           gemini-4-neon#medium     83.9   1.90  gpt-6.2-sol#high     86.6  0.56  gemini-4-neon#xhigh  95.4   6.44  gemini-4-carbon#high  95.9   7.76
+---------------  ---------------------------  -----------------------  ----  -----  -------------------  ----  ----  -------------------  ----  -----  --------------------  ----  -----
+one task each                                                          72.9  11.20                       75.3  9.32                       80.6  27.37                        83.5  29.13
 
 Why (balanced):
-  implementer: 90.5% of the best agentic coding score (63.1, gemini-4-carbon#high) at $0.56 per task; next step up: gemini-4-neon#high +3.7 points for 6.6x the cost
+  explore: 87% of the best fit for research & search (75.3, GPT-6.2 Sol (Medium)) at $0.071 per task; next step up: GPT-6.1 Terra (Medium), +1.4 points for 2.4x the cost
 ```
 
-The last row of the full table (not shown) is the average score and the cost of
-one task on every role, per setup.
+The last row is the average fit and the cost of one task on every role, per
+setup (the comparison dashboard plots the same four setups).
 
 - **`recommend`** asks the model comparison's recommendation engine (the same one
   behind its "Models per role" panel and the prompt rewriter's advice). Each role
-  is scored on its own **workload**: implementer, reviewer and the verifiers on
-  agentic coding (60% Terminal-Bench 4.0 + 40% Intelligence Index), the
-  Commander and explore on tool use (AutomationBench), the architect and
-  escalation on planning, the writer on writing; and has a **tier** (light,
-  standard, hard, frontier). A pick must reach a share of the best score
-  available for that workload, and every doubling of cost per task must buy
-  enough extra score; lean, balanced and max loosen both. Costs are per task at
-  your gateway's prices for that exact route and effort, so a verbose model is
-  not favoured by a low token price. Superseded releases and effort `max` are
-  never recommended. The exact numbers are in
+  is scored on **what it needs**: a *fit* of 0-100 from the criteria the role
+  depends on (coding, tool use, reasoning, long context, knowledge work,
+  accuracy, speed). Research (`explore`) is 45% speed, 25% tool use, 15% long
+  context and 15% reasoning, so it gets a fast tool user rather than the best
+  coder; the implementer is mostly coding; the architect mostly reasoning. Speed
+  is the time to a typical answer, thinking included, at your gateway route's
+  speed. Each role also has a **tier** (light, standard, hard, frontier): a pick
+  must reach a share of the best fit available, and every doubling of cost per
+  task must buy enough extra fit; lean, balanced and max loosen both. Costs are
+  per task at your gateway's prices for that exact route and effort. Superseded
+  releases and effort `max` are never recommended. The exact numbers are in
   [model-comparison/README.md](../ai-gateway/model-comparison/README.md#recommendations).
   Benchmarks are a starting point, so keep your own picks where you know better
   and apply only the roles you want with `--role`.
 - **`update`** keeps your choices: it moves a role only to a newer version of the *same model line* (same maker and name, higher version, not deprecated) at the *same effort* (the nearest lower one if that effort is gone). A superseded model without a successor is flagged for you to decide.
 - **Data**: the model comparison (`~/.gateway-cost/model-comparison/data/models.json`, with every gateway route and its cost per task) and, for `update`, the gateway catalog (`~/.gateway-cost/models.json`: effort levels, tool support). `recommend` and `status` need Node and the installed comparison (`../ai-gateway/install.sh --only compare`). `--refresh` rebuilds the data first. Without the plugin, set models by hand.
-- **Optional `model_policy`** in `models.json`: `providers` (provider ids to pick from; default: those already in use), `exclude` (model id patterns never to recommend, e.g. `"*astra*"`), `allow_max_effort` (default `false`). **Per role**, `"recommend": {"workload": "coding", "tier": "hard", "speed": 0}` overrides the role's defaults (for roles of your own: `general` at the tier that matches `tier`).
+- **Optional `model_policy`** in `models.json`: `providers` (provider ids to pick from; default: those already in use), `exclude` (model id patterns never to recommend, e.g. `"*astra*"`), `allow_max_effort` (default `false`). **Per role**, `"recommend": {"needs": {"coding": 60, "speed": 40}, "tier": "hard"}` overrides the role's defaults (criteria: `coding`, `tool_use`, `reasoning`, `long_context`, `knowledge_work`, `accuracy`, `speed`; roles of your own default to reasoning 70 and tool use 30, at the tier that matches `tier`).
 - Only `model` and `variant` change; the old file goes to `~/.setup_backup/<timestamp>/`. New workers use the new models at once; the Commander after `cc-commander --restart`. Ask the Commander to "check for new models" and it runs `cc-models update` for you, applying only after you agree.
 
 ## Configuration reference
@@ -255,7 +258,7 @@ Role keys:
 | `fallback_role` | Role to use instead when the budget status is `cap_tier3` or `exceeded` (bypass: `--force` or `--model`). |
 | `description` | Shown to OpenCode and in `@mentions`. |
 | `prompt` | System prompt for the role. |
-| `recommend` | Optional, for `cc-models`: `{"workload": "coding", "tier": "hard", "speed": 0}` instead of the role's defaults (see Choosing models). |
+| `recommend` | Optional, for `cc-models`: `{"needs": {"coding": 60, "speed": 40}, "tier": "hard"}` instead of the role's defaults (see Choosing models). |
 
 Environment: `CC_CONFIG` (config path), `CC_STATE_DIR` (default `~/.local/state/command-center`: locks and per-role OpenCode state).
 

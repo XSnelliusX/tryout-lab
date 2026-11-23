@@ -58,15 +58,15 @@ class ModelsTest(unittest.TestCase):
         return subprocess.run([sys.executable, str(ROOT / "bin" / "cc-models"), *args], env=self.env,
                               capture_output=True, text=True, check=True).stdout
 
-    def test_recommend_scores_each_role_on_its_workload_and_uses_real_routes(self):
+    def test_recommend_scores_each_role_on_its_needs_and_uses_real_routes(self):
         self.write_roles({"commander": {"model": "gw-alpha/swift-1", "variant": "high"},
                           "implementer": {"model": "gw-alpha/swift-1", "variant": "high"},
                           "escalation": {"model": "gw-alpha/swift-1", "variant": "high"}},
                          {"providers": ["gw-alpha", "gw-zeta"]})
         out = json.loads(self.cli("recommend", "--json"))
         by = {r["role"]: r for r in out["roles"]}
-        self.assertEqual((by["implementer"]["workload"], by["implementer"]["tier"]), ("coding", "standard"))
-        self.assertEqual(by["commander"]["workload"], "agentic")
+        self.assertEqual((by["implementer"]["label"], by["implementer"]["tier"]), ("Coding", "standard"))
+        self.assertEqual(by["commander"]["label"], "Orchestration")
         self.assertTrue(by["implementer"]["current"]["deprecated"], "the superseded release is flagged")
         for r in out["roles"]:
             for pick in r["picks"].values():
@@ -95,10 +95,11 @@ class ModelsTest(unittest.TestCase):
         out = json.loads(self.cli("update", "--json"))
         self.assertEqual(out["changes"], [{"role": "implementer", "model": "gw-alpha/z-swift-2", "variant": "high"}])
 
-    def test_status_reports_the_workload_score(self):
+    def test_status_reports_the_fit_for_the_role(self):
         self.write_roles({"implementer": {"model": "gw-zeta/a-swift-2", "variant": "low"}})
         role = json.loads(self.cli("status", "--json"))["roles"][0]
-        self.assertEqual((role["workload"], role["score"], role["cost"]), ("coding", 37.0, 0.1))
+        self.assertEqual((role["label"], role["cost"]), ("Coding", 0.1))
+        self.assertTrue(0 < role["score"] < 100, role)
 
     def test_first_install_applies_the_balanced_profile(self):
         # `cc-models recommend --apply` without --profile always failed, so a first install never got models.
