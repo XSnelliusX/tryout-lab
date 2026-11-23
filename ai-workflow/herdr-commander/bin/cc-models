@@ -3,26 +3,30 @@
 
 Usage:
   cc-models status
-      Table of each role's current model (Intelligence Index, $ per task, superseded or not).
+      Table of each role's current model: its workload score, $ per task, superseded or not.
   cc-models recommend [--profile lean|balanced|max --apply [--role a,b]] [--yes]
-      One table: each role's current model next to the lean, balanced and max picks (Intelligence
-      Index, $ per task), with the average II and the cost of one task per role for each setup.
-      --profile P --apply writes that profile's picks (all roles, or only --role ...), after a
-      confirmation unless --yes.
+      One table: each role's current model next to the lean, balanced and max picks, with the
+      average score and the cost of one task per role for each setup. --profile P --apply writes
+      that profile's picks (all roles, or only --role ...), after a confirmation unless --yes.
   cc-models update [--yes]
       A new model was released: move each role to the newest version of the model line it already
       uses, at the same effort (GPT-6.1 Sol #high -> GPT-6.2 Sol #high). Never switches lines.
 Options: --refresh rebuilds the comparison data first; --json prints machine-readable output.
 
-Data: the ai-gateway plugin's model comparison ($GATEWAY_COST_DIR/model-comparison/data/models.json,
-Artificial Analysis benchmarks with gateway prices) and its gateway catalog ($GATEWAY_COST_DIR/models.json).
+The picks come from the model comparison's recommendation engine (ai-gateway
+model-comparison/recommend.mjs), the same one the dashboard and the prompt rewriter use. Each role is
+scored on its own workload (coding roles on agentic coding, the Commander on tool use, the architect on
+planning), must reach a share of the best score available, and every doubling of cost must buy enough
+extra score; lean, balanced and max differ in both. See the comparison's "Models per role" panel.
+
+Data: $GATEWAY_COST_DIR/model-comparison/data/models.json (benchmarks with gateway prices).
 Optional "model_policy" in models.json: "providers" (provider ids to pick from; default: the ones already
-in use) and "exclude" (model id patterns never to recommend, e.g. "*astra*").
+in use), "exclude" (model id patterns never to recommend, e.g. "*astra*"), "allow_max_effort" (default
+false). Per role, "recommend": {"workload": "coding", "tier": "hard", "speed": 0} overrides the defaults.
 Only `model` and `variant` change; the old models.json is backed up to ~/.setup_backup/.
 """
 import argparse
 import datetime
-import fnmatch
 import json
 import os
 import re
@@ -32,25 +36,14 @@ import sys
 
 CONFIG = os.path.expanduser(os.environ.get("CC_CONFIG") or "~/.config/command-center/models.json")
 COST_DIR = os.path.expanduser(os.environ.get("GATEWAY_COST_DIR") or "~/.gateway-cost")
-COMPARE_SCRIPT = os.path.expanduser("~/.config/opencode/plugins/ai-gateway/model-comparison/compare.mjs")
-EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"]
+COMPARISON_DIR = os.path.expanduser("~/.config/opencode/plugins/ai-gateway/model-comparison")
+COMPARE_SCRIPT = os.path.join(COMPARISON_DIR, "compare.mjs")
+ENGINE_SCRIPT = os.path.expanduser(os.environ.get("CC_RECOMMEND_SCRIPT") or os.path.join(COMPARISON_DIR, "recommend.mjs"))
+EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 PROFILES = ["lean", "balanced", "max"]
-
-# Per role and profile: ("cheapest", min Intelligence Index) or ("best", max $ per task).
-# "cheapest": cheapest model reaching the floor (within 15% of the cheapest, the faster one wins).
-# "best": highest Intelligence Index within the cost cap. Effort "max" is never recommended.
-RULES = {
-    "commander":       {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
-    "explore":         {"lean": ("cheapest", 15), "balanced": ("cheapest", 18), "max": ("cheapest", 25)},
-    "verifier-fast":   {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
-    "writer":          {"lean": ("cheapest", 25), "balanced": ("cheapest", 28), "max": ("cheapest", 40)},
-    "implementer":     {"lean": ("best", 0.18), "balanced": ("best", 0.20), "max": ("best", 0.45)},
-    "reviewer":        {"lean": ("best", 0.30), "balanced": ("best", 0.45), "max": ("best", 0.70)},
-    "implementer-pro": {"lean": ("best", 0.42), "balanced": ("best", 0.60), "max": ("best", 0.70)},
-    "verifier-deep":   {"lean": ("best", 0.42), "balanced": ("best", 0.60), "max": ("best", 4.00)},
-    "architect":       {"lean": ("best", 0.70), "balanced": ("best", 3.50), "max": ("best", 10.0)},
-    "escalation":      {"lean": ("best", 2.60), "balanced": ("best", 4.00), "max": ("best", 15.0)},
-}
+# AA effort names -> gateway variant names (as in the engine).
+EFFORT_TO_VARIANT = {"non-reasoning": "none", "minimal": "minimal", "low": "low", "medium": "medium",
+                     "high": "high", "xhigh": "xhigh", "max": "max"}
 
 
 def die(msg, code=2):
@@ -73,30 +66,55 @@ def split_model(spec):
     return model, spec.get("variant") or inline or None
 
 
+def routes_of(m):
+    """Explicit gateway routes (snapshot schema 3). Older snapshots: only an unambiguous single pair."""
+    if isinstance(m.get("gateway_routes"), list):
+        return m["gateway_routes"]
+    provs, ids = m.get("gateway_providers") or [], m.get("gateway_ids") or []
+    if len(provs) != 1 or len(ids) != 1:
+        return []
+    price = m.get("pricing") or {}
+    return [{"provider_id": provs[0], "model_id": ids[0], "effort_levels": None,
+             "cost_per_task_usd": price.get("gateway_cost_per_task_usd")}]
+
+
+def variant_for(m, route, cat_row):
+    """Gateway variant that runs this AA variant on the route; False when it cannot (as in the engine)."""
+    levels = route.get("effort_levels")
+    if levels is None and cat_row is not None:
+        levels = cat_row.get("effort_levels") or []
+    wanted = EFFORT_TO_VARIANT.get(m.get("effort") or "")
+    primary = m.get("is_primary") is not False
+    if levels is None:
+        return (wanted if wanted and wanted != "max" else None) if primary else False
+    if not levels:
+        return None if primary else False
+    if wanted and wanted in levels:
+        return wanted
+    return None if not wanted and primary else False
+
+
 def load_models(comp, cat):
-    """One entry per gateway model id + effort with benchmark data, plus release facts for update."""
+    """One entry per gateway route + variant with benchmark data, plus release facts for `update`."""
     out = []
     for m in comp.get("models", []):
-        price = m.get("pricing") or {}
-        cost = price.get("gateway_cost_per_task_usd", price.get("provider_cost_per_task_usd"))
-        effort = {"non-reasoning": "none", "reasoning": None}.get(m.get("effort"), m.get("effort"))
         name = m.get("release_name") or m.get("name") or ""
         nums = re.findall(r"\d+(?:\.\d+)*", name)
-        for prov, gid in zip(m.get("gateway_providers") or [], m.get("gateway_ids") or []):
-            row = cat.get(f"{prov}/{gid}")
+        for route in routes_of(m):
+            key = f"{route['provider_id']}/{route['model_id']}"
+            row = cat.get(key)
             if not row or row.get("tools") is False:
                 continue
-            levels = row.get("effort_levels") or []
-            if (effort is None and levels) or (effort is not None and effort not in levels):
+            variant = variant_for(m, route, row)
+            if variant is False:
                 continue
             out.append({
-                "model": f"{prov}/{gid}", "variant": effort, "ii": (m.get("scores") or {}).get("intelligence"),
-                "cost": cost, "speed": (m.get("performance") or {}).get("output_tokens_per_second") or 0,
+                "model": key, "variant": variant, "ii": (m.get("scores") or {}).get("intelligence"),
+                "cost": route.get("cost_per_task_usd"),
                 "release": name, "date": m.get("release_date"), "creator": m.get("creator"),
                 "deprecated": bool(m.get("release_deprecated")),
                 "line": " ".join(re.sub(r"\d+(?:\.\d+)*", " ", name.lower()).replace("-", " ").split()),
                 "version": tuple(int(x) for x in nums[0].split(".")) if nums else (),
-                "maker_host": (m.get("creator") or "").lower().replace(" ", "") in prov.replace("-", ""),
             })
     return out
 
@@ -107,19 +125,6 @@ def find(models, model, variant):
 
 def effort_rank(v):
     return EFFORTS.index(v) if v in EFFORTS else 99
-
-
-def recommend(role, profile, pool):
-    rule = RULES.get(role, {}).get(profile)
-    if not rule or not pool:
-        return None
-    mode, thr = rule
-    if mode == "cheapest":
-        ok = [c for c in pool if c["ii"] >= thr] or sorted(pool, key=lambda c: -c["ii"])[:1]
-        low = min(c["cost"] for c in ok)
-        return sorted([c for c in ok if c["cost"] <= low * 1.15], key=lambda c: (-c["speed"], c["cost"]))[0]
-    ok = [c for c in pool if c["cost"] <= thr] or sorted(pool, key=lambda c: c["cost"])[:1]
-    return sorted(ok, key=lambda c: (-c["ii"], c["cost"]))[0]
 
 
 def newer_version(cur, models, providers):
@@ -135,7 +140,8 @@ def newer_version(cur, models, providers):
     return sorted([c for c in same_line if c["version"] == top], key=lambda c: (
         c["model"].split("/", 1)[0] != prov,      # same provider first
         effort_rank(c["variant"]) > want,         # never a higher effort
-        abs(effort_rank(c["variant"]) - want)))[0]
+        abs(effort_rank(c["variant"]) - want),
+        c["cost"] if c["cost"] is not None else float("inf")))[0]
 
 
 def label(model, variant):
@@ -147,30 +153,60 @@ def label(model, variant):
     return f"{name}#{variant}" if variant else name
 
 
+def num(c, key, fmt):
+    return fmt.format(c[key]) if c and c.get(key) is not None else "-"
+
+
+def run_engine(comparison_file, policy):
+    """The recommendation engine's picks per role (node recommend.mjs roles --json)."""
+    script = os.path.expanduser(policy.get("engine") or ENGINE_SCRIPT)
+    if not os.path.isfile(script) or not shutil.which("node"):
+        die(f"needs node and the ai-gateway model comparison's recommendation engine ({script}): "
+            "install it with ai-workflow/ai-gateway/install.sh --only compare")
+    res = subprocess.run(["node", script, "roles", "--json", "--config", CONFIG, "--snapshot", comparison_file],
+                         capture_output=True, text=True)
+    if res.returncode:
+        die((res.stderr or res.stdout).strip() or "the recommendation engine failed", 1)
+    out = json.loads(res.stdout)
+    if res.stderr.strip():
+        print(res.stderr.strip(), file=sys.stderr)
+    return out
+
+
+def pick_of(result):
+    """A role pick as {model, variant, score, cost, reason}, or None."""
+    p = (result or {}).get("pick")
+    if not p:
+        return None
+    return {"model": f"{p['provider_id']}/{p['model_id']}", "variant": p.get("variant"), "score": p.get("score"),
+            "cost": p.get("cost_per_task_usd"), "reason": result.get("reason")}
+
+
 def compare_table(rows, profiles):
     """One row per role: current model and each profile's pick ('=' when it is the current model)."""
-    head = ["role", "current", "II", "$"]
+    head = ["role", "scored on", "current", "score", "$"]
     for p in profiles:
-        head += [p, "II", "$"]
+        head += [p, "score", "$"]
     lines, totals = [], {k: [0.0, 0, 0.0] for k in ["current"] + profiles}
     for r in rows:
         cur = r["current"]
-        line = [r["role"], label(cur["model"], cur["variant"]) + (" (old)" if cur["data"] and cur["data"]["deprecated"] else ""),
-                num(cur["data"], "ii", "{:.1f}"), num(cur["data"], "cost", "{:.2f}")]
-        if cur["data"] and cur["data"]["ii"] is not None:
-            totals["current"][0] += cur["data"]["ii"]; totals["current"][1] += 1; totals["current"][2] += cur["data"]["cost"] or 0
+        line = [r["role"], f"{r['workload']}/{r['tier']}",
+                label(cur["model"], cur["variant"]) + (" (old)" if cur.get("deprecated") else ""),
+                num(cur, "score", "{:.1f}"), num(cur, "cost", "{:.2f}")]
+        if cur.get("score") is not None:
+            totals["current"][0] += cur["score"]; totals["current"][1] += 1; totals["current"][2] += cur.get("cost") or 0
         for p in profiles:
             c = r["picks"].get(p)
             same = c and (c["model"], c["variant"]) == (cur["model"], cur["variant"])
-            line += ["=" if same else (label(c["model"], c["variant"]) if c else "-"), num(c, "ii", "{:.1f}"), num(c, "cost", "{:.2f}")]
+            line += ["=" if same else (label(c["model"], c["variant"]) if c else "-"), num(c, "score", "{:.1f}"), num(c, "cost", "{:.2f}")]
             if c:
-                totals[p][0] += c["ii"]; totals[p][1] += 1; totals[p][2] += c["cost"]
+                totals[p][0] += c["score"]; totals[p][1] += 1; totals[p][2] += c["cost"] or 0
         lines.append(line)
-    summary = ["one task each", "", f"{totals['current'][0] / totals['current'][1]:.1f}" if totals["current"][1] else "-",
+    summary = ["one task each", "", "", f"{totals['current'][0] / totals['current'][1]:.1f}" if totals["current"][1] else "-",
                f"{totals['current'][2]:.2f}"]
     for p in profiles:
         summary += ["", f"{totals[p][0] / totals[p][1]:.1f}" if totals[p][1] else "-", f"{totals[p][2]:.2f}"]
-    numeric = {i for i, h in enumerate(head) if h in ("II", "$")}
+    numeric = {i for i, h in enumerate(head) if h in ("score", "$")}
     w = [max(len(x[i]) for x in [head] + lines + [summary]) for i in range(len(head))]
     fmt = lambda row: "  ".join(v.rjust(w[i]) if i in numeric else v.ljust(w[i]) for i, v in enumerate(row)).rstrip()
     rule = "  ".join("-" * x for x in w)
@@ -180,12 +216,8 @@ def compare_table(rows, profiles):
     print(rule); print(fmt(summary))
 
 
-def num(c, key, fmt):
-    return fmt.format(c[key]) if c and c.get(key) is not None else "-"
-
-
-def table(rows, title, keep=False):
-    head = ("role", "current", "II", "$/task", title, "II", "$/task")
+def update_table(rows):
+    head = ("role", "current", "II", "$/task", "newer version", "II", "$/task")
     lines = []
     for r in rows:
         cur, new = r["current"], r["new"]
@@ -193,7 +225,7 @@ def table(rows, title, keep=False):
         old = " (superseded)" if cur["data"] and cur["data"]["deprecated"] else ""
         lines.append((r["role"], label(cur["model"], cur["variant"]) + old,
                       num(cur["data"], "ii", "{:.1f}"), num(cur["data"], "cost", "{:.2f}"),
-                      "=" if same or (not new and keep) else (label(new["model"], new["variant"]) if new else "-"),
+                      "=" if same or not new else label(new["model"], new["variant"]),
                       "" if same or not new else num(new, "ii", "{:.1f}"), "" if same or not new else num(new, "cost", "{:.2f}")))
     w = [max(len(str(x[i])) for x in [head] + lines) for i in range(len(head))]
     fmt = lambda row: "  ".join(str(v).rjust(w[i]) if i in (2, 3, 5, 6) else str(v).ljust(w[i])
@@ -261,74 +293,64 @@ def main():
             die(f"--refresh needs node and the ai-gateway model comparison ({COMPARE_SCRIPT})")
         if subprocess.run(["node", COMPARE_SCRIPT, "--no-open", "--quiet"], stdout=sys.stderr).returncode:
             die("refreshing the comparison data failed", 1)
-    comp = load_json(os.path.expanduser(pol.get("comparison_file") or os.path.join(COST_DIR, "model-comparison/data/models.json")),
-                     "comparison data (build it with --refresh; needs the ai-gateway plugin)")
-    catalog = load_json(os.path.expanduser(pol.get("catalog_file") or os.path.join(COST_DIR, "models.json")),
-                        "gateway catalog (written by the ai-gateway plugin)")
-    cat = {f"{r.get('provider_id')}/{r.get('model_id')}": r for r in catalog.get("rows", [])}
-    models = load_models(comp, cat)
+    comparison_file = os.path.expanduser(pol.get("comparison_file") or os.path.join(COST_DIR, "model-comparison/data/models.json"))
+    comp = load_json(comparison_file, "comparison data (build it with --refresh; needs the ai-gateway plugin)")
     roles = cfg.get("roles") or {}
-    in_use = {split_model(s)[0].split("/", 1)[0] for s in roles.values()
-              if "/" in split_model(s)[0] and "<" not in split_model(s)[0]}
-    providers = pol.get("providers") or sorted(in_use) or sorted({k.split("/", 1)[0] for k in cat})
+    wanted = {r.strip() for r in a.role.split(",")} if a.role else None
+    if wanted and wanted - set(roles):
+        die(f"unknown role(s): {', '.join(sorted(wanted - set(roles)))}")
 
-    if a.cmd == "status":
-        out = []
-        for role, spec in roles.items():
-            model, variant = split_model(spec)
-            d = find(models, model, variant)
-            out.append({"role": role, "model": model, "variant": variant, "ii": d and d["ii"], "cost": d and d["cost"],
-                        "superseded": bool(d and d["deprecated"]), "in_gateway": model in cat})
-        if a.json:
-            print(json.dumps({"data": comp.get("generated_at"), "roles": out}, indent=2))
-            return
-        print(f"data {comp.get('generated_at')}   II = Artificial Analysis Intelligence Index\n")
-        lines = [("role", "model", "II", "$/task", "note")]
-        for r in out:
-            note = ("placeholder: run cc-models recommend --apply" if "<" in r["model"] else
-                    "not on the gateway" if not r["in_gateway"] else
-                    "superseded: see cc-models update" if r["superseded"] else
-                    "no benchmark data for this effort" if r["ii"] is None else "")
-            lines.append((r["role"], label(r["model"], r["variant"]),
-                          "-" if r["ii"] is None else f"{r['ii']:.1f}", "-" if r["cost"] is None else f"{r['cost']:.2f}", note))
-        w = [max(len(x[i]) for x in lines) for i in range(5)]
-        for n, row in enumerate(lines):
-            print("  ".join(v.rjust(w[i]) if i in (2, 3) else v.ljust(w[i]) for i, v in enumerate(row)).rstrip())
-            if n == 0:
-                print("  ".join("-" * x for x in w[:4]))
-        return
-
-    rows = []
-    if a.cmd == "recommend":
-        pool = [c for c in models if not c["deprecated"] and c["ii"] is not None and c["cost"] is not None
-                and c["model"].split("/", 1)[0] in providers and c["variant"] != "max"
-                and not any(fnmatch.fnmatch(c["model"].split("/", 1)[-1], p) for p in pol.get("exclude") or [])]
-        pool.sort(key=lambda c: not c["maker_host"])  # same model at several providers: the maker's own first
-        seen, unique = set(), []
-        for c in pool:
-            if (c["release"], c["variant"]) not in seen:
-                seen.add((c["release"], c["variant"]))
-                unique.append(c)
+    if a.cmd in ("status", "recommend"):
         if a.apply and not a.profile:
             die("--apply needs --profile lean|balanced|max (which recommendation to write)")
-        for role, spec in roles.items():
-            model, variant = split_model(spec)
-            picks = {p: recommend(role, p, unique) for p in PROFILES}
-            rows.append({"role": role, "current": {"model": model, "variant": variant, "data": find(models, model, variant)},
-                         "picks": picks, "new": picks.get(a.profile) if a.profile else None})
-        title = None
+        engine = run_engine(comparison_file, pol)
+        rows = []
+        for r in engine["roles"]:
+            c = r["current"]
+            rows.append({"role": r["role"], "workload": r["workload"], "tier": r["tier"],
+                         "current": {"model": c["model"], "variant": c["variant"], "score": c.get("score"),
+                                     "cost": c.get("cost_per_task_usd"), "deprecated": c.get("deprecated", False),
+                                     "known": c.get("known", False), "placeholder": c.get("placeholder", False)},
+                         "picks": {p: pick_of(r["picks"].get(p)) for p in PROFILES}})
+        if a.cmd == "status":
+            if a.json:
+                print(json.dumps({"data": comp.get("generated_at"), "roles": [
+                    {"role": r["role"], "workload": r["workload"], "tier": r["tier"], **r["current"]} for r in rows]}, indent=2))
+                return
+            print(f"data {comp.get('generated_at')}   score = the role's workload score (see cc-models --help)\n")
+            lines = [("role", "model", "scored on", "score", "$/task", "note")]
+            for r in rows:
+                c = r["current"]
+                note = ("placeholder: run cc-models recommend --profile balanced --apply" if c["placeholder"] else
+                        "superseded: see cc-models update" if c["deprecated"] else
+                        "not on the gateway or no benchmark data for this effort" if not c["known"] else "")
+                lines.append((r["role"], label(c["model"], c["variant"]), f"{r['workload']}/{r['tier']}",
+                              num(c, "score", "{:.1f}"), num(c, "cost", "{:.2f}"), note))
+            w = [max(len(x[i]) for x in lines) for i in range(6)]
+            for n, row in enumerate(lines):
+                print("  ".join(v.rjust(w[i]) if i in (3, 4) else v.ljust(w[i]) for i, v in enumerate(row)).rstrip())
+                if n == 0:
+                    print("  ".join("-" * x for x in w[:5]))
+            return
+        for r in rows:
+            r["new"] = r["picks"].get(a.profile) if a.profile else None
+        providers = engine.get("providers") or []
     else:
+        catalog = load_json(os.path.expanduser(pol.get("catalog_file") or os.path.join(COST_DIR, "models.json")),
+                            "gateway catalog (written by the ai-gateway plugin)")
+        cat = {f"{r.get('provider_id')}/{r.get('model_id')}": r for r in catalog.get("rows", [])}
+        models = load_models(comp, cat)
+        in_use = {split_model(s)[0].split("/", 1)[0] for s in roles.values()
+                  if "/" in split_model(s)[0] and "<" not in split_model(s)[0]}
+        providers = pol.get("providers") or sorted(in_use) or sorted({k.split("/", 1)[0] for k in cat})
+        rows = []
         for role, spec in roles.items():
             model, variant = split_model(spec)
             line = find(models, model, variant) or next((c for c in models if c["model"] == model), None)
             cur = dict(line, variant=variant) if line else None
             rows.append({"role": role, "current": {"model": model, "variant": variant, "data": find(models, model, variant)},
                          "new": newer_version(cur, models, providers) if cur else None})
-        title = "newer version"
 
-    wanted = {r.strip() for r in a.role.split(",")} if a.role else None
-    if wanted and wanted - set(roles):
-        die(f"unknown role(s): {', '.join(sorted(wanted - set(roles)))}")
     changes = [(r["role"], r["new"]) for r in rows if r["new"]
                and (r["new"]["model"], r["new"]["variant"]) != (r["current"]["model"], r["current"]["variant"])
                and (not wanted or r["role"] in wanted)]
@@ -338,19 +360,26 @@ def main():
                           "profile": a.profile, "roles": rows,
                           "changes": [{"role": r, "model": c["model"], "variant": c["variant"]} for r, c in changes]}, indent=2))
     else:
-        print(f"data {comp.get('generated_at')}   providers {', '.join(providers)}   II = Artificial Analysis Intelligence Index\n")
+        print(f"data {comp.get('generated_at')}   providers {', '.join(providers)}\n")
         if a.cmd == "recommend":
             compare_table(rows, PROFILES)
+            if a.profile:
+                print(f"\nWhy ({a.profile}):")
+                for r in rows:
+                    c = r["picks"].get(a.profile)
+                    if c and (not wanted or r["role"] in wanted):
+                        print(f"  {r['role']}: {c['reason']}")
         else:
-            table(rows, title, keep=True)
+            update_table(rows)
         if a.cmd == "update" and not changes:
             print("\nEvery role already runs the newest version of its model line.")
         for r in rows:
-            d = r["current"]["data"]
+            d = r["current"].get("data")
             if a.cmd == "update" and d and d["deprecated"] and not r["new"]:
                 print(f"! {r['role']}: {d['release']} is superseded and has no newer version on your gateway; choose one by hand.")
         if a.cmd == "recommend" and not a.apply:
-            print("\n'=' = same as current.  Apply one: cc-models recommend --profile lean|balanced|max --apply [--role a,b]")
+            print("\n'=' = same as current; score = the role's workload score. "
+                  "Apply one: cc-models recommend --profile lean|balanced|max --apply [--role a,b]")
         if a.cmd == "recommend" and a.apply:
             print(f"\nApplying the {a.profile} picks" + (f" for {', '.join(sorted(wanted))}" if wanted else "") + f": {len(changes)} change(s).")
     if not changes or (a.cmd == "recommend" and not a.apply) or (a.json and not a.yes):

@@ -179,9 +179,9 @@ do_install() {
   if ! dry && grep -q '"<provider>/' "$MODELS_JSON" 2>/dev/null; then
     if [ -t 0 ] && [ -t 1 ]; then
       bold "Models: balanced recommendation (other profiles: cc-models recommend --profile lean|max)"
-      "$BIN_DIR/cc-models" recommend --apply || warn "no models written: run 'cc-models recommend --apply' later, or edit $MODELS_JSON by hand"
+      "$BIN_DIR/cc-models" recommend --profile balanced --apply || warn "no models written: run 'cc-models recommend --profile balanced --apply' later, or edit $MODELS_JSON by hand"
     else
-      warn "no models chosen yet: run 'cc-models recommend --apply' (or replace each <provider>/<model> placeholder by hand)"
+      warn "no models chosen yet: run 'cc-models recommend --profile balanced --apply' (or replace each <provider>/<model> placeholder by hand)"
     fi
   fi
 

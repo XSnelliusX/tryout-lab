@@ -10,6 +10,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ENGINE = ROOT.parent / "ai-gateway" / "model-comparison" / "recommend.mjs"  # the shared recommendation engine
 HAIKU = "acc-anthropic/claude-5.5-haiku-anthropic"
 
 
@@ -21,7 +22,7 @@ class WriterTest(unittest.TestCase):
         self.config = self.root / "models.json"
         self.state = self.root / "state"
         self.env = dict(os.environ, CC_CONFIG=str(self.config), CC_STATE_DIR=str(self.state),
-                        SETUP_BACKUP_DIR=str(self.root / "backups"))
+                        SETUP_BACKUP_DIR=str(self.root / "backups"), CC_RECOMMEND_SCRIPT=str(ENGINE))
         self.writer = json.loads((ROOT / "config/models.example.json").read_text())["roles"]["writer"]
         self.assertTrue(self.writer["model"].startswith("<provider>/"), "example ships a placeholder like every role")
         self.assertNotIn("pin_model", self.writer)
@@ -110,7 +111,8 @@ class WriterTest(unittest.TestCase):
         self.set_roles(commander=self.commander, writer=self.writer)
         self.create_benchmarks()
         picks = {r["role"]: r["picks"]["balanced"] for r in json.loads(self.cli("cc-models", "recommend", "--json"))["roles"]}
-        self.assertEqual(picks["writer"], picks["commander"], "writer uses the same cheap-role rule as commander")
+        pair = lambda p: (p["model"], p["variant"])
+        self.assertEqual(pair(picks["writer"]), pair(picks["commander"]), "writer is a light role like the commander")
         self.cli("cc-models", "recommend", "--profile", "balanced", "--apply", "--role", "writer", "--yes")
         roles = json.loads(self.config.read_text())["roles"]
         self.assertEqual((roles["writer"]["model"], roles["writer"]["variant"]), (picks["writer"]["model"], "medium"))
