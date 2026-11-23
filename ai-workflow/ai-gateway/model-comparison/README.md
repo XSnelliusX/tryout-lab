@@ -139,7 +139,8 @@ One dashboard row per AA variant of every matched catalog model:
 - gateway ids, aliases, upstream ids, prices and the match evidence
 - `gateway_routes`: every gateway deployment of the variant as an explicit
   `provider_id` + `model_id` pair with its own prices, cost per task, effort
-  levels, tool support and serving speed. Use these: `gateway_ids` and
+  levels, tool support and serving speed (output speed and time to the first
+  answer token at its host). Use these: `gateway_ids` and
   `gateway_providers` are two independently sorted sets that do not line up
   (schema 3; older snapshots lack the routes)
 - warnings such as `deprecated_release`, `effort_unavailable:max`,

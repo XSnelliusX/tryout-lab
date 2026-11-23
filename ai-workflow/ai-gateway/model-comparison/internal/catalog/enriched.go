@@ -772,7 +772,7 @@ func buildEnrichedRow(a *enrichedAggregate) Row {
 
 // buildRoutes lists every gateway deployment of the variant as an explicit
 // (provider_id, model_id) pair with its own prices, cost per task, effort levels
-// and serving speed. Consumers must use these pairs: gateway_ids and
+// and serving speed (output speed and time to the first answer token at its host). Consumers must use these pairs: gateway_ids and
 // gateway_providers are independently sorted sets and do not line up.
 func buildRoutes(v EnrichedVariant, rows []EnrichedGateway, fallbackHost *EnrichedHost, aaCost, aaBlended *float64) []Route {
 	out := make([]Route, 0, len(rows))
@@ -814,6 +814,7 @@ func buildRoutes(v EnrichedVariant, rows []EnrichedGateway, fallbackHost *Enrich
 			MaxInputTokens:        r.MaxInputTokens,
 			MaxOutputTokens:       r.MaxOutputTokens,
 			OutputTokensPerSecond: perf.OutputTokensPerSecond,
+			TimeToFirstAnswer:     perf.TimeToFirstAnswer,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

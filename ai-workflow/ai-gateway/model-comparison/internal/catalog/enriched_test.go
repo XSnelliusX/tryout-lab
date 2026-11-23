@@ -279,6 +279,9 @@ func TestBuildEnrichedRoutesPairProvidersWithTheirModels(t *testing.T) {
 	file.Rows[0].Tools = boolptr(true)
 	file.Rows[0].MaxInputTokens = intptr(100000)
 	file.Rows[1].ProviderID, file.Rows[1].ModelID = "gw-alpha", "z-orbit-pro"
+	for i := range file.Rows[0].AA.Variants {
+		file.Rows[0].AA.Variants[i].Hosts[0].Performance = EnrichedHostPerformance{MedianOutputTokensPerSecond: f(120), MedianTimeToFirstAnswerTokenSeconds: f(3)}
+	}
 	snap := BuildEnriched(EnrichedBuildInput{File: file})
 	var base *Row
 	for i := range snap.Models {
@@ -303,6 +306,10 @@ func TestBuildEnrichedRoutesPairProvidersWithTheirModels(t *testing.T) {
 	}
 	if alpha.CostPerTask == nil || math.Abs(*alpha.CostPerTask-10*4.875/4) > 1e-9 {
 		t.Errorf("alpha cost = %v, want %v", *alpha.CostPerTask, 10*4.875/4)
+	}
+	// Serving speed comes from the route's host: time to the first answer token and output speed.
+	if zeta.TimeToFirstAnswer == nil || *zeta.TimeToFirstAnswer != 3 || zeta.OutputTokensPerSecond == nil || *zeta.OutputTokensPerSecond != 120 {
+		t.Errorf("route speed: %+v", zeta)
 	}
 	if len(zeta.EffortLevels) != 2 || zeta.Tools == nil || !*zeta.Tools || alpha.EffortLevels == nil || len(alpha.EffortLevels) != 0 {
 		t.Errorf("route capabilities: %+v / %+v", zeta, alpha)

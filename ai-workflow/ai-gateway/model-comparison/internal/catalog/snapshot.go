@@ -192,6 +192,7 @@ type Route struct {
 	MaxInputTokens        *int     `json:"max_input_tokens,omitempty"`
 	MaxOutputTokens       *int     `json:"max_output_tokens,omitempty"`
 	OutputTokensPerSecond *float64 `json:"output_tokens_per_second"`
+	TimeToFirstAnswer     *float64 `json:"time_to_first_answer_token_seconds"`
 }
 
 // Host is one provider-specific AA row for a variant.
