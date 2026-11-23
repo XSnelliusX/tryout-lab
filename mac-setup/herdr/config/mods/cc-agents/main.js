@@ -50,6 +50,7 @@ const kidStatus = (k, listed) => {
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
+  { id: "role", label: "Grouped by role", icon: "terminal" },
 ];
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
@@ -61,6 +62,59 @@ function duration(ms) {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+// `cc.model` is `<model id without provider>#<variant>`, e.g. `gpt-6.2-sol-openai#medium`.
+// Shown as `Sol-6.2` + `#m`: no vendor/provider words, effort as one letter.
+const VENDOR = new Set(["gpt", "claude", "gemini", "openai", "anthropic", "google"]);
+const EFFORT = { minimal: "n", low: "l", medium: "m", high: "h", xhigh: "x", max: "X" };
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function shortModel(label) {
+  const [raw, variant] = (label ?? "").split("#", 2);
+  const id = raw.split("/").pop();
+  const parts = id.toLowerCase().split(/[-_]/).filter((p) => p && !/^\d{8}$/.test(p));
+  const kept = parts.filter((p) => !VENDOR.has(p));
+  const nums = kept.filter((p) => /^\d+(\.\d+)?$/.test(p));
+  const words = kept.filter((p) => !nums.includes(p));
+  const name = words.length ? words.map(cap).join("-") : parts[0] === "gpt" ? "GPT" : cap(parts[0] ?? "");
+  const short = name ? (nums.length ? `${name}-${nums.join(".")}` : name) : id;
+  const effort = variant ? EFFORT[variant.toLowerCase()] ?? variant.charAt(0).toLowerCase() : "";
+  return { name: short, effort, tip: variant ? `${id} · ${variant} effort` : id };
+}
+
+// One theme color per role family (ansi colors follow light and dark themes).
+const ROLE_COLOR = {
+  commander: "accent",
+  implementer: "ansi4", "implementer-pro": "ansi4",
+  writer: "ansi5",
+  reviewer: "ansi2", "verifier-fast": "ansi2", "verifier-deep": "ansi2",
+  architect: "ansi3",
+  explore: "ansi6",
+  escalation: "ansi1",
+};
+const ROLE_SHORT = {
+  commander: "cmd", implementer: "impl", "implementer-pro": "impl-pro", writer: "write", reviewer: "review",
+  "verifier-fast": "verify-fast", "verifier-deep": "verify-deep", architect: "arch", explore: "explore", escalation: "esc",
+};
+const shortRole = (role) => ROLE_SHORT[role] ?? role;
+const ROLE_ORDER = Object.keys(ROLE_COLOR);
+const roleRank = (role) => (!role ? Infinity : ROLE_ORDER.includes(role) ? ROLE_ORDER.indexOf(role) : ROLE_ORDER.length);
+const SPARE = ["ansi4", "ansi5", "ansi2", "ansi3", "ansi6"];
+
+function roleColor(t, role) {
+  if (!role) return t.accent;
+  const key = ROLE_COLOR[role] ?? SPARE[[...role].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % SPARE.length];
+  return t[key] ?? t.accent;
+}
+
+const alpha = (c, a) => (/^#[0-9a-f]{6}$/i.test(c ?? "") ? c + a : c);
+
+function modelChip(t, id, label, role) {
+  const m = shortModel(label);
+  const c = roleColor(t, role);
+  return h_flex().id(id).flex_none().px(5).h(16).rounded(4).items_center().bg(alpha(c, "1f")).text_size(10).font_medium().tooltip(m.tip)
+    .child(div().text_color(c).child(m.effort ? `${m.name}#${m.effort}` : m.name));
 }
 
 function icon(p, size, color) {
@@ -131,8 +185,10 @@ export default class CcAgents extends View {
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
       .when(Boolean(pic), el => el.child(div().mr(4).child(pic)))
-      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(role && k.name && k.name !== role ? `${role} · ${k.name}` : (k.name || role || k.template || k.program?.name || k.address)))
-      .when(Boolean(model), el => el.child(div().px(4).py(1).rounded(4).bg(t.surface).text_size(9.5).text_color(t.dim).child(model)))
+      .child(h_flex().flex_1().min_w(0).gap(4).items_center()
+        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(k.name || shortRole(role) || k.template || k.program?.name || k.address))
+        .when(Boolean(role && k.name && k.name !== role), el => el.child(div().flex_1().min_w(0).truncate().text_color(alpha(roleColor(t, role), "cc")).child(shortRole(role)))))
+      .when(Boolean(model), el => el.child(modelChip(t, `sub-model-${k.address}`, model, role)))
       .child(this.status(t, { status: st }, compact));
   }
 
@@ -170,9 +226,14 @@ export default class CcAgents extends View {
     const tabCounts = new Map();
     for (const a of list) tabCounts.set(a.tab, (tabCounts.get(a.tab) ?? 0) + 1);
     const byPriority = sort.id === "priority";
+    const byRole = sort.id === "role";
+    const flat = byPriority || byRole;
+    const roleOf = (a) => termMap.get(a.address)?.labels?.["cc.role"] ?? null;
     const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
     const rankOf = (a) => urgency.get(a.address);
-    if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
+    const urgent = (x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq;
+    if (byPriority) list = [...list].sort(urgent);
+    if (byRole) list = [...list].sort((x, y) => roleRank(roleOf(x)) - roleRank(roleOf(y)) || (roleOf(x) ?? "").localeCompare(roleOf(y) ?? "") || urgent(x, y));
     const pinned = list.filter((a) => a.pinned);
     const rest = list.filter((a) => !a.pinned);
     list = [...pinned, ...rest];
@@ -222,9 +283,14 @@ export default class CcAgents extends View {
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(isPinned ? "Unpin" : "Pin to the top")
         .on_click((_e, cx) => { cx.stop_propagation(); run("terminal.pin", { terminal: a.address, pinned: !isPinned }); this.hovered = null; cx.notify(); })
         .child(svg(`mods/workspace-chrome/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
-      const full = byPriority || isPinned;
+      const full = flat || isPinned;
       const baseName = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
-      const name = ccRole && !full ? (meta?.name && meta.name !== ccRole ? `${ccRole} · ${meta.name}` : `${ccRole}`) : baseName;
+      const ownName = meta?.name && meta.name !== ccRole ? meta.name : null;
+      const name = ccRole && !full ? ownName ?? shortRole(ccRole) : baseName;
+      const tag = byRole && !isPinned ? (ccRole ? ownName : more) : full ? (ccRole ? shortRole(ccRole) : more) : ccRole && ownName ? shortRole(ccRole) : null;
+      const rc = roleColor(t, ccRole);
+      const nameColor = ccRole && !full && !ownName ? rc : idle ? t.muted : t.foreground;
+      const tagColor = ccRole ? alpha(rc, idle ? "99" : "dd") : t.dim;
       return h_flex().id(`ag-${a.address}`).px(8).h(30).flex_none().rounded(8).items_center().gap(7)
         .when(a.focused, (el) => el.bg(t.selected)).cursor_pointer().hover((s) => s.bg(t.hover))
         .on_hover((on, cx) => { if (on) this.hovered = a.address; else if (this.hovered === a.address) this.hovered = null; cx.notify(); })
@@ -232,28 +298,30 @@ export default class CcAgents extends View {
         .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
           .when(subs.length > 0, el => el.on_click((_e, cx) => { cx.stop_propagation(); this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address); cx.notify(); })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(full && more ? 110 : 180).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(full && Boolean(ccRole || more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${ccRole || more}`))))
-        .when(Boolean(ccModel), el => el.child(div().px(4).py(1).rounded(4).bg(t.surface).text_size(9.5).text_color(t.accent).child(ccModel)))
+          .child(div().min_w(0).max_w(tag ? 110 : 180).truncate().text_color(nameColor).child(name))
+          .when(Boolean(tag), el => el.child(div().flex_1().min_w(0).truncate().text_color(tagColor).child(`\u00b7 ${tag}`))))
+        .when(Boolean(ccModel), el => el.child(modelChip(t, `model-${a.address}`, ccModel, ccRole)))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
-        .child(this.status(t, a, byPriority && !isPinned));
+        .child(this.status(t, a, flat && !isPinned));
     };
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
       const r = row(a, i, subs);
       if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
+      return [r, ...subs.map((s) => this.subRow(t, s, shown, flat))];
     };
 
     const groups = pinned.length ? [{ id: "pinned", label: "Pinned", status: null, members: pinned }] : [];
     for (const a of rest) {
       const r = rankOf(a) || RANK.idle;
-      const id = byPriority ? `sec-${r}` : `sp-${a.space}`;
+      const role = roleOf(a);
+      const id = byPriority ? `sec-${r}` : byRole ? `role-${role ?? ""}` : `sp-${a.space}`;
       if (groups.at(-1)?.id === id) groups.at(-1).members.push(a);
+      else if (byRole) groups.push({ id, label: role ?? "Other", color: role ? roleColor(t, role) : null, status: null, members: [a] });
       else groups.push({ id, label: byPriority ? SECTION[r] : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
     }
 
@@ -262,8 +330,8 @@ export default class CcAgents extends View {
       const top = g.members.reduce((m, a) => ((RANK[a.status] ?? 0) > (RANK[m] ?? 0) ? a.status : m), null);
       return h_flex().id(g.id).px(8).pt(8).h(30).flex_none().gap(6).items_center().text_size(11).font_medium().cursor_pointer()
         .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { open ? this.folded.add(g.id) : this.folded.delete(g.id); cx.notify(); })
-        .child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))
-        .when(byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))
+        .child(div().truncate().text_color(g.color ?? t[g.status] ?? t.dim).child(g.label))
+        .when(flat || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))
         .child(div().flex_1())
         .when(!open, (el) => el
           .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
@@ -275,7 +343,7 @@ export default class CcAgents extends View {
       .when(!collapsed, (el) => el.child(h_flex().px(16).h(41).pt(14).pb(5).flex_none().items_center().justify_between()
         .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents & Subagents"))
         .child(div().id("ag-sort").text_size(11).text_color(t.dim).hover((s) => s.text_color(t.foreground))
-          .on_click(() => openOverlay({ mod: "cc-agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
+          .on_click(() => openOverlay({ mod: "cc-agents", kind: "popup", width: 200, height: 172, props: { sortMenu: true } }))
           .tooltip(`Sort agents: ${sort.label}`).child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)))))
       .when(list.length === 0 && !collapsed, (el) => el.child(div().px(12).text_size(12).text_color(t.dim).child("No worker agents yet. Ask Commander to dispatch a ticket task.")))
       .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows))

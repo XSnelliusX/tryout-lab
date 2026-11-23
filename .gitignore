@@ -12,3 +12,6 @@ mac-setup/nvim/learning.md
 # Python bytecode
 __pycache__/
 *.pyc
+
+# gpui-shell rewrites this on every run (Herdr mods); a committed copy is always stale
+gpui-kit.d.ts
