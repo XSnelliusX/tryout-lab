@@ -64,7 +64,7 @@ Pieces:
 | `cc-space` | Finds or creates the Herdr Space for a ticket, idempotently. |
 | `cc-budget` | Month-to-date spend vs. the cap, from the optional cost log. |
 | `cc-models` | Recommends a model per role for a budget profile (`recommend`, `--apply`), with the model comparison's recommendation engine, and moves roles to newer versions of their models (`update`). |
-| `templates/cc-*.md` | `hc` templates, so `hc run cc-implementer "task"` starts the right role. |
+| `templates/cc-*.md` | `hc` templates, so `hc run cc-implementer "task"` starts the right role. `cc-planner` starts the architect role in planning mode. |
 | `skills/` | Three agent skills that teach the Commander and the workers the protocol. |
 
 ## Requirements
@@ -157,6 +157,26 @@ hc run --bg --keep --outlive-parent --name q3-review-writer \
 ```
 
 The writer saves the draft under `artifacts/` and reports its path to its parent via `hc send`; the Commander reads it before sharing.
+
+## Planning first (`cc-planner`)
+
+Anything beyond a small, obvious fix gets a written plan before an implementer
+starts. The planner is the `architect` role in planning mode, so it needs no
+model of its own: `hc run ... cc-planner "<the request>"` (labels as for any
+worker, `cc.role=architect`). It reads the ticket, uses `@explore` to find the
+code involved, and writes `## Plan` into `TASK.md`:
+
+1. goal and non-goals,
+2. findings (files, symbols, constraints),
+3. numbered steps, each with a suggested role, its files, its dependencies and
+   which steps can run in parallel,
+4. verification commands per step and for the whole change,
+5. risks and open questions.
+
+The Commander reads the plan, puts the open questions to you, and dispatches the
+steps once they are answered. A worker that finds the plan wrong gets the
+planner to revise it rather than improvising. The rules are in the
+`herdr-commander` skill ("Plan first").
 
 ## Choosing models (`cc-models`)
 
@@ -254,7 +274,7 @@ The example config ships ten roles. Tiers are about cost, not importance.
 | `implementer` | 2 | primary | Default coding agent. |
 | `reviewer` | 2 | subagent, read-only | Diff review before reporting done. |
 | `implementer-pro` | 2 | primary | Complex multi-file refactors and subtle bugs. |
-| `architect` | 3 | primary | Specs, plans, root-cause diagnosis. |
+| `architect` | 3 | primary | Specs, root-cause diagnosis, and the plan before implementation (`cc-planner`). |
 | `verifier-deep` | 3 | primary | Security and integration verification. |
 | `escalation` | 3 | primary | Last resort; `fallback_role: architect` under budget pressure. |
 
@@ -278,7 +298,7 @@ The log is the **optional** `ai-gateway` plugin's usage log (sibling folder `../
 
 Installed to `~/.agents/skills/` (and symlinked for OpenCode and Claude Code):
 
-- **`herdr-commander`**: the Commander's protocol: delegate, one Space per ticket, idempotent provisioning, naming rules for `hc run --name`, labels (`cc.role`, `cc.model`, `cc.ticket`, `herdr.space`), finding existing workers, event-driven reports (no blocking waits), cleanup.
+- **`herdr-commander`**: the Commander's protocol: delegate, one Space per ticket, idempotent provisioning, plan first (`cc-planner`), naming rules for `hc run --name`, labels (`cc.role`, `cc.model`, `cc.ticket`, `herdr.space`), finding existing workers, event-driven reports (no blocking waits), cleanup.
 - **`herdr-model-router`**: tier-based routing policy (shell first, cheap for triage, strong only when needed) and how to read `cc-budget`. It is a *skill*: agents load it by name, it is not a command.
 - **`herdr-worker`**: the contract for workers: stay in the worktree, use `@explore`/`@reviewer`, write verbose output to `artifacts/`, report back with `hc send`.
 

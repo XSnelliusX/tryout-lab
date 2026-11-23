@@ -90,13 +90,19 @@ class WriterTest(unittest.TestCase):
             subprocess.run(["bash", str(ROOT / "install.sh"), *args], env=env, capture_output=True, text=True, check=True)
             self.assertEqual(self.config.read_bytes(), before)
             path = templates / "cc-writer.md"
+            planner = templates / "cc-planner.md"
             if args:
                 self.assertFalse(path.exists())
+                self.assertFalse(planner.exists())
             else:
                 content = path.read_text()
                 self.assertIn(f"command: {prefix}/bin/cc-agent writer\n", content)
                 self.assertIn("../artifacts/", content)
                 self.assertIn("to your parent via `hc send`", content)
+                # The planner is the architect role in planning mode: no extra model binding.
+                plan = planner.read_text()
+                self.assertIn(f"command: {prefix}/bin/cc-agent architect\n", plan)
+                self.assertIn("## Plan", plan)
 
     def test_existing_config_without_writer_still_loads(self):
         self.set_roles(commander=self.commander)

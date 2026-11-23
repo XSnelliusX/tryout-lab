@@ -26,7 +26,8 @@ The monthly cap (`budget.monthly_cap_usd`) is tracked by `cc-budget` from the co
 | `implementer` | 2 | mid, medium | Default coding agent for single-repo bugfixes and standard features. |
 | `reviewer` (OpenCode subagent) | 2 | mid, high | Thorough read-only diff review before reporting done. |
 | `implementer-pro` | 2 | strong, medium | Multi-file refactors, tricky concurrency/state bugs, API boundary work. |
-| `architect` | 3 | strong, high | Architectural specs, cross-repo plans, hard root-cause diagnosis. |
+| `architect` (`cc-architect`) | 3 | strong, high | Architectural specs, boundary contracts, hard root-cause diagnosis. |
+| `architect` as planner (`cc-planner`) | 3 | strong, high | The plan in `TASK.md` before implementation: steps with a role each, verification, open questions. Every task beyond a small fix (see `herdr-commander`). |
 | `verifier-deep` | 3 | strong, high | Security review, flaky integration tests, multi-service regression verification. |
 | `escalation` | 3 | most capable, high | Last resort when the strong tier is stuck. Has `fallback_role` (`architect` by default): downgraded automatically once spend reaches `budget.auto_cap_tier3_pct`. |
 
