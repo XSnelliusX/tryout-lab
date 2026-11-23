@@ -647,6 +647,9 @@ function buildReleases(models) {
     releases.push({
       slug,
       name: release.name || slug,
+      // AA sometimes lists an empty placeholder (no index, eval or capability
+      // score on any variant) under the same display name as the real release.
+      measured: variants.some((v) => hasAnyEvalScore(v) || hasCapabilities(v)),
       deprecated: variants.every((v) => v.deprecated === true),
       deprecatedTo: release.deprecatedTo || null,
       releaseDate: dates.length ? dates[dates.length - 1] : null,
@@ -678,6 +681,9 @@ function matchRelease(query, releases, strictParams = true) {
 
     let score = best.score;
     if (r.deprecated) score -= 10; else score += 6;
+    // A release with data always beats an empty one of the same name, even a
+    // deprecated one (the 16-point deprecation swing would otherwise decide).
+    if (!r.measured) score -= 20;
     candidates.push({ score, release: r, which: best.which, mode: best.mode, extraEffort: best.extraEffort });
   }
 
@@ -1713,6 +1719,8 @@ async function selfTest() {
   assertMatch(enriched, 'orbit-flash-acme', 'orbit-flash', { host: null, noWarning: 'provider_host_row_missing' });
   assertMatch(enriched, 'tiny-chat', 'tiny-model-9b', { warning: 'matched_via_alias' });
   assertMatch(enriched, 'legacy-chat-1', 'legacy-chat-1', { warning: 'deprecated_release' });
+  // Same display name: the measured (deprecated) release wins over an empty placeholder.
+  assertMatch(enriched, 'vega-6-demo', 'vega-6', { warning: 'deprecated_release' });
   assertUnmatched(enriched, 'synth-image-gen');
   assertUnmatched(enriched, 'synth-audio-1');
   assert.match(enriched.rows.find((r) => r.model_id === 'synth-image-gen').aa.reason, /image/);

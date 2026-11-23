@@ -81,6 +81,7 @@ export const catalogRows = [
   }),
   catalogRow({ provider_id: 'gw-demo', provider_name: 'Demo', model_id: 'tiny-chat', aliases: ['tiny-model-9b'] }),
   catalogRow({ provider_id: 'gw-demo', provider_name: 'Demo', model_id: 'legacy-chat-1', upstream_provider: 'demo' }),
+  catalogRow({ provider_id: 'gw-demo', provider_name: 'Demo', model_id: 'vega-6-demo', upstream_provider: 'demo' }),
   catalogRow({ provider_id: 'gw-demo', provider_name: 'Demo', model_id: 'synth-image-gen', mode: 'image_generation', input_per_1M: null, output_per_1M: null }),
   catalogRow({ provider_id: 'gw-demo', provider_name: 'Demo', model_id: 'synth-audio-1', mode: 'audio_speech', input_per_1M: null, output_per_1M: null }),
 ];
@@ -137,6 +138,10 @@ const lumen = { slug: 'lumen-small', name: 'Lumen Small', creator: 'Lumen', date
 const orbit = { slug: 'orbit-flash', name: 'Orbit Flash', creator: 'Orbit Labs', date: '2026-02-20' };
 const tiny = { slug: 'tiny-model-9b', name: 'Tiny Model 9B', creator: 'Tiny Co', date: '2025-06-01' };
 const legacy = { slug: 'legacy-chat-1', name: 'Legacy Chat 1', creator: 'Legacy Inc', date: '2023-05-01', deprecated: true };
+const vega = { slug: 'vega-6', name: 'Vega 6', creator: 'Vega Labs', date: '2026-01-05', deprecated: true, deprecatedTo: 'vega-6-1' };
+// AA placeholder: same display name, another slug, no scores of any kind.
+const vegaPlaceholder = { slug: 'vega-6-codename-blue', name: 'Vega 6', creator: 'Vega Labs', date: '2026-02-01' };
+const UNMEASURED = new Set(['vega-6-codename-blue']);
 
 const fullModels = [
   variant('kestrel-pro-4-6', 'Kestrel Pro 4.6 (Max)', kestrel, { suffix: 'Max', chartDefaultSelected: true, intelligenceIndex: 60 }),
@@ -157,9 +162,12 @@ const fullModels = [
   variant(orbit.slug, orbit.name, orbit, { chartDefaultSelected: true, intelligenceIndex: 31 }),
   variant(tiny.slug, tiny.name, tiny, { chartDefaultSelected: true, intelligenceIndex: 12 }),
   variant(legacy.slug, legacy.name, legacy, { chartDefaultSelected: true, deprecated: true, intelligenceIndex: null }),
+  variant(vega.slug, vega.name, vega, { chartDefaultSelected: true, deprecated: true, intelligenceIndex: 42 }),
+  variant(vegaPlaceholder.slug, vegaPlaceholder.name, vegaPlaceholder, { chartDefaultSelected: true, intelligenceIndex: null, capabilities: {} }),
 ];
+const measuredModels = fullModels.filter((m) => !UNMEASURED.has(m.slug));
 
-const evalModels = fullModels.map((m, i) => ({
+const evalModels = measuredModels.map((m, i) => ({
   slug: m.slug,
   math500: 0.5,
   mmluPro: 0.5,
@@ -175,10 +183,10 @@ const compact = fullModels.map((m) => ({
   deprecated: m.deprecated,
   intelligenceIndex: m.intelligenceIndex,
   paramClass: 'unknown',
-  scores: { 'scicode': 0.3, 'hle': 0.1 },
+  scores: UNMEASURED.has(m.slug) ? {} : { 'scicode': 0.3, 'hle': 0.1 },
 }));
 
-const capabilityModels = fullModels.map((m) => ({
+const capabilityModels = measuredModels.map((m) => ({
   slug: m.slug,
   capabilities: { engineering: { headlineValue: 50, subScores: {} } },
 }));

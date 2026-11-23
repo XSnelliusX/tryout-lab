@@ -71,7 +71,7 @@ test('builds a file:// dashboard from catalog + cached AA data', { skip: !hasGo 
   writeFakeAaCache(aaCache());
   const r = compare(['--no-open', '--offline', '--quiet']);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Matched 12\/14 gateway models/);
+  assert.match(r.stdout, /Matched 13\/15 gateway models/);
   assert.match(r.stdout, /Dashboard: .*model-comparison\/index\.html/);
   assert.ok(r.stdout.trim().split('\n').length <= 3, 'summary is at most 3 lines');
 
@@ -81,7 +81,7 @@ test('builds a file:// dashboard from catalog + cached AA data', { skip: !hasGo 
   const data = fs.readFileSync(path.join(outDir(), 'data', 'models.js'), 'utf8');
   assert.ok(data.startsWith('window.__MODEL_COMPARISON__ = {'));
   const snap = JSON.parse(data.slice('window.__MODEL_COMPARISON__ = '.length).replace(/;\s*$/, ''));
-  assert.equal(snap.counts.catalog_rows, 14);
+  assert.equal(snap.counts.catalog_rows, 15);
   assert.equal(snap.counts.unmatched, 2);
   // The same snapshot is also written as plain JSON for programmatic readers.
   const jsonSnap = JSON.parse(fs.readFileSync(path.join(outDir(), 'data', 'models.json'), 'utf8'));

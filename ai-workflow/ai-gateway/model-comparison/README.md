@@ -166,6 +166,8 @@ token-based rather than string-based (`parse_aa.mjs`):
 4. Reject parameter mismatches when both sides publish parameter sizes, and date
    mismatches when both publish dates.
 5. Prefer non-deprecated releases, exact token order and matching parameters.
+   A release without any score (an empty AA placeholder with the same display
+   name, such as a codename entry) never beats a measured one.
 6. If a generic gateway name matches several dated releases, use
    `upstream_model` to disambiguate. Aliases are a lower-priority fallback.
 
