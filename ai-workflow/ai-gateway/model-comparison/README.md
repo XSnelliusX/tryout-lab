@@ -12,6 +12,10 @@ cost-to-performance, using [Artificial Analysis](https://artificialanalysis.ai/)
   refreshes the gateway and then AA. A **Sync** button repeats both steps.
 - Runs a temporary server bound to `127.0.0.1` so the page can initiate syncs;
   it exits after 30 minutes without page activity and no sync in progress.
+- Holds the **recommendation engine** of the AI workflow (`engine.mjs`): the
+  dashboard's difficulty cards and "Models per role" panel, Herdr's
+  `cc-models` and the prompt rewriter all take their picks from it, through
+  `data/recommendations.json` (see [Recommendations](#recommendations)).
 
 Data: Artificial Analysis. Model availability and prices: your gateway catalog.
 See [Attribution and terms](#attribution-and-terms).
@@ -37,7 +41,7 @@ which builds the Go joiner and the web app, then copies only the runtime files
 to `DEST`:
 
 ```text
-server.mjs   compare.mjs   parse_aa.mjs   aasync   web/
+compare.mjs   server.mjs   recommend.mjs   engine.mjs   parse_aa.mjs   aasync   web/
 ```
 
 The command is idempotent. `make install DEST=<dir> DRY_RUN=1` prints what it
@@ -90,6 +94,7 @@ gateway refresh. The one-shot `compare.mjs` flags above apply only to that CLI.
 | AA HTTP cache | `${XDG_CACHE_HOME:-~/.cache}/ai-gateway/model-comparison/aa` (24h freshness) |
 | Intermediates (enriched JSON, CSVs, match report, run metadata) | `${XDG_CACHE_HOME:-~/.cache}/ai-gateway/model-comparison/out` |
 | Dashboard (output) | `$GATEWAY_COST_DIR/model-comparison/` (`index.html`, `assets/`, `data/models.js`, and the same data as plain `data/models.json` for other tools, e.g. opencode-prompt-rewrite) |
+| Recommendations (output) | `$GATEWAY_COST_DIR/model-comparison/data/recommendations.json` and `.js`: the engine's picks per workload, tier and profile, and per Herdr role when `$CC_CONFIG` (default `~/.config/command-center/models.json`) exists. Read by `cc-models` and the prompt rewriter |
 
 The catalog's `base_url` is never copied into any output. The dashboard data
 keeps only model ids, aliases, modes, token limits, prices and upstream names.
@@ -113,6 +118,9 @@ The interactive sync button requires the loopback server. It uses an
 unguessable URL and validates the request origin; it does not listen on other
 network interfaces. The one-shot file snapshot remains viewable without a
 server, but cannot perform a sync.
+
+Under that URL the server also serves `data/recommendations.json`, computed on
+each request.
 
 ## What the data contains
 
@@ -154,6 +162,63 @@ cost^s (adjustable price sensitivity `s`, default 0.10); **quality + speed** =
 the quality index times `(tokens/s / 100)^0.2`. These exponents are preferences,
 not measured laws. A gateway price of $0 ranks as free rather than receiving an
 invented ratio; missing prices are excluded.
+
+## Recommendations
+
+`engine.mjs` (pure, no I/O; bundled into the dashboard) and `recommend.mjs`
+(files and command line) decide which model to use for a kind of work. The
+cards "Recommendations by difficulty", the panel "Models per role", Herdr's
+`cc-models` and the prompt rewriter's model advice all use it.
+
+1. **Workload score.** Work is scored on the benchmarks that measure it:
+
+   | Workload | Score |
+   |---|---|
+   | `general` | Intelligence Index |
+   | `coding` | 60% Terminal-Bench 4.0 + 40% Intelligence Index |
+   | `agentic` | 60% AutomationBench + 40% Intelligence Index |
+   | `planning` | 60% Intelligence Index + 40% Terminal-Bench 4.0 |
+   | `writing` | 70% Intelligence Index + 30% GDP.pdf |
+
+   They are also selectable in the dashboard's benchmark menu ("Workloads").
+   Only current benchmarks are used; a missing part is left out and flagged
+   `estimated`. Any single metric works too (`metric:<id>`).
+2. **Candidates.** Every gateway route at every effort it offers (a route
+   without effort levels runs AA's primary variant), at the route's cost per
+   task. Superseded releases and effort `max` (unless allowed) are skipped.
+3. **Floor.** A pick reaches `floor × best score in the pool`.
+4. **Price of quality.** Among those, the highest
+   `100·score/best − k·log2(cost per task) + w·log2(tokens/s)`: every doubling
+   of cost must buy `k` points of the best score; `w` rewards speed.
+
+| Tier | floor (lean / balanced / max) | k per cost doubling | Dashboard card |
+|---|---|---|---|
+| `light` | 45% / 55% / 65% | 16 / 12 / 8 | Easy |
+| `standard` | 75% / 82% / 90% | 9 / 6 / 4 | Medium |
+| `hard` | 85% / 92% / 96% | 5 / 2.5 / 1.5 | Difficult |
+| `frontier` | 90% / 95% / 99% | 2 / 1 / 0.5 | |
+
+Across the gateway, quality rises about 7 points per cost doubling on average:
+light work asks for more than that (cost wins), hard work for less (quality
+wins). The dashboard's focus picks the profile: price = lean, quality =
+balanced, speed = balanced with `w = 2`.
+
+Herdr roles (`ROLE_PROFILES`): Commander and explore `agentic/light` (speed
+weight 2 and 3), writer `writing/light`, verifier-fast `coding/light`,
+implementer and reviewer `coding/standard`, implementer-pro and verifier-deep
+`coding/hard`, architect (also the planner) `planning/hard`, escalation
+`planning/frontier`. A role's `"recommend": {"workload", "tier", "speed"}` in
+the Herdr config overrides this; `model_policy.providers` and `exclude` limit
+the candidates.
+
+```sh
+node recommend.mjs roles [--json]                 # Herdr roles: current model and lean/balanced/max picks
+node recommend.mjs tiers [--workload coding]      # picks per workload and tier, all providers
+node recommend.mjs write                          # rewrite data/recommendations.{json,js}
+```
+
+`compare.mjs` writes the recommendations with every build; the local server
+computes them live, so a model applied with `cc-models` shows at once.
 
 ## Matching method
 
@@ -208,7 +273,10 @@ Intelligence Index; their raw benchmark scores are still shown.
 ## Layout and development
 
 ```text
-compare.mjs          entry point: catalog -> AA -> joiner -> file:// dashboard
+compare.mjs          entry point: catalog -> AA -> joiner -> file:// dashboard + recommendations
+server.mjs           local server: sync, live recommendations
+engine.mjs           the recommendation engine (pure; engine.d.mts types it for the web app)
+recommend.mjs        engine files and CLI (roles, tiers, write)
 parse_aa.mjs         AA fetcher/decryptor and matcher (no dependencies)
 cmd/aasync/          Go joiner CLI (stdlib only)
 internal/catalog/    join logic, metrics, snapshot types

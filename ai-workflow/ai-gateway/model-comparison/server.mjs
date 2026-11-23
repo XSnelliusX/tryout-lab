@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 // Local-only dashboard server. A capability URL and strict Origin/Host checks
 // prevent other websites from reading the snapshot or triggering a sync.
+//
+//   <token>/                     the model comparison (index.html, assets/, data/)
+//   <token>/data/recommendations.json|.js   computed live from the snapshot and
+//                                the Herdr config, so applied role changes show at once
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +12,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildDocument, defaultPaths, loadConfig } from './recommend.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COST = process.env.GATEWAY_COST_DIR || path.join(os.homedir(), '.gateway-cost');
@@ -24,8 +29,15 @@ function run(cmd, args, env) {
   });
 }
 
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+function recommendations(cost, ccConfig) {
+  const snapshot = JSON.parse(fs.readFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), 'utf8'));
+  return buildDocument(snapshot, loadConfig(ccConfig));
+}
+
 export async function startServer({ web = path.join(HERE, 'web'), cost = COST, gateway = path.join(HERE, '..', 'index.ts'),
-  compare = path.join(HERE, 'compare.mjs'), runner = run, open = false, idleMs = 30 * 60_000 } = {}) {
+  compare = path.join(HERE, 'compare.mjs'), runner = run, open = false, idleMs = 30 * 60_000, ccConfig = defaultPaths().ccConfig } = {}) {
   const token = crypto.randomBytes(32).toString('hex');
   const prefix = `/${token}/`;
   const env = { ...process.env, GATEWAY_COST_DIR: cost };
@@ -55,7 +67,7 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', CSP);
     if (req.headers.host !== new URL(origin).host || req.headers['sec-fetch-site'] === 'cross-site') { res.writeHead(403).end(); return; }
     const url = new URL(req.url, origin);
     if (!url.pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
@@ -73,6 +85,23 @@ export async function startServer({ web = path.join(HERE, 'web'), cost = COST, g
       return;
     }
     if (req.method !== 'GET') { res.writeHead(405).end(); return; }
+    if (route === 'data/recommendations.json' || route === 'data/recommendations.js') {
+      let body;
+      try {
+        body = JSON.stringify(recommendations(cost, ccConfig));
+      } catch {
+        const file = path.join(cost, 'model-comparison', 'data', 'recommendations.json');
+        body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : null;
+      }
+      if (route.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript');
+        res.end(body ? `window.__MODEL_RECOMMENDATIONS__ = ${body};\n` : '');
+      } else if (body) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(body);
+      } else res.writeHead(404).end();
+      return;
+    }
     if (route === 'data/models.js' || route === 'data/models.json') {
       const file = path.join(cost, 'model-comparison', 'data', path.basename(route));
       res.setHeader('Content-Type', route.endsWith('.js') ? 'application/javascript' : 'application/json');

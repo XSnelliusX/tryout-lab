@@ -1,7 +1,7 @@
 # Model comparison: build, test, and install the runtime files.
 #
 #   make install DEST=<dir>   build, then copy only the runtime files to <dir>:
-#                               compare.mjs  parse_aa.mjs  aasync  web/
+#                               compare.mjs  server.mjs  recommend.mjs  engine.mjs  parse_aa.mjs  aasync  web/
 #   make install DEST=<dir> DRY_RUN=1   print what would happen, change nothing
 #   make test                 Go tests, parser self-test, Node tests, web tests
 #   make build                build bin/aasync and web/dist without installing
@@ -16,6 +16,7 @@ NODE    ?= node
 
 WEB_SRC := $(shell find web/src web/public web/index.html web/vite.config.ts web/tsconfig.json web/package.json -type f 2>/dev/null)
 GO_SRC  := $(shell find cmd internal -name '*.go' -not -name '*_test.go' 2>/dev/null) go.mod
+ENGINE  := engine.mjs
 
 .PHONY: all build install test test-go test-node test-web clean
 
@@ -29,7 +30,7 @@ web/node_modules/.installed: web/package.json web/package-lock.json
 	cd web && $(NPM) ci --no-audit --no-fund
 	@touch web/node_modules/.installed
 
-web/dist/index.html: web/node_modules/.installed $(WEB_SRC)
+web/dist/index.html: web/node_modules/.installed $(WEB_SRC) $(ENGINE)
 	cd web && $(NPM) run build
 
 build: bin/aasync web/dist/index.html
@@ -41,12 +42,14 @@ endif
 ifeq ($(strip $(DRY_RUN)),1)
 	@echo "[dry-run] would build bin/aasync and web/dist (if out of date)"
 	@echo "[dry-run] would install into $(DEST):"
-	@echo "[dry-run]   compare.mjs parse_aa.mjs aasync web/"
+	@echo "[dry-run]   compare.mjs server.mjs recommend.mjs engine.mjs parse_aa.mjs aasync web/"
 else
 	@$(MAKE) --no-print-directory build
 	@mkdir -p "$(DEST)"
 	install -m 0644 compare.mjs "$(DEST)/compare.mjs"
 	install -m 0644 server.mjs "$(DEST)/server.mjs"
+	install -m 0644 recommend.mjs "$(DEST)/recommend.mjs"
+	install -m 0644 engine.mjs "$(DEST)/engine.mjs"
 	install -m 0644 parse_aa.mjs "$(DEST)/parse_aa.mjs"
 	install -m 0755 bin/aasync "$(DEST)/aasync.tmp.$$$$" && mv -f "$(DEST)/aasync.tmp.$$$$" "$(DEST)/aasync"
 	rm -rf "$(DEST)/web.new"

@@ -12,7 +12,9 @@
  *   3. Run the aasync joiner: merge catalog prices/limits with AA data into
  *      data/models.js (a classic script that sets window.__MODEL_COMPARISON__).
  *   4. Assemble $GATEWAY_COST_DIR/model-comparison/ (index.html, assets, data)
- *      so the dashboard opens straight from file:// without a server.
+ *      so the dashboard opens straight from file:// without a server, with
+ *      data/recommendations.{json,js} from recommend.mjs (the picks every tool
+ *      reads: per workload and tier, and per Herdr role when its config exists).
  *   5. Open index.html (macOS `open`, Linux `xdg-open`) unless --no-open.
  *
  * Gateway information comes only from the catalog file. This script never
@@ -27,6 +29,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildDocument, defaultPaths, loadConfig, writeDocument } from './recommend.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAX_AGE_MINUTES = 24 * 60;
@@ -183,8 +186,10 @@ function writeJsonCopy(dataFile, target) {
   const tmp = `${target}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, `${JSON.stringify(snapshot)}\n`);
   fs.renameSync(tmp, target);
+  return snapshot;
 }
 
+/** Returns a note when the recommendations could not be written (the dashboard still works). */
 function assemble({ web, dataFile, outDir }) {
   const staging = `${outDir}.staging-${process.pid}`;
   fs.rmSync(staging, { recursive: true, force: true });
@@ -192,9 +197,16 @@ function assemble({ web, dataFile, outDir }) {
   fs.cpSync(web, staging, { recursive: true });
   fs.mkdirSync(path.join(staging, 'data'), { recursive: true });
   fs.copyFileSync(dataFile, path.join(staging, 'data', 'models.js'));
-  writeJsonCopy(dataFile, path.join(staging, 'data', 'models.json'));
+  const snapshot = writeJsonCopy(dataFile, path.join(staging, 'data', 'models.json'));
+  let note = null;
+  try {
+    writeDocument(path.join(staging, 'data'), buildDocument(snapshot, loadConfig(defaultPaths().ccConfig)));
+  } catch (err) {
+    note = `Note: recommendations not written (${err.message}).`;
+  }
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.renameSync(staging, outDir);
+  return note;
 }
 
 function openFile(file) {
@@ -258,7 +270,7 @@ async function main() {
   }
 
   // 3. Assemble the file:// dashboard.
-  assemble({ web: rt.web, dataFile, outDir: p.outDir });
+  const recommendationNote = assemble({ web: rt.web, dataFile, outDir: p.outDir });
   if (!opts.offline) pruneCache(p.aaCache);
   const index = path.join(p.outDir, 'index.html');
 
@@ -276,6 +288,7 @@ async function main() {
   } else if (opts.offline && fetchedAt && Date.now() - new Date(fetchedAt).getTime() > MAX_AGE_MINUTES * 60_000) {
     lines.push('Note: offline mode used cached AA data older than 24h; run with --refresh to update.');
   }
+  if (recommendationNote) lines.push(recommendationNote);
   lines.push(`Dashboard: ${index}`);
   console.log(lines.join('\n'));
 

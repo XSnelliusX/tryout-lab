@@ -24,6 +24,7 @@ function env(extra = {}) {
     ...process.env,
     GATEWAY_COST_DIR: path.join(tmp, 'cost'),
     XDG_CACHE_HOME: path.join(tmp, 'cache'),
+    CC_CONFIG: path.join(tmp, 'command-center.json'), // never the user's real Herdr config
     ...extra,
   };
 }
@@ -41,7 +42,10 @@ before(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-e2e-'));
   install = path.join(tmp, 'install');
   fs.mkdirSync(path.join(install, 'web', 'assets'), { recursive: true });
-  for (const f of ['compare.mjs', 'parse_aa.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(install, f));
+  for (const f of ['compare.mjs', 'parse_aa.mjs', 'recommend.mjs', 'engine.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(install, f));
+  fs.writeFileSync(path.join(tmp, 'command-center.json'), JSON.stringify({
+    roles: { implementer: { model: 'gw-bedrock/kestrel-4.6-pro-aws' } },
+  }));
   // A stand-in for the built web app: the real one is covered by `make install`.
   fs.writeFileSync(path.join(install, 'web', 'index.html'),
     '<!doctype html><script src="./data/models.js"></script><script defer src="./assets/app.js"></script>');
@@ -87,6 +91,14 @@ test('builds a file:// dashboard from catalog + cached AA data', { skip: !hasGo 
   const jsonSnap = JSON.parse(fs.readFileSync(path.join(outDir(), 'data', 'models.json'), 'utf8'));
   assert.deepEqual(jsonSnap, snap);
   assert.ok(!fs.readdirSync(path.join(outDir(), 'data')).some((f) => f.includes('.tmp-')), 'no tmp files left');
+  // Recommendations for every tool: the workload grid and the Herdr roles from CC_CONFIG.
+  const rec = JSON.parse(fs.readFileSync(path.join(outDir(), 'data', 'recommendations.json'), 'utf8'));
+  assert.ok(rec.grid.coding.standard.balanced.pick, 'grid pick');
+  assert.equal(rec.roles.available, true);
+  assert.equal(rec.roles.roles[0].role, 'implementer');
+  assert.deepEqual(rec.roles.providers, ['gw-bedrock']);
+  assert.ok(fs.readFileSync(path.join(outDir(), 'data', 'recommendations.js'), 'utf8').startsWith('window.__MODEL_RECOMMENDATIONS__ = '));
+  for (const m of snap.models) assert.ok(Array.isArray(m.gateway_routes), `${m.slug} has explicit routes`);
   const slugs = snap.models.map((m) => m.slug);
   assert.ok(slugs.includes('kestrel-pro-4-6') && slugs.includes('kestrel-pro-4-6-low'), 'all effort variants kept');
   const k = snap.models.find((m) => m.slug === 'kestrel-pro-4-6');

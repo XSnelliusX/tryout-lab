@@ -67,3 +67,29 @@ test('serves the app even before a first snapshot exists', async (t) => {
   assert.equal(await (await fetch(`${url}data/models.js`)).text(), '');
   assert.equal((await fetch(`${url}data/models.json`)).status, 404);
 });
+
+test('serves live recommendations that follow the Herdr config', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comparison-usage-'));
+  const web = path.join(root, 'web'), cost = path.join(root, 'cost'), ccConfig = path.join(root, 'cc.json');
+  fs.mkdirSync(web, { recursive: true });
+  fs.mkdirSync(path.join(cost, 'model-comparison', 'data'), { recursive: true });
+  fs.writeFileSync(path.join(web, 'index.html'), 'app');
+  const snapshot = { schema_version: 3, generated_at: 'now', models: [{
+    slug: 'm-1', name: 'M 1', creator: 'Synth', effort: null, is_primary: true, scores: { intelligence: 40, terminal_bench_40: 40 },
+    gateway_routes: [{ provider_id: 'gw', model_id: 'm-1', cost_per_task_usd: 0.1, effort_levels: [], tools: true, output_tokens_per_second: 50 }],
+  }] };
+  fs.writeFileSync(path.join(cost, 'model-comparison', 'data', 'models.json'), JSON.stringify(snapshot));
+  fs.writeFileSync(ccConfig, JSON.stringify({ roles: { implementer: { model: 'gw/m-1' } } }));
+  const job = deferred();
+  const { server, url } = await startServer({ web, cost, ccConfig, runner: () => job.promise });
+  t.after(() => { job.reject(new Error('stopped')); server.close(); fs.rmSync(root, { recursive: true, force: true }); });
+
+  const rec = await (await fetch(`${url}data/recommendations.json`)).json();
+  assert.equal(rec.roles.available, true);
+  assert.equal(rec.roles.roles[0].picks.balanced.pick.id, 'gw/m-1');
+  // Applying a new model in the Herdr config is visible without a rebuild.
+  fs.writeFileSync(ccConfig, JSON.stringify({ roles: { reviewer: { model: 'gw/m-1' } } }));
+  assert.equal((await (await fetch(`${url}data/recommendations.json`)).json()).roles.roles[0].role, 'reviewer');
+  assert.match(await (await fetch(`${url}data/recommendations.js`)).text(), /^window\.__MODEL_RECOMMENDATIONS__ = /);
+
+});
